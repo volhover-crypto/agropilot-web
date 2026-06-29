@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgroPILOT — эскиз (навигация ОТ ОБЪЕКТОВ)</title>
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+  <script>
+  /* Auth guard: redirect to login if no token */
+  (function(){
+    var ss = window['session'+'Storage'];
+    var ls = window['local'+'Storage'];
+    var tk = ls.getItem('agropilot_token');
+    if(!tk){
+      // Show login modal instead of redirect
+      document.getElementById('loginModal').style.display = 'flex';
+    }
+  })();
+
+  async function doLogin() {
+    var login = document.getElementById('loginInput').value;
+    var pwd = document.getElementById('loginPassword').value;
+    var errEl = document.getElementById('loginError');
+    var btn = document.getElementById('loginBtn');
+    btn.disabled = true;
+    btn.textContent = 'Вход...';
+    errEl.style.display = 'none';
+    try {
+      await AGL.login(login, pwd);
+      try { sessionStorage.setItem('jarvis_authed', '1'); } catch(e) {}
+      document.getElementById('loginModal').style.display = 'none';
+      window.location.reload();
+    } catch(e) {
+      errEl.textContent = e.message || 'Ошибка входа';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Войти';
+    }
+  }
+  </script>
+  <script>(function(){try{var st=window['local'+'Storage'];var t=(st&&st.getItem('agropilot_theme'))||'light';var r=document.documentElement;r.classList.remove('dark','light');r.classList.add(t);}catch(e){}})();</script>
+  <link rel="stylesheet" href="css/tailwind-scanned.css?v=3" />
+  <script defer src="js/alpine.min.js"></script>
+  <style>
+    [x-cloak]{ display:none !important; }
+    .cmdk-item:hover{ background:var(--accent-soft,rgba(0,0,0,.05)); }
+    :root{
+      --bg:#0b0f14; --surface:#121821; --surface-2:#0e141c; --border:#1f2937;
+      --text:#e5e7eb; --text-dim:#9ca3af; --text-mute:#6b7280;
+      --accent:#22c55e; --accent-soft:rgba(34,197,94,.12);
+      --ok:#22c55e; --warn:#fbbf24; --err:#ef4444; --info:#60a5fa;
+    }
+    html.light{ --bg:#f7f8fa; --surface:#fff; --surface-2:#f1f3f6; --border:#e5e7eb; --text:#111827; --text-dim:#4b5563; --text-mute:#9ca3af; }
+    body{ background:var(--bg); color:var(--text); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
+    .card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; }
+    .card-2{ background:var(--surface-2); border:1px solid var(--border); border-radius:10px; }
+    .label{ font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-mute); }
+    .btn{ background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:6px 10px; color:var(--text); cursor:pointer; }
+    .btn:hover{ border-color:var(--accent); }
+    .btn-accent{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+    .nav-item{ display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; color:var(--text-dim); cursor:pointer; font-size:14px; }
+    .nav-item:hover{ background:var(--surface-2); color:var(--text); }
+    .nav-item.active{ background:var(--accent-soft); color:var(--accent); }
+    .input{ background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:6px 10px; color:var(--text); }
+    .pill{ font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); }
+    .fade-in{ animation:fi .2s ease; } @keyframes fi{ from{opacity:0; transform:translateY(4px)} to{opacity:1} }
+    .mono{ font-family:ui-monospace,Menlo,monospace; }
+    /* Splitter between main and owl panel */
+    #owlSplitter{ transition: background .15s; }
+    #owlSplitter:hover,
+    #owlSplitter.owl-active{ background:var(--accent-soft)!important; border-color:var(--accent)!important; }
+    #owlSplitter:hover #owlSplitterHandle,
+    #owlSplitter.owl-active #owlSplitterHandle{ background:var(--accent)!important; width:4px; }
+    body.owl-resizing{ cursor:col-resize!important; user-select:none!important; }
+    body.owl-resizing *{ cursor:col-resize!important; user-select:none!important; pointer-events:none!important; }
+  </style>
+</head>
+<body x-data="appObjects()" x-init="init()">
+  <div class="flex min-h-screen">
+
+    <!-- затемнение под мобильным сайдбаром -->
+    <div x-show="mobNav" @click="mobNav=false" class="fixed inset-0 z-40 md:hidden" style="background:rgba(0,0,0,.5)" x-cloak></div>
+    <!-- ===== САЙДБАР: навигация ОТ ОБЪЕКТОВ ===== -->
+    <aside class="w-60 shrink-0 border-r p-3 flex-col gap-1 md:flex z-50"
+           :class="mobNav ? 'flex fixed inset-y-0 left-0' : 'hidden'"
+           style="border-color:var(--border); background:var(--surface)">
+      <div class="flex items-center gap-2 px-2 py-3">
+        <img src="assets/apilot_icon.jpg" alt="A-PILOT" class="w-9 h-9 object-contain shrink-0" />
+        <div class="flex-1"><div class="font-semibold">AgroPILOT</div><div class="label">эскиз · объектная модель</div></div>
+        <button class="btn md:hidden text-[13px]" @click="mobNav=false">✕</button>
+      </div>
+
+      <div class="label px-2 mt-2 mb-1">Работа</div>
+      <div class="nav-item" :class="route==='myday'&&'active'"    @click="go('myday')">📅 <span>Мой день</span></div>
+      <div class="nav-item" :class="route==='dashboard'&&'active'" @click="go('dashboard')">📊 <span>Дашборд</span></div>
+      <div class="nav-item flex items-center" :class="route==='inbox'&&'active'" @click="go('inbox')">📥 <span class="flex-1">Входящие</span><span x-show="cntInbox()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntInbox()"></span></div>
+
+      <div class="label px-2 mt-3 mb-1">Объекты</div>
+      <div class="nav-item" :class="route==='goals'&&'active'"    @click="go('goals')">🎯 <span>Цели · Стратегия</span></div>
+      <div class="nav-item" :class="route==='projects'&&'active'" @click="go('projects')">📁 <span>Проекты</span></div>
+      <div class="nav-item" :class="route==='clients'&&'active'"  @click="go('clients')">🏢 <span>Клиенты</span></div>
+      <div class="nav-item" :class="route==='deals'&&'active'"    @click="go('deals')">🤝 <span>Сделки</span></div>
+      <div class="nav-item" :class="route==='kanban'&&'active'"   @click="go('kanban')">🗂 <span>Канбан</span></div>
+      <div class="nav-item flex items-center" :class="route==='tasks'&&'active'"    @click="go('tasks')">✅ <span class="flex-1">Задачи</span><span x-show="cntOverdue()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntOverdue()"></span></div>
+      <div class="nav-item" :class="route==='packages'&&'active'" @click="go('packages')">📦 <span>Упаковки</span></div>
+      <div class="nav-item" :class="route==='artifacts'&&'active'"@click="go('artifacts')">📄 <span>Артефакты</span></div>
+      <div class="nav-item" :class="route==='team'&&'active'"     @click="go('team')">👥 <span>Команда</span></div>
+      <div class="nav-item" :class="route==='graph'&&'active'"    @click="go('graph')">🕸 <span>Граф объектов</span></div>
+
+      <div class="label px-2 mt-3 mb-1">Рынок</div>
+      <div class="nav-item flex items-center" :class="route==='monitoring'&&'active'" @click="go('monitoring')">📡 <span class="flex-1">Мониторинг</span><span x-show="cntSignals()>0" class="pill text-[11px]" style="background:var(--info);color:#fff;border:0" x-text="cntSignals()"></span></div>
+      <div class="nav-item flex items-center" :class="route==='content'&&'active'" @click="go('content')">✍️ <span class="flex-1">Контент и соцсети</span><span x-show="cntDrafts()>0" class="pill text-[11px]" style="background:var(--warn);color:#fff;border:0" x-text="cntDrafts()"></span></div>
+
+      <div class="label px-2 mt-3 mb-1">Система</div>
+      <div class="nav-item" :class="route==='settings'&&'active'" @click="go('settings')">⚙ <span>Настройки</span></div>
+
+      <div class="mt-auto px-2 pt-3 text-[11px]" style="color:var(--text-mute)">
+        Агенты — встроенные функции объектов.<br>ПЕТРУШКА — модератор (Level-2).
+      </div>
+    </aside>
+
+    <!-- ===== ОСНОВНАЯ ОБЛАСТЬ ===== -->
+    <main class="flex-1 min-w-0 flex flex-col">
+      <header class="flex items-center justify-between px-3 md:px-5 py-3 border-b gap-2" style="border-color:var(--border)">
+        <div class="flex items-center gap-2 min-w-0">
+          <button class="btn md:hidden text-[15px] px-2" @click="mobNav=true">☰</button>
+          <div class="min-w-0">
+            <div class="text-lg font-semibold truncate" x-text="pageTitle()"></div>
+            <div class="label" x-text="clock"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="pill text-[11px]" :style="apiMode ? 'background:var(--ok);color:#fff;border:0' : 'background:var(--warn);color:#fff;border:0'" x-text="apiMode ? '● API' : '○ Demo'"></span>
+          <button class="btn flex items-center gap-2" @click="paletteOpen()"><span>🔍</span><span class="hidden sm:inline">Поиск</span><span class="pill text-[11px] hidden sm:inline" style="color:var(--text-mute)">Ctrl K</span></button>
+          <button class="btn" @click="toggleTheme()"><span>🌓</span><span class="hidden sm:inline"> Тема</span></button>
+          <button class="btn text-[12px]" @click="logout()" x-show="apiMode"><span>🚪</span><span class="hidden sm:inline"> Выход</span></button>
+          <button class="btn lg:hidden flex items-center gap-1 relative" @click="owlToggle()"><img src="assets/petrushka_icon.jpg" alt="ПЕТРУШКА" class="w-5 h-5 rounded-full object-cover" /><span class="hidden sm:inline"> ПЕТРУШКА</span>
+            <span x-show="owlPending()>0" class="pill" style="background:var(--err);color:#fff;border:0" x-text="owlPending()"></span>
+          </button>
+        </div>
+      </header>
+
+      <div id="view" class="p-5 flex-1"></div>
+    </main>
+
+    <!-- ===== RESIZABLE SPLITTER ===== -->
+    <div class="items-center justify-center shrink-0 select-none"
+         id="owlSplitter"
+         style="width:10px; background:var(--border); cursor:col-resize; border-left:1px solid var(--border); border-right:1px solid var(--border); position:relative;">
+      <div style="width:3px; height:40px; border-radius:2px; background:var(--text-mute);" id="owlSplitterHandle"></div>
+    </div>
+    <!-- ===== ПРАВАЯ AI-ПАНЕЛЬ: ПЕТРУШКА (Level-2 модератор, всегда справа) ===== -->
+    <!-- широкий экран: закреплённая колонка; узкий: overlay по кнопке -->
+    <aside
+      class="shrink-0 border-l flex flex-col
+             lg:static lg:w-[340px] lg:translate-x-0
+             fixed top-0 right-0 h-full w-[340px] max-w-[92vw] z-40 transition-transform"
+      :class="owl.open ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'"
+      style="border-color:var(--border); background:var(--surface)">
+      <!-- Заголовок -->
+      <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:var(--border)">
+        <div class="flex items-center gap-2"><img src="assets/petrushka_icon.jpg" alt="ПЕТРУШКА" class="w-8 h-8 rounded-full object-cover shrink-0" style="border:1.5px solid var(--accent)" /><div><div class="text-sm font-semibold">ПЕТРУШКА — модератор</div><div class="label">Level-2 над объектами</div></div></div>
+        <button class="btn text-[12px] lg:hidden" @click="owlToggle()">✕</button>
+      </div>
+      <!-- Окно ввода (самый верх, сразу после заголовка) -->
+      <div class="px-4 py-2 border-b" style="border-color:var(--border); background:var(--surface-2)">
+        <div class="flex items-center gap-2 mb-2">
+          <input id="owlInput" class="input flex-1 text-[13px]" placeholder="Спросить ПЕТРУШКУ…" @keydown.enter="owlAsk()" />
+          <button class="btn btn-accent text-[13px]" @click="owlAsk()">↑</button>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="pill text-[11px] cursor-pointer" @click="petQuick('today')">🔥 Важное сегодня</button>
+          <button class="pill text-[11px] cursor-pointer" @click="petQuick('risks')">⚠️ Риски целей</button>
+          <button class="pill text-[11px] cursor-pointer" @click="petQuick('drafts')">📝 Черновики</button>
+          <button class="pill text-[11px] cursor-pointer" @click="petQuick('object')">🔍 Сводка объекта</button>
+        </div>
+      </div>
+      <!-- Тело чата (ответы) -->
+      <div id="owlBody" class="p-3 overflow-y-auto flex-1"></div>
+    </aside>
+  </div>
+
+  <!-- Login modal -->
+  <div id="loginModal" class="fixed inset-0 z-[100] flex items-center justify-center" style="display:none;background:rgba(0,0,0,.6)" x-cloak>
+    <div class="card p-6 w-[360px] max-w-[90vw]">
+      <div class="flex items-center gap-2 mb-4">
+        <img src="assets/apilot_icon.jpg" class="w-8 h-8" />
+        <div>
+          <div class="font-semibold">AgroPILOT</div>
+          <div class="label">Вход в систему</div>
+        </div>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <div class="label mb-1">Логин</div>
+          <input id="loginInput" class="input w-full" placeholder="Александр" value="Александр" />
+        </div>
+        <div>
+          <div class="label mb-1">Пароль</div>
+          <input id="loginPassword" type="password" class="input w-full" placeholder="••••••••" />
+        </div>
+        <div id="loginError" class="text-sm" style="color:var(--err)" x-cloak></div>
+        <button id="loginBtn" class="btn btn-accent w-full" onclick="doLogin()">Войти</button>
+        <div class="text-center text-[11px]" style="color:var(--text-mute)">
+          Демо: Александр / test
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- toasts -->
+  <div class="fixed bottom-4 right-4 flex flex-col gap-2 z-50">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="card px-3 py-2 text-sm flex items-center gap-2" :style="`border-color:${t.color}`">
+        <span :style="`color:${t.color}`" x-text="t.icon"></span><span x-text="t.msg"></span>
+      </div>
+    </template>
+  </div>
+
+  <script src="js/mock.objects.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.objects.js"></script>
+</body>
+</html>
