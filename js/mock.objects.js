@@ -1,6 +1,8 @@
 // ===== AgroPILOT — ЭСКИЗ: объектная модель моков (навигация ОТ ОБЪЕКТОВ) =====
 // Иерархия ТЗ: Стратегия → Цели → Проекты/Сделки/Концепции → Задачи → Артефакты
 // Мягкая связь снизу-вверх по industry + need_type.
+// M2.5: единый флаг демо-режима. true = использовать mock-сид (MOCKO); false = работа только от BFF. Поведение подключается в M2.6/M2.7.
+window.DEV_MOCK = (typeof window.DEV_MOCK === 'boolean') ? window.DEV_MOCK : true;
 window.MOCKO = (function () {
     const TODAY = new Date().toISOString().slice(0, 10);
 
