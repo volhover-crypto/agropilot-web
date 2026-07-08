@@ -537,7 +537,7 @@ function appObjects() {
       const targetGoal = goals.length > 0 ? goals[0].id : '';
       const id = 'PR' + Date.now().toString(36);
       const newProj = {
-        id, title: 'Новый пект', goalId: targetGoal, need: '',
+        id, title: 'Новый проект', goalId: targetGoal, need: '',
         status: 'активен', ownerId: '',
         periodStart: this.M.TODAY || '2026-06-29',
         periodEnd: '2026-12-31', target: 0, dealPin: [],
