@@ -423,7 +423,7 @@ function appObjects() {
         else if (this.route === 'client') html = this.vClientCard(this.routeArg);
         else if (this.route === 'deal') html = this.vDealCard(this.routeArg);
         else if (this.route === 'settings') html = this.vSettings();
-        else html = this.stub('Раздел не найден');
+        else html = `<div class="card p-8 text-center" style="color:var(--text-mute)"><div class="text-2xl font-semibold mb-2">Раздел не найден</div><div class="mb-4">Такого раздела нет или он ещё не подключён.</div><button class="btn btn-accent" data-go="myday:">На главную</button></div>`;
         el.innerHTML = `<div class="fade-in">${html}</div>`;
         this.bindView();
         this.owlRender();
