@@ -401,7 +401,7 @@ if (window.DEV_MOCK) {  // M2.6-b: сид демо-истории только �
     selClearAll() { this.sel.deals.clear(); this.sel.tasks.clear(); }, // без render (вызывается из go/parseHash)
     selDeals() { return this.selItems('deals').map(id => this.dealById(id)).filter(Boolean); },
     selTasks() { return this.selItems('tasks').map(id => this.taskById(id)).filter(Boolean); },
-    logDeal(d, kind, text) { if (!d) return; if (!d.history) d.history = []; d.history.unshift({ date: this.M.TODAY, kind, text }); },
+    logDeal(d, kind, text, actor) { if (!d) return; if (!d.history) d.history = []; d.history.unshift({ date: this.M.TODAY, kind, text, actor_name: actor || 'Система' }); },
 
     // ---- render dispatcher ----
     render() {
