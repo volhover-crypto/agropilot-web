@@ -3,6 +3,21 @@
 // Мягкая связь снизу-вверх по industry + need_type.
 // M2.5: единый флаг демо-режима. true = использовать mock-сид (MOCKO); false = работа только от BFF. Поведение подключается в M2.6/M2.7.
 window.DEV_MOCK = (typeof window.DEV_MOCK === 'boolean') ? window.DEV_MOCK : true;
+// M2.6: пустой скелет модели для прод-режима (DEV_MOCK=false). Форма совпадает с MOCKO.
+window.EMPTY_MODEL = {
+TODAY: new Date().toISOString().slice(0, 10),
+STAGES: ['Зацепка', 'Оценка', 'Договор', 'Проектирование', 'Реализация', 'Сервис'],
+NEED: ['орошение', 'теплицы', 'логистика', 'хранение', 'автоматизация'],
+IND: ['овощеводство', 'садоводство', 'зерновые', 'тепличное', 'агрологистика'],
+SRC_TYPES: ['сайт/RSS', 'Telegram', 'соцсети', 'маркетплейс/тендеры', 'ключевые слова'],
+inbox: [], team: [],
+strategy: { title: '', horizon: '', directions: [] },
+goals: [], projects: [], clients: [], deals: [], tasks: [],
+packages: [], folders: [], artifacts: [], signals: [], sources: [],
+owlSuggestions: [], posts: [],
+agentConfig: { grades: [], privacyLocalOnly: true, routing: [] },
+infra: []
+};
 window.MOCKO = (function () {
     const TODAY = new Date().toISOString().slice(0, 10);
 
