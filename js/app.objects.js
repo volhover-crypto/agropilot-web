@@ -23,6 +23,7 @@ function appObjects() {
     sel: { deals: new Set(), tasks: new Set() }, // множества id выбранных объектов
     selMode: false,                              // режим мультивыбора (показ чекбоксов)
     mobNav: false,
+    currentUser: null,   // { id, name } из AGL.user (M8-b); null → actor='Оператор'
     _charts: {},
 
     async _loadAllData() {
@@ -44,6 +45,7 @@ function appObjects() {
     async loadFromAPI() {
       if (!window.AGL) { console.warn('[AGL] window.AGL not found'); return false; }
       window.AGL.initAuth();
+      this.currentUser = window.AGL.user || null;   // M8-b
       console.log('[AGL] loadFromAPI: token?', AGL.token ? 'yes (' + AGL.token.substring(0, 20) + '...)' : 'NO');
 
       // If no token, try to show login
