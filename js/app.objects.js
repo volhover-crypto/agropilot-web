@@ -952,7 +952,7 @@ return { related, other };
       const ocSub = oc.type
         ? `<div class="text-[11px]" style="color:var(--text-dim)">${this.esc(oc.sub)}</div>`
         : `<div class="text-[11px]" style="color:var(--text-dim)">${this.esc(oc.sub)} · откройте карточку — подсказки станут точнее</div>`;
-      const head = `<div class="card-2 p-3 mb-3"><div class="label mb-1">${oc.type ? 'Контекст объекта' : 'Контекст'}</div><div class="text-[13px] font-medium flex items-start gap-1.5"><span>${oc.icon}</span><span class="flex-1" style="min-width:0">${this.esc(oc.label)}</span></div>${ocSub}</div><div class="label mb-2">Подсказки ПЕТРУШКА (proactive)</div>`;
+      const head = `<div class="card-2 p-3 mb-3"><div class="label mb-1">${oc.type ? 'Контекст объекта' : 'Контекст'}</div><div class="text-[13px] font-medium flex items-start gap-1.5"><span>${oc.icon}</span><span class="flex-1" style="min-width:0">${this.esc(oc.label)}</span></div>${ocSub}</div><div class="label mb-2">Подсказки ПЕТРУШКА (proactive)${this.owlUrgent() ? ` <span class="chip" style="background:var(--warn);color:#fff" title="Срочные — черновики на проверку">${this.owlUrgent()} CONFIRM</span>` : ''}</div>`;
       // --- фильтр по грейду автономии (счёт по связанным) ---
       const cnt = g => sug.related.filter(o => g === 'all' || o.grade === g).length;
       const gchip = (g, label) => `<button class="pill cursor-pointer" data-owl-grade="${g}" style="${this.owlGrade === g ? 'background:var(--accent-soft);color:var(--accent);border-color:var(--accent)' : 'color:var(--text-mute)'}">${label} · ${cnt(g)}</button>`;
