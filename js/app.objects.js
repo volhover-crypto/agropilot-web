@@ -265,8 +265,9 @@ function appObjects() {
     init() {
       console.log('[AgroPILOT] init() called');
       this.applyTheme();
-      // Restore persisted data before anything else
-      this.restore();
+    // Restore persisted data before anything else (M2.6-d: только в демо-режиме;
+    // при DEV_MOCK=false localStorage-слепок не подмешивается в прод-состояние)
+    if (window.DEV_MOCK) this.restore();
       this.tick(); setInterval(() => this.tick(), 1000);
       // seed истории по сделкам
 if (window.DEV_MOCK) {  // M2.6-b: сид демо-истории только в mock-режиме
