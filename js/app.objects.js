@@ -264,8 +264,10 @@ function appObjects() {
       this.restore();
       this.tick(); setInterval(() => this.tick(), 1000);
       // seed истории по сделкам
+if (window.DEV_MOCK) {  // M2.6-b: сид демо-истории только в mock-режиме
       console.log('[AgroPILOT] deals count:', this.M.deals?.length || 0);
       this.M.deals.forEach(d => { if (!d.history) d.history = [{ date: d.updated, kind: 'stage', text: `Стадия: ${d.stage}` }, { date: d.updated, kind: 'create', text: 'Сделка создана' }]; });
+}
       window.addEventListener('hashchange', () => this.parseHash());
       this.parseHash();
       console.log('[AgroPILOT] route:', this.route);
