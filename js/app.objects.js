@@ -1288,6 +1288,8 @@ window.AGL.setStage(dealId, code).catch(e => { d.stage = from; d.updated = this.
       const ds = this.selDeals(); if (!ds.length) return;
       let n = 0;
       ds.forEach(d => { if (d.stage !== stage) { const from = d.stage; d.stage = stage; d.updated = this.M.TODAY; this.logDeal(d, 'stage', `Стадия: ${from} → ${stage} (групповое)`, this.currentUser?.name || 'Оператор'); n++; } });
+      // M6-c: bulk-синхронизация стадий с backend
+if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацепка':'lead','Оценка':'assess','Договор':'proposal','Проектирование':'deal','Выиграна':'won','Проиграна':'lost','Сервис':'service','Отменена':'cancelled' }; const code = REV[stage] || stage; ds.forEach(d => window.AGL.setStage(d.id, code).catch(e => console.warn('[AGL] bulk setStage failed:', d.id, e && e.message))); }
       this.selClear('deals');
       this.toast(`Стадия «${stage}» применена к ${n} сделкам`, 'ok');
     },
@@ -1384,6 +1386,7 @@ window.AGL.setStage(dealId, code).catch(e => { d.stage = from; d.updated = this.
         if (this.taskDone(t)) { skipDone++; return; }
         if (this.taskIsBlocked(t)) { skipBlocked++; return; }
         t.status = 'done';
+        if (window.AGL && AGL.updateTask) AGL.updateTask(t.id, { status: 'done' }).catch(e => console.warn('[AGL] bulk task complete failed:', t.id, e && e.message));
         const d = this.dealById(t.dealId); if (d) this.logDeal(d, 'task', `Задача «${t.title}» завершена (групповое)`, this.currentUser?.name || 'Оператор');
         done++;
       });
@@ -1398,9 +1401,9 @@ window.AGL.setStage(dealId, code).catch(e => { d.stage = from; d.updated = this.
     bulkTaskOwner(name) {
       const ts = this.selTasks(); if (!ts.length || !name) return;
       let n = 0;
-      ts.forEach(t => { if (t.owner !== name) { t.owner = name; n++; } });
-      this.selClear('tasks');
-      this.toast(`Владелец «${name}» назначен на ${n} задач`, 'ok');
+    ts.forEach(t => { if (t.owner !== name) { t.owner = name; n++; if (window.AGL && AGL.updateTask) AGL.updateTask(t.id, { owner: name }).catch(e => console.warn('[AGL] bulk task owner failed:', t.id, e && e.message)); } });      this.selClear('tasks');
+          this.selClear('tasks');
+    this.toast(`Владелец «${name}» назначен на ${n} задач`, 'ok');
     },
     bulkTaskOwnerModal() {
       const n = this.selCount('tasks'); if (!n) return;
@@ -1479,12 +1482,14 @@ window.AGL.setStage(dealId, code).catch(e => { d.stage = from; d.updated = this.
       const blk = this.taskOpenBlockers(t);
       if (blk.length) { this.toast(`Нельзя завершить: открыт блокер «${blk[0].title}»`, 'warn'); return; }
       t.status = 'done';
+      if (this.apiMode && window.AGL && window.AGL.token) { window.AGL.updateTask(id, { status: 'done' }).catch(e => { t.status = 'open'; this.toast('Не сохранено на сервере — откат', 'err'); console.warn('[AGL] updateTask done failed:', e && e.message); this.render(); }); } // M6-c
       const d = this.dealById(t.dealId); if (d) this.logDeal(d, 'task', `Задача «${t.title}» завершена`, this.currentUser?.name || 'Оператор');
       this.toast('Задача завершена', 'ok'); this.render();
     },
     taskReopen(id) {
       const t = this.taskById(id); if (!t) return;
       t.status = 'open';
+      if (this.apiMode && window.AGL && window.AGL.token) { window.AGL.updateTask(id, { status: 'open' }).catch(e => { t.status = 'done'; this.toast('Не сохранено на сервере — откат', 'err'); console.warn('[AGL] updateTask reopen failed:', e && e.message); this.render(); }); } // M6-c
       this.toast('Задача открыта заново', 'info'); this.render();
     },
     taskAddDep(id, depId) {
