@@ -66,8 +66,23 @@ const AGL = {
     return false;
   },
 
+    user: null,   // { id, name } — из JWT-payload (M8-a)
+
+    _decodeUser(token) {
+      try {
+        const payload = token.split('.')[1];
+        if (!payload) return null;
+        const json = decodeURIComponent(atob(payload.replace(/-/g, '+').replace(/_/g, '/')).split('').map(function(c){ return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''));
+        const p = JSON.parse(json);
+        const name = p.name || p.full_name || p.login || p.username || p.sub || null;
+        if (!name) return null;
+        return { id: p.sub || p.user_id || p.id || null, name: name };
+      } catch (e) { return null; }
+    },
+
   _saveToken(data) {
     this.token = data.access_token;
+      this.user = this._decodeUser(data.access_token);   // M8-a
     if (data.refresh_token) {
       localStorage.setItem('agropilot_refresh', data.refresh_token);
     }
@@ -78,11 +93,13 @@ const AGL = {
 
   initAuth() {
     this.token = localStorage.getItem('agropilot_token') || getToken();
+      this.user = this.token ? this._decodeUser(this.token) : null;   // M8-a
   },
 
   async logout() {
     try { await apiFetch('/v1/auth/logout', { method: 'POST' }); } catch(e) {}
     this.token = null;
+      this.user = null;   // M8-a
     localStorage.removeItem('agropilot_token');
     localStorage.removeItem('agropilot_refresh');
   },
