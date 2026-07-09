@@ -13,6 +13,7 @@ function appObjects() {
     clock: '',
     toasts: [],
     owl: { open: false },
+    owlDigest: null,          // M6-a: агрегат AGL.aiDigest() для шапки ПЕТРУШКА
     owlGrade: 'all',
     cliQuery: '', cliSort: 'name',
     dealOwner: 'all',
@@ -41,6 +42,32 @@ function appObjects() {
       ]);
       return { deals, goals, tasks, team, packages, artifacts, content, reports, clients };
     },
+
+// M6-a (Класс A): подключение уже существующих AGL AI-методов. Non-fatal: сбой AI не рушит основную загрузку.
+async _loadAiLayer() {
+if (!window.AGL) return;
+// digest → агрегат для шапки
+try {
+const dg = await window.AGL.aiDigest();
+if (dg) this.owlDigest = dg;
+} catch (e) { console.warn('[AGL] aiDigest skipped:', e && e.message); }
+// recommendations → проактивные подсказки через owlPush (дедуп внутри)
+try {
+const recs = await window.AGL.aiRecommendations();
+const list = Array.isArray(recs) ? recs : (recs && recs.items) || [];
+for (const r of list) {
+this.owlPush(this.makeHint({
+kind: r.kind || 'task',
+grade: r.grade || 'HINT',
+text: r.title || r.text || '',
+dealId: r.dealId || r.deal_id || '',
+clientId: r.clientId || r.client_id || '',
+okMsg: r.okMsg || r.ok_msg || '',
+source: 'ai',
+}));
+}
+} catch (e) { console.warn('[AGL] aiRecommendations skipped:', e && e.message); }
+},
 
     async loadFromAPI() {
       if (!window.AGL) { console.warn('[AGL] window.AGL not found'); return false; }
@@ -198,6 +225,8 @@ function appObjects() {
             linkedId: r.linked_id || '',
             created: r.created_at,
           }));
+          // M6-a: AI-слой после основных данных (non-fatal)
+await this._loadAiLayer();
 
           this.apiMode = true;
           return true;
@@ -340,7 +369,7 @@ function appObjects() {
       if (nr !== this.route) this.selClearAll(); // 6.23: сброс выбора при смене route
       this.route = nr; this.routeArg = h[1] || null;
     },
-    go(r, arg) { if (r !== this.route) this.selClearAll(); location.hash = '#/' + r + (arg ? '/' + arg : ''); this.route = r; this.routeArg = arg; this.mobNav = false; },
+    go(r, arg) { if (r !== this.route) this.selClearAll(); location.hash = '#/' + r + (arg ? '/' + arg : ''); this.route = r; this.routeArg = arg; this.mobNav = false;  if (r === 'deal' && arg && window.AGL && window.AGL.aiScore) { window.AGL.aiScore(arg).then(res => { const d = this.dealById(arg); if (d && res) { d.score = (res.score != null ? res.score : (res.data && res.data.score)) || d.score; } }).catch(e => console.warn('[AGL] aiScore skipped:', e && e.message)); }},
 
     pageTitle() {
       return ({
@@ -952,7 +981,7 @@ return { related, other };
       const ocSub = oc.type
         ? `<div class="text-[11px]" style="color:var(--text-dim)">${this.esc(oc.sub)}</div>`
         : `<div class="text-[11px]" style="color:var(--text-dim)">${this.esc(oc.sub)} · откройте карточку — подсказки станут точнее</div>`;
-      const head = `<div class="card-2 p-3 mb-3"><div class="label mb-1">${oc.type ? 'Контекст объекта' : 'Контекст'}</div><div class="text-[13px] font-medium flex items-start gap-1.5"><span>${oc.icon}</span><span class="flex-1" style="min-width:0">${this.esc(oc.label)}</span></div>${ocSub}</div><div class="label mb-2">Подсказки ПЕТРУШКА (proactive)${this.owlUrgent() ? ` <span class="chip" style="background:var(--warn);color:#fff" title="Срочные — черновики на проверку">${this.owlUrgent()} CONFIRM</span>` : ''}</div>`;
+      const head = `<div class="card-2 p-3 mb-3"><div class="label mb-1">${oc.type ? 'Контекст объекта' : 'Контекст'}</div><div class="text-[13px] font-medium flex items-start gap-1.5"><span>${oc.icon}</span><span class="flex-1" style="min-width:0">${this.esc(oc.label)}</span></div>${ocSub}</div><div class="label mb-2">Подсказки ПЕТРУШКА (proactive)${this.owlUrgent() ? ` <span class="chip" style="background:var(--warn);color:#fff" title="Срочные — черновики на проверку">${this.owlUrgent()} CONFIRM</span>` : ''}${this.owlDigest && this.owlDigest.text ? `<span class="ml-2 text-[10px]" style="color:var(--text-mute)" title="AI-дайджест">${this.esc(this.owlDigest.text)}</span>` : ''}</div>`;
       // --- фильтр по грейду автономии (счёт по связанным) ---
       const cnt = g => sug.related.filter(o => g === 'all' || o.grade === g).length;
       const gchip = (g, label) => `<button class="pill cursor-pointer" data-owl-grade="${g}" style="${this.owlGrade === g ? 'background:var(--accent-soft);color:var(--accent);border-color:var(--accent)' : 'color:var(--text-mute)'}">${label} · ${cnt(g)}</button>`;
