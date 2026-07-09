@@ -71,9 +71,14 @@ function appObjects() {
         // If ALL API calls returned empty, keep mock data (don't overwrite MOCKO)
         const allEmpty = [deals, goals, tasks, team, packages, artifacts, content, reports, clients].every(a => !a || a.length === 0);
         if (allEmpty) {
-          console.warn('[AGL] all API calls empty, keeping mock data');
+                  if (window.DEV_MOCK) {  // M2.6-c: пустой API-ответ — в mock остаёмся на демо-сиде, в проде показываем empty()
+          console.warn('[AGL] all API calls empty, keeping mock data (DEV_MOCK)');
           this.apiMode = false;
           return false;
+        }
+        console.warn('[AGL] all API calls empty, showing empty state (prod)');
+        this.apiMode = true;
+        return false;
         }
 
         this.apiData = { deals, goals, tasks, team, packages, artifacts, content, reports, clients };
