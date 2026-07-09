@@ -1074,6 +1074,10 @@ return { related, other };
         const tid = 'T' + (this.M.tasks.length + 1) + '_' + Date.now() % 1000;
         this.M.tasks.unshift({ id: tid, dealId: d.id, clientId: d.clientId, title: o.taskTitle || 'Задача от ПЕТРУШКА', type: o.taskType || 'call', date: this.M.TODAY, owner: d.owner || '—', score: 70, status: 'open' });
         this.logDeal(d, 'task', `ПЕТРУШКА: создана задача «${o.taskTitle || 'Задача'}»`, 'ПЕТРУШКА');
+        // M6-b: создание задачи на backend; после ответа — реальный id
+if (this.apiMode && window.AGL && window.AGL.token) {
+window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, status: 'active', priority: 'normal' }).then(res => { const nid = res && (res.id || (res.data && res.data.id)); if (nid) { const nt = this.M.tasks.find(t => t.id === tid); if (nt) nt.id = nid; this.persist(); this.render(); } }).catch(e => { this.toast('Задача не сохранена на сервере', 'err'); console.warn('[AGL] createTask failed:', e && e.message); });
+}
       } else if (o.action === 'stage' && d) {
         const i = this.M.STAGES.indexOf(d.stage);
         if (i >= 0 && i < this.M.STAGES.length - 1) { const from = d.stage; d.stage = this.M.STAGES[i + 1]; d.updated = this.M.TODAY; msg = o.okMsg || `Сделка переведена в «${d.stage}»`; this.logDeal(d, 'stage', `ПЕТРУШКА: ${from} → ${d.stage}`, 'ПЕТРУШКА'); }
@@ -1197,6 +1201,10 @@ return { related, other };
         this.M.deals.push(d);
         if (cl) cl.dealsCount = (cl.dealsCount || 0) + 1;
         this.persist();
+        // M6-b: создание сделки на backend; после ответа — реальный id
+if (this.apiMode && window.AGL && window.AGL.token) {
+window.AGL.createDeal({ name: title, client_id: clientId, stage: 'lead', finance: { budget: amount }, need_type: need }).then(res => { const nid = res && (res.id || (res.data && res.data.id)); if (nid) { d.id = nid; this.persist(); this.render(); } }).catch(e => { this.toast('Сделка не сохранена на сервере', 'err'); console.warn('[AGL] createDeal failed:', e && e.message); });
+}
         this.toast('Сделка создана (Зацепка)', 'ok');
         // S6: ПЕТРУШКА предлагает упаковку по industry + need
         this.dealSuggestPackage(d, cl);
@@ -1265,6 +1273,12 @@ return { related, other };
       d.stage = stage; d.updated = this.M.TODAY;
       this.logDeal(d, 'stage', `Стадия: ${from} → ${stage} (перетаскивание)`, this.currentUser?.name || 'Оператор');
       this.toast(`«${d.title}»: ${from} → ${stage}`, 'ok');
+      // M6-b: синхронизация стадии с backend (оптимистично, откат при ошибке)
+if (this.apiMode && window.AGL && window.AGL.token) {
+const REV = { 'Зацепка':'lead','Оценка':'assess','Договор':'proposal','Проектирование':'deal','Выиграна':'won','Проиграна':'lost','Сервис':'service','Отменена':'cancelled' };
+const code = REV[stage] || stage;
+window.AGL.setStage(dealId, code).catch(e => { d.stage = from; d.updated = this.M.TODAY; this.toast(`Не сохранено на сервере: «${d.title}» — откат`, 'err'); console.warn('[AGL] setStage failed:', e && e.message); this.render(); });
+}
       this.render();
     },
     // ======== ЧАНК 6.23 — раздел 2: bulk-действия над сделками ========
