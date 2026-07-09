@@ -777,7 +777,7 @@ if (window.DEV_MOCK) {  // M2.6-b: сид демо-истории только �
         d.history.forEach(h => {
           const icon = h.kind === 'stage' ? '🔀' : h.kind === 'create' ? '🆕' : '•';
           const pre = multi ? `[${this.esc(dealLabel(did))}] ` : '';
-          ev.push({ date: h.date, kind: h.kind, icon, text: pre + h.text });
+          ev.push({ date: h.date, kind: h.kind, icon, text: pre + h.text, actor: h.actor_name });
         });
       });
       // 2) задачи (создание/срок/статус)
@@ -815,7 +815,7 @@ if (window.DEV_MOCK) {  // M2.6-b: сид демо-истории только �
         return `<div class="relative pl-7 ${last ? '' : 'pb-3'}">
           ${last ? '' : `<div class="absolute left-[10px] top-5 bottom-0 w-px" style="background:var(--border)"></div>`}
           <div class="absolute left-0 top-0 w-[21px] h-[21px] rounded-full flex items-center justify-center text-[11px]" style="background:var(--accent-soft,rgba(99,102,241,.12));border:1px solid var(--border)">${it.icon || '•'}</div>
-          <div class="text-[13px] leading-snug">${this.esc(it.text)}</div>
+          <div class="text-[13px] leading-snug">${this.esc(it.text)}${it.actor ? ' · ' + this.esc(it.actor) : ''}</div>
           <div class="text-[11px]" style="color:var(--text-mute)">${this.esc(it.date || '')}</div>
         </div>`;
       }).join('');
