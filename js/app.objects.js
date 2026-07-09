@@ -3,7 +3,7 @@
 console.log('[AgroPILOT] appObjects.js loaded, MOCKO:', typeof window.MOCKO);
 function appObjects() {
   return {
-    M: window.MOCKO,
+        M: (window.DEV_MOCK ? window.MOCKO : window.EMPTY_MODEL),  // M2.6-a: при DEV_MOCK=false — пустой скелет (без демо-сида)
     apiMode: false,  // true = data from BFF API, false = mock
     apiData: {},     // cached API data
     _persistKey: 'agropilot_data_v1',
