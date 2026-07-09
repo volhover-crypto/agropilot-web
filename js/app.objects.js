@@ -772,28 +772,20 @@ function appObjects() {
     hintKind(o) { return o && (o.kind || o.action); },
     hintField(o, f) { return (o && o.payload && o.payload[f] != null) ? o.payload[f] : (o ? o[f] : undefined); },
     // Единая точка добавления подсказки. Принимает сырой opt или готовый hint.
-    // M5-c: поведение нейтрально (только unshift). Дедуп/приоритизация — M5-d (флаг owlPrioritize).
+    // M5-d: дедуп на вставке (обновляем дубль), приоритизация — на чтении в owlSuggestionsCtx (grade->source->ts).
     _gradeRank: { CONFIRM: 0, HINT: 1, AUTO: 2 },
-    owlPrioritize: false,
-    owlPush(hint) {
-      if (!this.M.owlSuggestions) this.M.owlSuggestions = [];
-      const h = (hint && hint.action) ? hint : this.makeHint(hint);
-      if (this.owlPrioritize) {
-        const dupe = this.M.owlSuggestions.find(o =>
-          (o.kind || o.action) === (h.kind || h.action) &&
-          (o.dealId || '') === (h.dealId || '') &&
-          (o.taskTitle || '') === (h.taskTitle || '') &&
-          (o.packageName || '') === (h.packageName || ''));
-        if (dupe) return dupe.id;
-      }
-      this.M.owlSuggestions.unshift(h);
-      if (this.owlPrioritize) {
-        this.M.owlSuggestions.sort((a, b) =>
-          (this._gradeRank[a.grade] != null ? this._gradeRank[a.grade] : 1) -
-          (this._gradeRank[b.grade] != null ? this._gradeRank[b.grade] : 1));
-      }
-      return h.id;
-    },
+    _sourceRank: { signal: 0, deal: 1, client: 2, chat: 3, system: 4, scan: 6 },
+owlPush(hint) {
+if (!this.M.owlSuggestions) this.M.owlSuggestions = [];
+const h = (hint && hint.action) ? hint : this.makeHint(hint);
+const key = o => [(o.kind || o.action), o.dealId || '', o.clientId || '', o.taskTitle || '', o.packageName || ''].join('|');
+const dupe = this.M.owlSuggestions.find(o => key(o) === key(h));
+if (dupe) { dupe.grade = h.grade; dupe.text = h.text; dupe.okMsg = h.okMsg; return dupe.id; }
+this.M.owlSuggestions.unshift(h);
+return h.id;
+},
+// M5-d: срочные подсказки (CONFIRM) — для акцента в owl-панели/бейдже
+owlUrgent() { return (this.M.owlSuggestions || []).filter(o => o.grade === 'CONFIRM').length; },
     // И5: счётчики для бейджей сайдбара
     cntOverdue() { return this.M.tasks.filter(t => t.status === 'overdue').length; },
     cntSignals() { return (this.M.signals || []).length; },
@@ -936,12 +928,15 @@ function appObjects() {
     // Разбивка подсказок: {related:[], other:[]} по контексту (учёт фильтра грифа — снаружи).
     owlSuggestionsCtx() {
       const ids = this.owlContextDealIds();
-      const all = this.M.owlSuggestions || [];
-      if (ids === null) return { related: all.slice(), other: [] };
-      const set = new Set(ids);
-      const related = all.filter(o => set.has(o.dealId));
-      const other = all.filter(o => !set.has(o.dealId));
-      return { related, other };
+const all = this.M.owlSuggestions || [];
+const rank = o => (this._gradeRank[o.grade] != null ? this._gradeRank[o.grade] : 1);
+const bySrc = o => (this._sourceRank[o.source] != null ? this._sourceRank[o.source] : 5);
+const cmp = (a, b) => rank(a) - rank(b) || bySrc(a) - bySrc(b) || String(b.ts || '').localeCompare(String(a.ts || '')) || String(b.id).localeCompare(String(a.id));
+if (ids === null) return { related: all.slice().sort(cmp), other: [] };
+const set = new Set(ids);
+const related = all.filter(o => set.has(o.dealId)).sort(cmp);
+const other = all.filter(o => !set.has(o.dealId)).sort(cmp);
+return { related, other };
     },
 
     owlRender() {
