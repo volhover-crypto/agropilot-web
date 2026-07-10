@@ -30,6 +30,39 @@ Backend декодирует JWT → получает `sub` (ид пользов
 
 **Пагинация:** `?limit=N&offset=M` (по умолчанию limit=100).
 
+### Формат ошибок (Error Contract)
+
+Все ошибки **обязаны** возвращаться в едином формате:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Event not found"
+  }
+}
+```
+
+**Стандартные коды ошибок:**
+
+| Код | HTTP | Описание |
+|------|------|-----------|
+| `NOT_FOUND` | 404 | Ресурс не найден |
+| `FORBIDDEN` | 403 | Нет прав (не владелец) |
+| `UNAUTHORIZED` | 401 | Не аутентифицирован |
+| `CONFLICT` | 409 | Конфликт состояния / дубликат |
+| `VALIDATION_ERROR` | 422 | Ошибка валидации полей |
+| `BAD_REQUEST` | 400 | Некорректный запрос |
+| `INTERNAL_ERROR` | 500 | Внутренняя ошибка сервера |
+
+> **Обязательное правило:** Все backend-модули (M7 Calendar, M9 Versions/Skills
+> и все будущие роутеры) **обязаны** использовать классы из
+> `backend/common/errors.py` (`NotFoundError`, `ForbiddenError`, `UnauthorizedError` и т.д.)
+> вместо `raise HTTPException(...)` напрямую.
+> Обработчики регистрируются **один раз** в `backend/main.py` через
+> `register_error_handlers(app)` и действуют глобально для всего приложения.
+
 ---
 
 ## 1. M7 — Календарь (Calendar Events)
