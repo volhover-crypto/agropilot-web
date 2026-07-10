@@ -113,7 +113,7 @@ source: 'ai',
           this.apiData = { deals, goals, tasks, team, packages, artifacts, content, reports, clients };
 
           // Map BFF format to mock format
-          const STAGE_MAP = { lead: 'Зацепка', assess: 'Оценка', proposal: 'Договор', deal: 'Проектирование', won: 'Выиграна', lost: 'Проиграна', service: 'Сервис', cancelled: 'Отменена' };
+          const STAGE_MAP = { lead: 'Зацепка', assess: 'Оценка', proposal: 'Договор', deal: 'Проектирование', won: 'Реализация', lost: 'Проиграна', service: 'Сервис', cancelled: 'Отменена' };
           const STAGE_REVERSE = Object.fromEntries(Object.entries(STAGE_MAP).map(([k, v]) => [v, k]));
           this.M.deals = (deals || []).map(d => ({
             id: d.id,
@@ -1275,7 +1275,7 @@ window.AGL.createDeal({ name: title, client_id: clientId, stage: 'lead', finance
       this.toast(`«${d.title}»: ${from} → ${stage}`, 'ok');
       // M6-b: синхронизация стадии с backend (оптимистично, откат при ошибке)
 if (this.apiMode && window.AGL && window.AGL.token) {
-const REV = { 'Зацепка':'lead','Оценка':'assess','Договор':'proposal','Проектирование':'deal','Выиграна':'won','Проиграна':'lost','Сервис':'service','Отменена':'cancelled' };
+const REV = { 'Зацепка':'lead','Оценка':'assess','Договор':'proposal','Проектирование':'deal','Реализация':'won','Проиграна':'lost','Сервис':'service','Отменена':'cancelled' };
 const code = REV[stage] || stage;
 window.AGL.setStage(dealId, code).catch(e => { d.stage = from; d.updated = this.M.TODAY; this.toast(`Не сохранено на сервере: «${d.title}» — откат`, 'err'); console.warn('[AGL] setStage failed:', e && e.message); this.render(); });
 }
@@ -1289,7 +1289,7 @@ window.AGL.setStage(dealId, code).catch(e => { d.stage = from; d.updated = this.
       let n = 0;
       ds.forEach(d => { if (d.stage !== stage) { const from = d.stage; d.stage = stage; d.updated = this.M.TODAY; this.logDeal(d, 'stage', `Стадия: ${from} → ${stage} (групповое)`, this.currentUser?.name || 'Оператор'); n++; } });
       // M6-c: bulk-синхронизация стадий с backend
-if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацепка':'lead','Оценка':'assess','Договор':'proposal','Проектирование':'deal','Выиграна':'won','Проиграна':'lost','Сервис':'service','Отменена':'cancelled' }; const code = REV[stage] || stage; ds.forEach(d => window.AGL.setStage(d.id, code).catch(e => console.warn('[AGL] bulk setStage failed:', d.id, e && e.message))); }
+if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацепка':'lead','Оценка':'assess','Договор':'proposal','Проектирование':'deal','Реализация':'won','Проиграна':'lost','Сервис':'service','Отменена':'cancelled' }; const code = REV[stage] || stage; ds.forEach(d => window.AGL.setStage(d.id, code).catch(e => console.warn('[AGL] bulk setStage failed:', d.id, e && e.message))); }
       this.selClear('deals');
       this.toast(`Стадия «${stage}» применена к ${n} сделкам`, 'ok');
     },
