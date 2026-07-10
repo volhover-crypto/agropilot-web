@@ -397,7 +397,7 @@ await this._loadAiLayer();
     },
 
     // ---- helpers (используются экранами) ----
-    esc(s) { return String(s ?? '').replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m])); },
+        esc(s) { return String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
     money(n) { return (n / 1000000).toFixed(1).replace('.0', '') + ' млн ₽'; },
     // 6.9-иконка: маскот ПЕТРУШКИ (вместо эмодзи 🌿)
     petIco(px) { const s = px || 18; return `<img src="assets/petrushka_icon.jpg" alt="ПЕТРУШКА" class="inline-block rounded-full object-cover align-text-bottom" style="width:${s}px;height:${s}px" />`; },
