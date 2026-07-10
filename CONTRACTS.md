@@ -203,6 +203,8 @@ Backend декодирует JWT → получает `sub` (ид пользов
   | Создавать/восстанавливать версию | Любой авторизованный |
   | Читать навыки | Любой авторизованный |
   | Изменять/удалить навык | user_id = current_user или role=admin |
+  
+> **Примечание:** admin-условие временно не реализовано — ожидает системы ролей (RBAC); DELETE/PUT /team/skills защищены только по `user_id == current_user`. См. TODO-комментарий в `backend/versions/skills_router.py`.
 
   ---
 
@@ -229,17 +231,15 @@ Backend декодирует JWT → получает `sub` (ид пользов
               routes.py                  # FastAPI router /v1/calendar
                   migrations/
                         001_create_calendar_events.sql
-                          versions/
-                              models.py                  # ORM модель DealVersion
-                                  routes.py                  # FastAPI router /v1/deals/.../versions
-                                      migrations/
-                                            001_create_deal_versions.sql
-                                              skills/
-                                                  models.py                  # ORM модель TeamSkill
-                                                      routes.py                  # FastAPI router /v1/team/skills
-                                                          migrations/
-                                                                001_create_team_skills.sql
-                                                                ```
+                            versions/          # ОДИН модуль для M9 (Versions + Skills)
+    models.py        # ORM модели DealVersion + TeamSkill
+    deals_versions_router.py  # FastAPI router /v1/deals/:id/versions
+    skills_router.py          # FastAPI router /v1/team/skills
+    migrations/
+      001_create_deal_versions.sql
+      002_create_team_skills.sql
+  main.py            # Единая точка входа FastAPI; регистрирует роутеры
+```
 
                                                                 ---
 
