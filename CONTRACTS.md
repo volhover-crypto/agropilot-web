@@ -58,6 +58,7 @@ Backend декодирует JWT → получает `sub` (ид пользов
 - Auth: required
 - Response `data`: `Array<CalendarEvent>` — события текущего пользователя за период
 - Если `from`/`to` не указаны: текущий месяц +-7 дней
+  > **Реализация (routes.py):** `start = now.replace(day=1) - 7d`, `end = now.replace(day=28) + 7d` — приближённо, не точные границы месяца. При отладке помни об этом.
 
 #### `POST /v1/calendar`
 - Auth: required
