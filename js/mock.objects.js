@@ -15,6 +15,7 @@ strategy: { title: '', horizon: '', directions: [] },
 goals: [], projects: [], clients: [], deals: [], tasks: [],
 packages: [], folders: [], artifacts: [], signals: [], sources: [],
 owlSuggestions: [], posts: [],
+skills: [],
 agentConfig: { grades: [], privacyLocalOnly: true, routing: [] },
 infra: []
 };
@@ -64,6 +65,19 @@ window.MOCKO = (function () {
     { id: 'U4', name: 'Марина',   role: 'Маркетолог / SSM', avatar: '👩‍🎨', cap: 5 },
     { id: 'U5', name: 'Сергей',   role: 'Аналитик / мониторинг', avatar: '👨‍💻', cap: 5 },
   ];
+
+// --- НАВЫКИ КОМАНДЫ (M9: team_skills; UNIQUE user_id+skill; level 1..5) ---
+// Контракт CONTRACTS.md §3.1: { id, user_id, user_name, skill, level:1..5, note, updated_at }
+// user_name зеркалит team[].name по user_id.
+const skills = [
+{ id: 'SK1', user_id: 'U1', user_name: 'Екатерина', skill: 'Переговоры', level: 5, note: 'Крупные сделки, закрытие', updated_at: '2026-06-20' },
+{ id: 'SK2', user_id: 'U1', user_name: 'Екатерина', skill: 'Орошение', level: 4, note: '', updated_at: '2026-06-18' },
+{ id: 'SK3', user_id: 'U2', user_name: 'Оксана', skill: 'Управление проектами', level: 5, note: 'Монтаж под ключ', updated_at: '2026-06-22' },
+{ id: 'SK4', user_id: 'U3', user_name: 'Дмитрий', skill: 'Проектирование', level: 5, note: 'Теплицы, поливные узлы', updated_at: '2026-06-19' },
+{ id: 'SK5', user_id: 'U3', user_name: 'Дмитрий', skill: 'Автоматизация', level: 3, note: 'Контроллеры', updated_at: '2026-06-15' },
+{ id: 'SK6', user_id: 'U4', user_name: 'Марина', skill: 'Контент / SMM', level: 4, note: 'Telegram + VK', updated_at: '2026-06-21' },
+{ id: 'SK7', user_id: 'U5', user_name: 'Сергей', skill: 'Мониторинг / аналитика', level: 4, note: 'Источники, тендеры', updated_at: '2026-06-23' },
+];
 
   // --- СТРАТЕГИЯ → НАПРАВЛЕНИЯ → ЦЕЛИ (объект уровня выше сделок) ---
   // Иерархия: Стратегия → Направления (direction) → Цели → Проекты → Сделки
@@ -217,5 +231,5 @@ window.MOCKO = (function () {
     { name: 'BFF :5555 / фронт /agropilot', role: 'Шлюз и UI', status: 'ok' },
   ];
 
-  return { TODAY, STAGES, NEED, IND, SRC_TYPES, inbox, team, strategy, goals, projects, clients, deals, tasks, packages, folders, artifacts, signals, sources, owlSuggestions, posts, agentConfig, infra };
+  return { TODAY, STAGES, NEED, IND, SRC_TYPES, inbox, team, skills, strategy, goals, projects, clients, deals, tasks, packages, folders, artifacts, signals, sources, owlSuggestions, posts, agentConfig, infra };
 })();
