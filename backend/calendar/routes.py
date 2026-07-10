@@ -3,11 +3,12 @@
 # Resulting base path: /agropilot/api/v1/calendar  (matches CONTRACTS §1.2 /v1/calendar)
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from .models import CalendarEvent, EventKind
+from backend.common.errors import NotFoundError, ForbiddenError
 
 # -- Dependency stubs (replace with your actual db/auth deps) --
 # from app.deps import get_db, current_user
@@ -98,9 +99,9 @@ async def update_event(
 ):
     ev = await db.get(CalendarEvent, event_id)
     if not ev:
-        raise HTTPException(404, "Not found")
+        raise NotFoundError("Event not found")
     if ev.owner_id != str(user.id):
-        raise HTTPException(403, "Forbidden")
+        raise ForbiddenError("Not the owner of this event")
     for field, val in body.model_dump(exclude_none=True).items():
         setattr(ev, field, val)
     await db.commit()
@@ -118,9 +119,9 @@ async def delete_event(
 ):
     ev = await db.get(CalendarEvent, event_id)
     if not ev:
-        raise HTTPException(404, "Not found")
+        raise NotFoundError("Event not found")
     if ev.owner_id != str(user.id):
-        raise HTTPException(403, "Forbidden")
+        raise ForbiddenError("Not the owner of this event")
     await db.delete(ev)
     await db.commit()
     return Response(status_code=204)
