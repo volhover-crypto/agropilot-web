@@ -30,9 +30,9 @@ window.MOCKO = (function () {
   // --- КЛИЕНТЫ (объект верхнего уровня) ---
   const clients = [
     { id: 'C1', name: 'АО «ЮгАгро»',        industry: 'овощеводство', region: 'Крым',     contact: 'И. Петров',  need: ['орошение','автоматизация'], health: 'green',  dealsCount: 2 },
-    { id: 'C2', name: 'ФХ «Северный сад»',  industry: 'садоводство',  region: 'Кубань',   contact: 'А. Лозовая', need: ['хранение'],                 health: 'yellow', dealsCount: 1 },
-    { id: 'C3', name: 'ООО «ТеплицаПро»',   industry: 'тепличное',    region: 'Севастополь', contact: 'М. Гром',  need: ['теплицы','автоматизация'],   health: 'green',  dealsCount: 1 },
-    { id: 'C4', name: 'КФХ «Степь-Зерно»',  industry: 'зерновые',     region: 'Ростов',   contact: 'В. Соколов', need: ['логистика','хранение'],      health: 'red',    dealsCount: 1 },
+    { id: 'C2', name: 'ФХ «Северный сад»',  industry: 'садоводство',  region: 'Кубань',   contact: 'А. Лозовая', need: ['хранение'],                 health: 'yellow', dealsCount: 2 },
+    { id: 'C3', name: 'ООО «ТеплицаПро»',   industry: 'тепличное',    region: 'Севастополь', contact: 'М. Гром',  need: ['теплицы','автоматизация'],   health: 'green',  dealsCount: 2 },
+    { id: 'C4', name: 'КФХ «Степь-Зерно»',  industry: 'зерновые',     region: 'Ростов',   contact: 'В. Соколов', need: ['логистика','хранение'],      health: 'red',    dealsCount: 2 },
   ];
 
   // --- ВХОДЯЩИЕ (лента событий: Telegram / уведомления / мониторинг → быстрое создание объекта) ---
@@ -118,6 +118,9 @@ const skills = [
     { id: 'D3', clientId: 'C2', title: 'Холодильное хранение яблок',          stage: 'Договор',       amount: 6100000, need: 'хранение',      owner: 'Екатерина', updated: '2026-06-24', score: 78, goalId: 'G3' },
     { id: 'D4', clientId: 'C3', title: 'Теплица 0.5 га под ключ',             stage: 'Реализация',    amount: 8800000, need: 'теплицы',       owner: 'Оксана',    updated: '2026-06-21', score: 90, goalId: '' },
     { id: 'D5', clientId: 'C4', title: 'Зерновая логистика + хранение',       stage: 'Зацепка',       amount: 3300000, need: 'логистика',     owner: 'Екатерина', updated: '2026-06-20', score: 41, goalId: 'G3' },
+    { id: 'D6', clientId: 'C3', title: 'Теплица 1 га: вторая очередь',           stage: 'Оценка',         amount: 5400000, need: 'теплицы',   owner: 'Дмитрий', updated: '2026-07-04', score: 74, goalId: '' },
+    { id: 'D7', clientId: 'C4', title: 'Логистика зерна: расширение',           stage: 'Зацепка',         amount: 2700000, need: 'логистика', owner: 'Сергей',  updated: '2026-07-03', score: 48, goalId: 'G3' },
+    { id: 'D8', clientId: 'C2', title: 'Тепличный комплекс: доукомплектация', stage: 'Проектирование', amount: 3100000, need: 'теплицы',   owner: 'Марина',  updated: '2026-07-02', score: 63, goalId: '' },            
   ];
 
   // --- ЗАДАЧИ (привязаны к сделке/клиенту, не к агенту) ---
@@ -170,10 +173,37 @@ const skills = [
 
   // --- ОРЁЛ (Level-2 модератор НАД объектами; 3 грации автономии) ---
   const owlSuggestions = [
-    { id: 'O1', dealId: 'D1', grade: 'CONFIRM', text: 'Подготовил черновик ответа клиенту по смете — проверить и отправить', action: 'task', taskTitle: 'Отправить ответ по смете', taskType: 'email', okMsg: 'Черновик принят → создана задача «Отправить ответ»' },
-    { id: 'O2', dealId: 'D5', grade: 'HINT',    text: 'Сделка остывает: предложить созвон или отложить?', action: 'task', taskTitle: 'Созвон по реанимации сделки', taskType: 'call', okMsg: 'Создана задача «Созвон»' },
-    { id: 'O3', dealId: 'D3', grade: 'AUTO',    text: 'Карточка хранения переведена в «Договор» автоматически (КП утверждено)' },
-    { id: 'O4', dealId: 'D2', grade: 'CONFIRM', text: 'Смета согласована клиентом — предлагаю перевести сделку «Оценка → Договор»', action: 'stage', okMsg: 'Сделка переведена в «Договор» (по подтверждению)' },
+    { id: 'O1', user_id: 'U1', date: '2026-07-02', dealId: 'D1', grade: 'CONFIRM', text: 'Подготовил черновик ответа клиенту по смете — проверить и отправить', action: 'task', taskTitle: 'Отправить ответ по смете', taskType: 'email', okMsg: 'Черновик принят → создана задача «Отправить ответ»' },
+    { id: 'O2', user_id: 'U1', date: '2026-07-03', dealId: 'D5', grade: 'HINT',    text: 'Сделка остывает: предложить созвон или отложить?', action: 'task', taskTitle: 'Созвон по реанимации сделки', taskType: 'call', okMsg: 'Создана задача «Созвон»' },
+    { id: 'O3', user_id: 'U1', date: '2026-07-04', dealId: 'D3', grade: 'AUTO',    text: 'Карточка хранения переведена в «Договор» автоматически (КП утверждено)' },
+    { id: 'O4', user_id: 'U1', date: '2026-07-05', dealId: 'D2', grade: 'CONFIRM', text: 'Смета согласована клиентом — предлагаю перевести сделку «Оценка → Договор»', action: 'stage', okMsg: 'Сделка переведена в «Договор» (по подтверждению)' },
+    // синтетические данные для проверки порога V>=10
+    { id: 'O5',  user_id: 'U3', date: '2026-07-01', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O6',  user_id: 'U3', date: '2026-07-01', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O7',  user_id: 'U3', date: '2026-07-02', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O8',  user_id: 'U3', date: '2026-07-02', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O9',  user_id: 'U3', date: '2026-07-03', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O10', user_id: 'U3', date: '2026-07-03', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O11', user_id: 'U3', date: '2026-07-04', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O12', user_id: 'U3', date: '2026-07-04', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O13', user_id: 'U3', date: '2026-07-05', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O14', user_id: 'U3', date: '2026-07-05', dealId: 'D6', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O15', user_id: 'U3', date: '2026-07-06', dealId: 'D6', grade: 'AUTO',    text: 'Авто-зачёт навыка (теплицы)' },
+    { id: 'O16', user_id: 'U5', date: '2026-07-01', dealId: 'D7', grade: 'CONFIRM', text: 'Зачёт навыка (логистика) — подтверждено' },
+    { id: 'O17', user_id: 'U5', date: '2026-07-01', dealId: 'D7', grade: 'CONFIRM', text: 'Зачёт навыка (логистика) — подтверждено' },
+    { id: 'O18', user_id: 'U5', date: '2026-07-02', dealId: 'D7', grade: 'CONFIRM', text: 'Зачёт навыка (логистика) — подтверждено' },
+    { id: 'O19', user_id: 'U5', date: '2026-07-02', dealId: 'D7', grade: 'CONFIRM', text: 'Зачёт навыка (логистика) — подтверждено' },
+    { id: 'O20', user_id: 'U5', date: '2026-07-03', dealId: 'D7', grade: 'CONFIRM', text: 'Зачёт навыка (логистика) — подтверждено' },
+    { id: 'O21', user_id: 'U5', date: '2026-07-03', dealId: 'D7', grade: 'CONFIRM', text: 'Зачёт навыка (логистика) — подтверждено' },
+    { id: 'O22', user_id: 'U5', date: '2026-07-04', dealId: 'D7', grade: 'AUTO',    text: 'Авто-зачёт навыка (логистика)' },
+    { id: 'O23', user_id: 'U5', date: '2026-07-04', dealId: 'D7', grade: 'AUTO',    text: 'Авто-зачёт навыка (логистика)' },
+    { id: 'O24', user_id: 'U5', date: '2026-07-05', dealId: 'D7', grade: 'AUTO',    text: 'Авто-зачёт навыка (логистика)' },
+    { id: 'O25', user_id: 'U5', date: '2026-07-05', dealId: 'D7', grade: 'AUTO',    text: 'Авто-зачёт навыка (логистика)' },
+    { id: 'O26', user_id: 'U5', date: '2026-07-06', dealId: 'D7', grade: 'AUTO',    text: 'Авто-зачёт навыка (логистика)' },
+    { id: 'O27', user_id: 'U5', date: '2026-07-06', dealId: 'D7', grade: 'AUTO',    text: 'Авто-зачёт навыка (логистика)' },
+    { id: 'O28', user_id: 'U4', date: '2026-07-02', dealId: 'D8', grade: 'CONFIRM', text: 'Зачёт навыка (теплицы) — подтверждено' },
+    { id: 'O29', user_id: 'U4', date: '2026-07-03', dealId: 'D8', grade: 'AUTO',    text: 'Авто-зачёт навыка (теплицы)' },
+    { id: 'O30', user_id: 'U2', date: '2026-07-04', dealId: 'D4', grade: 'CONFIRM', text: 'Зачёт навыка (упр. проектами) — подтверждено' },                                                                                                            
   ];
 
   // --- ИСТОЧНИКИ МОНИТОРИНГА (чанк 2.3) ---

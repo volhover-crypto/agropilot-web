@@ -497,6 +497,38 @@ await this._loadAiLayer();
           <div class="lg:col-span-2 flex flex-col gap-2 justify-center">${bars}</div>
         </div></div>`;
     },
+  // ======== M9-b: skillMaturity() — порог B→A по team_skills (batch-агрегат) ========
+  // grade: CONFIRM → V и числитель Q; AUTO → только V; HINT → игнор; иное → warn.
+  // окно: 30 дней от M.TODAY вкл.; порог V>=10 AND Q>=0.80 → reached.
+  // user_id: dealId→deals.owner(имя)→team[].name===owner→id. Возврат map {user_id:{V,Q,reached}}.
+  skillMaturity() {
+    const M = this.M;
+    const today = new Date(M.TODAY);
+    const from = new Date(today); from.setDate(from.getDate() - 30);
+    const dealOwner = id => { const d = (M.deals || []).find(x => x.id === id); return d ? d.owner : null; };
+    const ownerToUser = name => { const t = (M.team || []).find(x => x.name === name); return t ? t.id : null; };
+    const acc = {};
+    (M.owlSuggestions || []).forEach(o => {
+      if (!o.date) return;
+      const d = new Date(o.date);
+      if (d < from || d > today) return;
+      let uid = o.user_id || ownerToUser(dealOwner(o.dealId));
+      if (!uid) return;
+      const g = o.grade;
+      if (g === 'HINT') return;
+      if (g !== 'CONFIRM' && g !== 'AUTO') { console.warn('skillMaturity: unknown grade', g, o.id); return; }
+      const a = acc[uid] || (acc[uid] = { V: 0, conf: 0 });
+      a.V += 1;
+      if (g === 'CONFIRM') a.conf += 1;
+    });
+    const out = {};
+    Object.keys(acc).forEach(uid => {
+      const V = acc[uid].V;
+      const Q = V ? acc[uid].conf / V : 0;
+      out[uid] = { V, Q: Math.round(Q * 100) / 100, reached: (V >= 10 && Q >= 0.80) };
+    });
+    return out;
+  },                                                                                                                                                        
     // ======== ЧАНК 1.4: «МОЙ ДЕНЬ» — 4 ЗОНЫ ========
     vMyDay4() {
       const M = this.M;
