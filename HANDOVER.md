@@ -129,3 +129,10 @@ M9-doc [x] · M9-a [x] · M9-b [x] — все три подшага заверш
 
 ### Следующий шаг
 Вьюха #/skills (UI-представление таблицы навыков команды и порога B→A) — требования сформулированы отдельным ТЗ (см. ниже), реализация не начата.
+
+### M9-c — вьюха #/skills (Team View + My View, role-gated) [x]
+Реализована вьюха #/skills в 3 файлах одним коммитом feat(M9-c).
+js/app.objects.js: (1) state skillFilter/skillReachedOnly; (2) хелперы _skillsViewGet/_skillsViewSet (localStorage ключ agropilot_skills_view, 'team'|'my'), currentUserId(), isManager() (единая привязка team[].role==='Руководитель продаж'), skillsOf/skillsList; (3) vSkills() диспетчер (форс 'my' + перезапись localStorage при потере прав; toggle рендерится ТОЛЬКО для руководителя, по§5); (4) vSkillsTeam() — таблица по team[], batch skillMaturity(), сортировка по дистанции до порога (reached вверху), фильтр по навыку + 'только достигшие', акцент reached=true = бейдж 'B->A' + зелёная подсветка строки, undefined -> 'Нет активности за 30 дней'; (5) vSkillsMy() — point-wise skillMaturity()[uid]: 2 прогресс-бара (V/10, Q/0.80), свои навыки, лента owlSuggestions CONFIRM/AUTO за 30 дней; (6) route 'skills' в render(), pageTitle skills='Навыки команды'; (7) bindView: data-skills-view/data-skill-filter/data-skill-reached.
+index.html: nav-пункт '🎓 Навыки' (go('skills')) в группе 'Объекты' сразу после 'Команда'.
+Q-разрыв слоёв: skillMaturity() возвращает Q как долю (0..1), формат '%' делается в view (Math.round(Q*100)); резолвер M9-b НЕ тронут. Вне объёма (§7): CRUD навыков, алерты, графики тренда.
+Верификация: ожидает пост-коммит сверку raw по новому SHA (Правило 5).

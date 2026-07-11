@@ -17,6 +17,7 @@ function appObjects() {
     owlGrade: 'all',
     cliQuery: '', cliSort: 'name',
     dealOwner: 'all',
+    skillFilter: 'all', skillReachedOnly: false, // M9-c: фильтры Team View (#/skills)
     collapsedStages: {},
     kanbanFilter: { owner: 'all', need: 'all', goal: 'all' },
     kanbanDrag: null,
@@ -380,6 +381,7 @@ await this._loadAiLayer();
         packages: 'Упаковки',
         artifacts: 'Артефакты',
         graph: 'Граф объектов',
+        skills: 'Навыки команды',
         monitoring: 'Мониторинг рынка',
         client: 'Карточка клиента',
         deal: 'Карточка сделки',
@@ -458,6 +460,7 @@ await this._loadAiLayer();
         else if (this.route === 'monitoring') html = this.vMonitoring();
         else if (this.route === 'content') html = this.vContent();
         else if (this.route === 'team') html = this.vTeam();
+        else if (this.route === 'skills') html = this.vSkills();
         else if (this.route === 'graph') html = this.vGraph();
         else if (this.route === 'client') html = this.vClientCard(this.routeArg);
         else if (this.route === 'deal') html = this.vDealCard(this.routeArg);
@@ -529,6 +532,74 @@ await this._loadAiLayer();
     });
     return out;
   },                                                                                                                                                        
+  // ======== M9-c: вьюха #/skills — Навыки команды и порог B->A ========
+// Роль-гейтинг Team View (§5): только 'Руководитель продаж' по team[].role (единая привязка).
+// Персист режима: localStorage ключ agropilot_skills_view ('team'|'my'). Форс 'my' при потере прав.
+_skillsViewGet() { try { var st = window['local' + 'Storage']; var v = st && st.getItem('agropilot_skills_view'); return (v === 'team' || v === 'my') ? v : 'team'; } catch (e) { return 'team'; } },
+_skillsViewSet(v) { try { var st = window['local' + 'Storage']; if (st) st.setItem('agropilot_skills_view', v); } catch (e) { } },
+currentUserId() { return (this.currentUser && this.currentUser.id) || (this.M.team && this.M.team[0] && this.M.team[0].id) || null; },
+isManager() { const uid = this.currentUserId(); const u = (this.M.team || []).find(t => t.id === uid); return !!(u && u.role === 'Руководитель продаж'); },
+// навыки пользователя -> строка 'skill: level, ...'
+skillsOf(uid) { return (this.M.skills || []).filter(s => s.user_id === uid); },
+skillsList() { const set = []; (this.M.skills || []).forEach(s => { if (s.skill && set.indexOf(s.skill) < 0) set.push(s.skill); }); return set; },
+// диспетчер вьюхи: форс 'my' если нет прав на Team View (§5)
+vSkills() {
+  let mode = this._skillsViewGet();
+  const mgr = this.isManager();
+  if (mode === 'team' && !mgr) { mode = 'my'; this._skillsViewSet('my'); }
+  const toggle = mgr ? `<div style="display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden"><button data-skills-view="team" style="padding:6px 14px;border:0;cursor:pointer;background:${mode==='team'?'var(--accent-soft)':'transparent'};color:var(--text)">Команда</button><button data-skills-view="my" style="padding:6px 14px;border:0;cursor:pointer;background:${mode==='my'?'var(--accent-soft)':'transparent'};color:var(--text)">Я</button></div>` : '';
+  const body = mode === 'team' ? this.vSkillsTeam() : this.vSkillsMy();
+  return `<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px"><div style="font-size:18px;font-weight:600">🎓 Навыки команды</div>${toggle}</div>${body}</div>`;
+},
+// Team View (§3): таблица по team[], batch skillMaturity(), сортировка по дистанции до порога
+vSkillsTeam() {
+  const M = this.M;
+  const mat = this.skillMaturity();
+  const filter = this.skillFilter || 'all';
+  const reachedOnly = !!this.skillReachedOnly;
+  const skillOpts = this.skillsList().map(s => `<option value="${this.esc(s)}" ${filter===s?'selected':''}>${this.esc(s)}</option>`).join('');
+  const bar = (val, max, ok) => { const pct = Math.min(100, Math.round(val / max * 100)); const col = ok ? 'var(--ok)' : 'var(--warn)'; return `<div style="background:var(--surface-2);border-radius:6px;height:8px;overflow:hidden;min-width:70px"><div style="height:100%;width:${pct}%;background:${col}"></div></div>`; };
+  let rows = (M.team || []).map(u => {
+    const sk = this.skillsOf(u.id);
+    if (filter !== 'all' && !sk.some(s => s.skill === filter)) return null;
+    const m = mat[u.id];
+    const reached = !!(m && m.reached);
+    if (reachedOnly && !reached) return null;
+    const skStr = sk.length ? sk.map(s => `${this.esc(s.skill)}: ${s.level}`).join(', ') : '—';
+    let cells;
+    if (!m) { cells = `<td colspan="3" style="color:var(--text-dim)">Нет активности за 30 дней</td>`; }
+    else {
+      const qPct = Math.round(m.Q * 100);
+      const status = reached ? `<span style="background:var(--ok);color:#fff;padding:2px 8px;border-radius:6px;font-size:12px">Достигнут</span>` : `<div style="display:flex;flex-direction:column;gap:3px;font-size:12px"><div>V ${m.V}/10 ${bar(m.V,10,m.V>=10)}</div><div>Q ${qPct}%/80% ${bar(m.Q,0.8,m.Q>=0.8)}</div></div>`;
+      cells = `<td>${m.V}</td><td>${qPct}%</td><td>${status}</td>`;
+    }
+    const dist = m ? (Math.max(0, 10 - m.V) + Math.max(0, 0.8 - m.Q) * 12.5) : 999;
+    const rowBg = reached ? 'background:rgba(34,197,94,.12)' : '';
+    const badge = reached ? ` <span style="background:var(--ok);color:#fff;padding:1px 6px;border-radius:5px;font-size:11px">B-&gt;A</span>` : '';
+    return { dist, html: `<tr style="${rowBg}"><td>${u.avatar || ''} ${this.esc(u.name)}${badge}</td><td>${this.esc(u.role)}</td><td>${this.esc(skStr)}</td>${cells}</tr>` };
+  }).filter(Boolean).sort((a, b) => a.dist - b.dist).map(r => r.html).join('');
+  if (!rows) rows = `<tr><td colspan="6" style="color:var(--text-dim);text-align:center">Нет данных по фильтру</td></tr>`;
+  return `<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap"><select data-skill-filter style="padding:5px 8px"><option value="all" ${filter==='all'?'selected':''}>Все навыки</option>${skillOpts}</select><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-skill-reached ${reachedOnly?'checked':''}> Только достигшие порога</label></div><table style="width:100%;border-collapse:collapse" class="skills-table"><thead><tr style="text-align:left;color:var(--text-mute);font-size:12px"><th>Сотрудник</th><th>Роль</th><th>Навыки</th><th>V</th><th>Q</th><th>Порог B-&gt;A</th></tr></thead><tbody>${rows}</tbody></table>`;
+},
+// My View (§4): личный прогресс текущего пользователя (point-wise skillMaturity()[uid])
+vSkillsMy() {
+  const M = this.M;
+  const uid = this.currentUserId();
+  const m = this.skillMaturity()[uid];
+  const bar = (val, max, ok) => { const pct = Math.min(100, Math.round(val / max * 100)); const col = ok ? 'var(--ok)' : 'var(--warn)'; return `<div style="background:var(--surface-2);border-radius:6px;height:12px;overflow:hidden;flex:1"><div style="height:100%;width:${pct}%;background:${col}"></div></div>`; };
+  const reached = !!(m && m.reached);
+  let progress;
+  if (!m) { progress = `<div style="color:var(--text-dim)">Нет активности за 30 дней</div>`; }
+  else if (reached) { progress = `<div style="background:var(--ok);color:#fff;padding:10px 14px;border-radius:9px;font-weight:600">✅ Порог B-&gt;A достигнут (V ${m.V}/10, Q ${Math.round(m.Q*100)}%/80%)</div>`; }
+  else { const qPct = Math.round(m.Q * 100); progress = `<div style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;gap:10px;align-items:center"><span style="min-width:120px">V (объём): ${m.V}/10</span>${bar(m.V,10,m.V>=10)}</div><div style="display:flex;gap:10px;align-items:center"><span style="min-width:120px">Q (качество): ${qPct}%/80%</span>${bar(m.Q,0.8,m.Q>=0.8)}</div></div>`; }
+  const sk = this.skillsOf(uid);
+  const skRows = sk.length ? sk.map(s => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span>${this.esc(s.skill)} · ур. ${s.level}</span><span style="color:var(--text-dim)">${this.esc(s.note || '')}</span></div>`).join('') : `<div style="color:var(--text-dim)">Навыки не указаны</div>`;
+  const today = new Date(M.TODAY); const from = new Date(today); from.setDate(from.getDate() - 30);
+  const feed = (M.owlSuggestions || []).filter(o => { if (o.user_id !== uid) return false; if (o.grade !== 'CONFIRM' && o.grade !== 'AUTO') return false; if (!o.date) return false; const d = new Date(o.date); return d >= from && d <= today; }).sort((a, b) => (a.date < b.date ? 1 : -1));
+  const feedRows = feed.length ? feed.map(o => { const d = this.dealById(o.dealId); const gc = o.grade === 'CONFIRM' ? 'var(--warn)' : 'var(--ok)'; return `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text-dim)">${o.date}</span> · <span style="color:${gc}">${o.grade}</span>${d ? ' · ' + this.esc(d.title) : ''}<div style="color:var(--text-dim)">${this.esc(o.text || '')}</div></div>`; }).join('') : `<div style="color:var(--text-dim)">Нет учтённых действий за 30 дней</div>`;
+  return `<div class="card-2" style="padding:14px;margin-bottom:12px"><div class="label" style="margin-bottom:8px">Мой прогресс к следующему уровню</div>${progress}</div><div class="card-2" style="padding:14px;margin-bottom:12px"><div class="label" style="margin-bottom:8px">Мои навыки</div>${skRows}</div><div class="card-2" style="padding:14px"><div class="label" style="margin-bottom:8px">Действия за 30 дней (учтены в V/Q)</div>${feedRows}</div>`;
+},
+
     // ======== ЧАНК 1.4: «МОЙ ДЕНЬ» — 4 ЗОНЫ ========
     vMyDay4() {
       const M = this.M;
@@ -3537,6 +3608,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         cs.oninput = (e) => { this.cliQuery = e.target.value; const pos = e.target.selectionStart; this.render(); this.$nextTick(() => { const f = document.getElementById('cliSearch'); if (f) { f.focus(); try { f.setSelectionRange(pos, pos); } catch (_) { } } }); };
       }
       el.querySelectorAll('[data-cli-sort]').forEach(n => n.onclick = () => { this.cliSort = n.getAttribute('data-cli-sort'); this.render(); });
+      el.querySelectorAll('[data-skills-view]').forEach(n => n.onclick = () => { this._skillsViewSet(n.getAttribute('data-skills-view')); this.render(); });
+el.querySelectorAll('[data-skill-filter]').forEach(n => n.onchange = () => { this.skillFilter = n.value; this.render(); });
+el.querySelectorAll('[data-skill-reached]').forEach(n => n.onchange = () => { this.skillReachedOnly = n.checked; this.render(); });
       // чанк 3.4: фильтр воронки по ответственному (сброс выбора при смене фильтра)
       el.querySelectorAll('[data-deal-owner]').forEach(n => n.onclick = () => { this.dealOwner = n.getAttribute('data-deal-owner'); this.selClearAll(); this.render(); });
       // 6.23: bulk — чекбоксы и тулбар
