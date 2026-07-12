@@ -91,33 +91,46 @@
         <button class="btn md:hidden text-[13px]" @click="mobNav=false">✕</button>
       </div>
 
-      <div class="label px-2 mt-2 mb-1">Работа</div>
-      <div class="nav-item" :class="route==='myday'&&'active'"    @click="go('myday')">📅 <span>Мой день</span></div>
-      <div class="nav-item" :class="route==='dashboard'&&'active'" @click="go('dashboard')">📊 <span>Дашборд</span></div>
+      <!-- ── СТРАТЕГИЯ ── -->
+      <div class="label px-2 mt-2 mb-1">Стратегия</div>
+      <div class="nav-item" :class="route==='strategy'&&'active'" @click="go('strategy')">📋 <span>Стратегия</span></div>
+      <div class="nav-item" :class="route==='goals'&&'active'"    @click="go('goals')">🎯 <span>Цели</span></div>
+
+      <!-- ── БЛОК 1: Маркетинг и мониторинг ── -->
+      <div class="label px-2 mt-3 mb-1">Блок 1 · Маркетинг</div>
+      <div class="nav-item flex items-center" :class="route==='monitoring'&&'active'" @click="go('monitoring')">📡 <span class="flex-1">Мониторинг</span><span x-show="cntSignals()>0" class="pill text-[11px]" style="background:var(--info);color:#fff;border:0" x-text="cntSignals()"></span></div>
+      <div class="nav-item flex items-center" :class="route==='content'&&'active'" @click="go('content')">✍️ <span class="flex-1">Контент и соцсети</span><span x-show="cntDrafts()>0" class="pill text-[11px]" style="background:var(--warn);color:#fff;border:0" x-text="cntDrafts()"></span></div>
       <div class="nav-item flex items-center" :class="route==='inbox'&&'active'" @click="go('inbox')">📥 <span class="flex-1">Входящие</span><span x-show="cntInbox()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntInbox()"></span></div>
 
-      <div class="label px-2 mt-3 mb-1">Объекты</div>
-      <div class="nav-item" :class="route==='goals'&&'active'"    @click="go('goals')">🎯 <span>Цели · Стратегия</span></div>
-      <div class="nav-item" :class="route==='projects'&&'active'" @click="go('projects')">📁 <span>Проекты</span></div>
+      <!-- ── БЛОК 2: Работа с клиентом ── -->
+      <div class="label px-2 mt-3 mb-1">Блок 2 · Клиент</div>
       <div class="nav-item" :class="route==='clients'&&'active'"  @click="go('clients')">🏢 <span>Клиенты</span></div>
       <div class="nav-item" :class="route==='deals'&&'active'"    @click="go('deals')">🤝 <span>Сделки</span></div>
       <div class="nav-item" :class="route==='kanban'&&'active'"   @click="go('kanban')">🗂 <span>Канбан</span></div>
-      <div class="nav-item flex items-center" :class="route==='tasks'&&'active'"    @click="go('tasks')">✅ <span class="flex-1">Задачи</span><span x-show="cntOverdue()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntOverdue()"></span></div>
+      <div class="nav-item flex items-center" :class="route==='tasks'&&'active'" @click="go('tasks')">✅ <span class="flex-1">Задачи</span><span x-show="cntOverdue()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntOverdue()"></span></div>
+
+      <!-- ── БЛОК 3: Реализация ── -->
+      <div class="label px-2 mt-3 mb-1">Блок 3 · Реализация</div>
+      <div class="nav-item" :class="route==='projects'&&'active'" @click="go('projects')">📁 <span>Проекты</span></div>
       <div class="nav-item" :class="route==='packages'&&'active'" @click="go('packages')">📦 <span>Упаковки</span></div>
       <div class="nav-item" :class="route==='artifacts'&&'active'"@click="go('artifacts')">📄 <span>Артефакты</span></div>
       <div class="nav-item" :class="route==='team'&&'active'"     @click="go('team')">👥 <span>Команда</span></div>
-      <div class="nav-item" :class="route==='skills'&&'active'" @click="go('skills')">🎓 <span>Навыки</span></div>
-      <div class="nav-item" :class="route==='calendar'&&'active'" @click="go('calendar')">📅 <span>Календарь</span></div>
-              <div class="nav-item" :class="route==='strategy'&&'active'"  @click="go('strategy')">📋 <span>Стратегия</span></div>
+
+      <!-- ── БЛОК 4: Сервис и пост-договор ── -->
+      <div class="label px-2 mt-3 mb-1">Блок 4 · Сервис</div>
+      <!-- placeholder: пункты появятся в следующих вехах -->
+
+      <!-- ── РАБОЧИЙ СТОЛ ── -->
+      <div class="label px-2 mt-3 mb-1">Рабочий стол</div>
+      <div class="nav-item" :class="route==='myday'&&'active'"    @click="go('myday')">📅 <span>Мой день</span></div>
+      <div class="nav-item" :class="route==='dashboard'&&'active'" @click="go('dashboard')">📊 <span>Дашборд</span></div>
+      <div class="nav-item" :class="route==='calendar'&&'active'" @click="go('calendar')">🗓 <span>Календарь</span></div>
+      <div class="nav-item" :class="route==='skills'&&'active'"   @click="go('skills')">🎓 <span>Навыки</span></div>
       <div class="nav-item" :class="route==='graph'&&'active'"    @click="go('graph')">🕸 <span>Граф объектов</span></div>
 
-      <div class="label px-2 mt-3 mb-1">Рынок</div>
-      <div class="nav-item flex items-center" :class="route==='monitoring'&&'active'" @click="go('monitoring')">📡 <span class="flex-1">Мониторинг</span><span x-show="cntSignals()>0" class="pill text-[11px]" style="background:var(--info);color:#fff;border:0" x-text="cntSignals()"></span></div>
-      <div class="nav-item flex items-center" :class="route==='content'&&'active'" @click="go('content')">✍️ <span class="flex-1">Контент и соцсети</span><span x-show="cntDrafts()>0" class="pill text-[11px]" style="background:var(--warn);color:#fff;border:0" x-text="cntDrafts()"></span></div>
-
+      <!-- ── СИСТЕМА ── -->
       <div class="label px-2 mt-3 mb-1">Система</div>
       <div class="nav-item" :class="route==='settings'&&'active'" @click="go('settings')">⚙ <span>Настройки</span></div>
-
       <div class="mt-auto px-2 pt-3 text-[11px]" style="color:var(--text-mute)">
         Агенты — встроенные функции объектов.<br>ПЕТРУШКА — модератор (Level-2).
       </div>
