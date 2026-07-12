@@ -66,23 +66,23 @@ const AGL = {
     return false;
   },
 
-    user: null,   // { id, name } — из JWT-payload (M8-a)
+  user: null,   // { id, name } — из JWT-payload (M8-a)
 
-    _decodeUser(token) {
-      try {
-        const payload = token.split('.')[1];
-        if (!payload) return null;
-        const json = decodeURIComponent(atob(payload.replace(/-/g, '+').replace(/_/g, '/')).split('').map(function(c){ return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''));
-        const p = JSON.parse(json);
-        const name = p.name || p.full_name || p.login || p.username || p.sub || null;
-        if (!name) return null;
-        return { id: p.sub || p.user_id || p.id || null, name: name };
-      } catch (e) { return null; }
-    },
+  _decodeUser(token) {
+    try {
+      const payload = token.split('.')[1];
+      if (!payload) return null;
+      const json = decodeURIComponent(atob(payload.replace(/-/g, '+').replace(/_/g, '/')).split('').map(function(c){ return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join(''));
+      const p = JSON.parse(json);
+      const name = p.name || p.full_name || p.login || p.username || p.sub || null;
+      if (!name) return null;
+      return { id: p.sub || p.user_id || p.id || null, name: name };
+    } catch (e) { return null; }
+  },
 
   _saveToken(data) {
     this.token = data.access_token;
-      this.user = this._decodeUser(data.access_token);   // M8-a
+    this.user = this._decodeUser(data.access_token);   // M8-a
     if (data.refresh_token) {
       localStorage.setItem('agropilot_refresh', data.refresh_token);
     }
@@ -93,13 +93,13 @@ const AGL = {
 
   initAuth() {
     this.token = localStorage.getItem('agropilot_token') || getToken();
-      this.user = this.token ? this._decodeUser(this.token) : null;   // M8-a
+    this.user = this.token ? this._decodeUser(this.token) : null;   // M8-a
   },
 
   async logout() {
     try { await apiFetch('/v1/auth/logout', { method: 'POST' }); } catch(e) {}
     this.token = null;
-      this.user = null;   // M8-a
+    this.user = null;   // M8-a
     localStorage.removeItem('agropilot_token');
     localStorage.removeItem('agropilot_refresh');
   },
@@ -197,7 +197,6 @@ const AGL = {
     return apiFetch('/v1/sources', { method: 'POST', data });
   },
 
-
   // ─── Reports ───
   async loadReports() {
     return apiFetch('/v1/reports?limit=100');
@@ -282,18 +281,24 @@ const AGL = {
     return apiFetch(`/v1/content/${contentId}/ai/trends`, { method: 'POST' });
   },
 
+  // —— Feature flags (CONTRACTS.md §1/§2/§3/§4) ——
+  // false = заглушка; активировать только после подъёма соответствующего backend-эндпоинта
+  CALENDAR_READY:  false,  // GET/POST /v1/calendar
+  VERSIONS_READY:  false,  // GET/POST /v1/{entity}/{id}/versions
+  SKILLS_READY:    false,  // GET /v1/skills
+  STRATEGY_READY:  false,  // GET/PUT /v1/strategy
+
   // —— Calendar (M7) — CONTRACTS.md §1.2 ——
-  CALENDAR_READY: false,
-    VERSIONS_READY: false,
-  SKILLS_READY:    false,
-  STRATEGY_READY:  false,  // true -> AGL.loadStrategy() активно
   async loadCalendar(from, to) {
     return apiFetch('/v1/calendar?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to) + '&limit=200');
   },
   async createEvent(data)     { return apiFetch('/v1/calendar', { method: 'POST', data }); },
   async updateEvent(id, data) { return apiFetch('/v1/calendar/' + id, { method: 'PATCH', data }); },
   async deleteEvent(id)       { return apiFetch('/v1/calendar/' + id, { method: 'DELETE' }); },
-    async loadStrategy()          { return apiFetch('/v1/strategy'); },
+
+  // —— Strategy (M4) — CONTRACTS.md §4 ——
+  async loadStrategy()   { return apiFetch('/v1/strategy'); },
+  async updateStrategy(data) { return apiFetch('/v1/strategy', { method: 'PUT', data }); },
 };
 
 window.AGL = AGL;
