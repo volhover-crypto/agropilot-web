@@ -398,6 +398,7 @@ if (window.AGL && window.AGL.CALENDAR_READY) await this._loadCalendarLayer();
         artifacts: 'Артефакты',
         graph: 'Граф объектов',
         skills: 'Навыки команды',
+        calendar: 'Календарь',
         monitoring: 'Мониторинг рынка',
         client: 'Карточка клиента',
         deal: 'Карточка сделки',
@@ -477,6 +478,7 @@ if (window.AGL && window.AGL.CALENDAR_READY) await this._loadCalendarLayer();
         else if (this.route === 'content') html = this.vContent();
         else if (this.route === 'team') html = this.vTeam();
         else if (this.route === 'skills') html = this.vSkills();
+        else if (this.route === 'calendar') html = this.vCalendar();
         else if (this.route === 'graph') html = this.vGraph();
         else if (this.route === 'client') html = this.vClientCard(this.routeArg);
         else if (this.route === 'deal') html = this.vDealCard(this.routeArg);
