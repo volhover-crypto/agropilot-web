@@ -87,7 +87,7 @@ const skills = [
     title: 'Стратегия 2026: рост в орошении и продвижение продукта',
     horizon: '2026',
     directions: [
-      { id: 'DIR1', title: 'Автоматизация и орошение', needMatch: ['орошение', 'автоматизация', 'kapelka'], description: 'Капельное, фертигиration, датчики, контроллеры' },
+      { id: 'DIR1', title: 'Автоматизация и орошение', needMatch: ['орошение', 'автоматизация', 'kapelka'], description: 'Капельное орошение, фертигация, контроллеры' },
       { id: 'DIR2', title: 'Виноградарство и тепличное хозяйство', needMatch: ['виноград', 'теплицы', 'фрукты'], description: 'Глубоковласные теплицы, машибор, садоводство' },
       { id: 'DIR3', title: 'Хранение и логистика', needMatch: ['хранение', 'логистика', 'склад'], description: 'Холодное хранение, доставка, распределение' },
     ]
@@ -107,7 +107,7 @@ const skills = [
   // target — план суммы (₽) для прогресса проекта (вариант «а»: сумма сумм сделок проекта / target).
   const projects = [
     { id: 'PR1', title: 'Автополив юга', goalId: 'G1', need: 'орошение',      status: 'активен', ownerId: 'U1', periodStart: '2026-01-01', periodEnd: '2026-09-30', target: 6000000, dealPin: [] },
-    { id: 'PR2', title: 'Телеметрия и контроллеры', goalId: 'G1', need: 'автоматизация', status: 'активен', ownerId: 'U3', periodStart: '2026-03-01', periodEnd: '2026-12-31', target: 3000000, dealPin: [] },
+    { id: 'PR2', title: 'Автоматизация и контроллеры', goalId: 'G1', need: 'автоматизация', status: 'активен', ownerId: 'U3', periodStart: '2026-03-01', periodEnd: '2026-12-31', target: 3000000, dealPin: [] },
     { id: 'PR3', title: 'Склад-хаб (хранение)', goalId: 'G3', need: 'хранение',  status: 'активен', ownerId: 'U2', periodStart: '2026-02-01', periodEnd: '2026-11-30', target: 9000000, dealPin: [] },
   ];
 
