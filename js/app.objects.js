@@ -3554,10 +3554,35 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         ${sec('🖥', 'Инфраструктура OPEN CLAW', 'Jarvis Hub · 8 GB · последовательная LLM-работа', `<div class="grid grid-cols-1 md:grid-cols-2 gap-2">${infraRows}</div>`)}
       </div>`;
     },
-
+    // ======== M7: КАЛЕНДАРЬ — список событий + фильтр по kind (CONTRACTS §1) ========
+vCalendar() {
+const KIND = { meeting: 'Встреча', call: 'Звонок', deadline: 'Дедлайн', other: 'Прочее' };
+const f = this.calFilter || 'all';
+const events = (this.M.calendar_events || []).filter(e => f === 'all' ? true : (e.kind || 'other') === f);
+const sorted = [...events].sort((a, b) => (a.start_at || '') < (b.start_at || '') ? -1 : 1);
+const tab = (val, label) => `<button data-cal-filter="${val}" class="pill ${f === val ? 'pill-on' : ''}">${label}</button>`;
+const filters = `<div class="flex gap-2 flex-wrap">${tab('all','Все')}${tab('meeting','Встречи')}${tab('call','Звонки')}${tab('deadline','Дедлайны')}${tab('other','Прочее')}</div>`;
+const rows = sorted.length ? sorted.map(e => {
+const d = e.deal_id ? this.dealById(e.deal_id) : null;
+const when = this.esc((e.start_at || '').slice(0, 16).replace('T', ' ')) + (e.all_day ? ' · весь день' : '');
+return `<div class="card-2 p-3 flex items-center gap-3"><span class="pill text-[11px]">${this.esc(KIND[e.kind] || 'Прочее')}</span><div class="flex-1"><div class="font-medium truncate">${this.esc(e.title || 'Без названия')}</div><div class="label text-[11px]" style="color:var(--text-mute)">${when}${d ? ' · ' + this.esc(d.name || '') : ''}</div></div></div>`;
+}).join('') : `<div class="p-6 text-center" style="color:var(--text-mute)">Событий нет</div>`;
+return `<div class="flex flex-col gap-4"><div class="flex items-center justify-between">${filters}<button data-create-event class="btn btn-primary">+ Событие</button></div><div class="flex flex-col gap-2">${rows}</div></div>`;
+},
+// M7: модалка создания события (штатный #eventModal, создание — через AGL POST /v1/calendar)
+createEventModal() {
+const m = document.getElementById('eventModal');
+if (m) { m.style.display = 'flex'; return; }
+this.toast('Календарь: backend не готов (CALENDAR_READY=false)', 'info');
+},
     // ---- привязка обработчиков после innerHTML (data-* делегирование) ----
     bindView() {
       const el = document.getElementById('view'); if (!el) return;
+      // M7: Calendar — фильтр по kind и кнопка создания события
+
+      
+el.querySelectorAll('[data-cal-filter]').forEach(n => { n.onclick = () => { this.calFilter = n.getAttribute('data-cal-filter'); this.render(); }; });
+el.querySelectorAll('[data-create-event]').forEach(n => { n.onclick = () => this.createEventModal(); });
       el.querySelectorAll('[data-go]').forEach(n => {
         n.onclick = (e) => { e.stopPropagation(); const [r, a] = n.getAttribute('data-go').split(':'); this.go(r, a || null); };
       });
