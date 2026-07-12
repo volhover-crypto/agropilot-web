@@ -18,6 +18,8 @@ function appObjects() {
     cliQuery: '', cliSort: 'name',
     dealOwner: 'all',
     skillFilter: 'all', skillReachedOnly: false, // M9-c: фильтры Team View (#/skills)
+    calendar_events: [],       // M7: загружаются через _loadCalendarLayer()
+calFilter: 'all',          // M7: фильтр по kind (all/meeting/call/deadline/other)
     collapsedStages: {},
     kanbanFilter: { owner: 'all', need: 'all', goal: 'all' },
     kanbanDrag: null,
@@ -68,6 +70,18 @@ source: 'ai',
 }));
 }
 } catch (e) { console.warn('[AGL] aiRecommendations skipped:', e && e.message); }
+},
+
+// M7: Calendar layer — non-fatal, только при CALENDAR_READY (CONTRACTS.md §5)
+async _loadCalendarLayer() {
+if (!window.AGL) return;
+try {
+const t = this.M.TODAY;
+const from = new Date(new Date(t).getTime() - 30*864e5).toISOString().slice(0,10);
+const to   = new Date(new Date(t).getTime() + 30*864e5).toISOString().slice(0,10);
+const rows = await window.AGL.loadCalendar(from, to);
+if (Array.isArray(rows)) this.M.calendar_events = rows;
+} catch (e) { console.warn('[AGL] loadCalendar skipped:', e && e.message); }
 },
 
     async loadFromAPI() {
@@ -228,6 +242,8 @@ source: 'ai',
           }));
           // M6-a: AI-слой после основных данных (non-fatal)
 await this._loadAiLayer();
+// M7: Calendar-слой — только при CALENDAR_READY (предохранитель CONTRACTS.md §5)
+if (window.AGL && window.AGL.CALENDAR_READY) await this._loadCalendarLayer();
 
           this.apiMode = true;
           return true;
