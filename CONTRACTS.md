@@ -1,6 +1,6 @@
 # CONTRACTS — AgroPILOT / A PILOT
-## API-контракт для вех M7 (Календарь) и M9 (Версии/Навыки)
-Дата: 2026-07-10 | Статус: СОГЛАСОВАН | Репозиторий: volhover-crypto/agropilot-web
+## API-контракт для вех M7 (Календарь), M9 (Версии/Навыки) и M4 (Стратегия)
+Дата: 2026-07-10 | Обновлено: 2026-07-12 | Статус: СОГЛАСОВАН | Репозиторий: volhover-crypto/agropilot-web
 
 > Стек BFF явно не зафиксирован в репозитории.
 > Backend-код написан на Python + FastAPI + SQLAlchemy (async) + PostgreSQL.
@@ -156,40 +156,40 @@ Backend декодирует JWT → получает `sub` (ид пользов
   - Автосоздаёт новую версию с comment = "Restored from v{N}"
   - Response `200`: `data: { deal: Deal, new_version: DealVersion }`
 
-  ---
+---
 
-  ## 3. M9 — Навыки команды (Team Skills)
+## 3. M9 — Навыки команды (Team Skills)
 
-  ### 3.1 Таблица `team_skills`
+### 3.1 Таблица `team_skills`
 
-  | Поле | Тип | Обязательно | Описание |
-  |---|---|---|---|
-  | `id` | UUID | авто | PK |
-  | `user_id` | string/UUID | да | FK users.id |
-  | `user_name` | string | авто | Денормализовано |
-  | `skill` | string(100) | да | Название навыка |
-  | `level` | integer | нет | 1-5; default 3 |
-  | `note` | text | нет | |
-  | `updated_at` | datetime | авто | |
-  UNIQUE: (`user_id`, `skill`)
+| Поле | Тип | Обязательно | Описание |
+|---|---|---|---|
+| `id` | UUID | авто | PK |
+| `user_id` | string/UUID | да | FK users.id |
+| `user_name` | string | авто | Денормализовано |
+| `skill` | string(100) | да | Название навыка |
+| `level` | integer | нет | 1-5; default 3 |
+| `note` | text | нет | |
+| `updated_at` | datetime | авто | |
+UNIQUE: (`user_id`, `skill`)
 
-  ### 3.2 Эндпоинты — Навыки
+### 3.2 Эндпоинты — Навыки
 
-  #### `GET /v1/team/skills`
-  - Auth: required
-  - Query: `?user_id=<id>` (опционально)
-  - Response `data`: `Array<TeamSkill>`
+#### `GET /v1/team/skills`
+- Auth: required
+- Query: `?user_id=<id>` (опционально)
+- Response `data`: `Array<TeamSkill>`
 
-  #### `PUT /v1/team/skills` (upsert)
-  - Auth: required
-  - Body: `{ "user_id": "u1", "skill": "...", "level": 4, "note": "..." }`
-  - Если (user_id, skill) есть — обновляет; иначе создаёт
-  - `403` если user_id != текущий пользователь AND не admin
-  - Response `200`: `data: TeamSkill`
+#### `PUT /v1/team/skills` (upsert)
+- Auth: required
+- Body: `{ "user_id": "u1", "skill": "...", "level": 4, "note": "..." }`
+- Если (user_id, skill) есть — обновляет; иначе создаёт
+- `403` если user_id != текущий пользователь AND не admin
+- Response `200`: `data: TeamSkill`
 
-  #### `DELETE /v1/team/skills/:id`
-  - Auth: required; `403` если не владелец и не admin
-  - Response `204`
+#### `DELETE /v1/team/skills/:id`
+- Auth: required; `403` если не владелец и не admin
+- Response `204`
 
 **Порог B→A (метрика зрелости навыка).**
 > Предварительные пороговые значения, подлежат калибровке на реальных данных.
@@ -204,57 +204,127 @@ Backend декодирует JWT → получает `sub` (ид пользов
 
 При V < 10 порог считается недостигнутым независимо от Q (недостаточно данных). Значение выводится на UI (#/skills) как индикатор «B→A: достигнут / не достигнут» с показом V и Q.
 
-  ---
+---
 
-  ## 4. Правила авторизации (сводка)
+## 4. M4 — Стратегия-сценарии (Strategy)
 
-  | Действие | Условие |
-  |---|---|
-  | Читать calendar events | Только свои (owner_id = current_user) |
-  | Создавать/изменять/удалять event | owner_id = current_user; `403` иначе |
-  | Читать deal versions | Любой авторизованный |
-  | Создавать/восстанавливать версию | Любой авторизованный |
-  | Читать навыки | Любой авторизованный |
-  | Изменять/удалить навык | user_id = current_user или role=admin |
-  
-> **Примечание:** admin-условие временно не реализовано — ожидает системы ролей (RBAC); DELETE/PUT /team/skills защищены только по `user_id == current_user`. См. TODO-комментарий в `backend/versions/skills_router.py`.
+### 4.1 Модель `strategy`
 
-  ---
-
-  ## 5. Флаги готовности backend (фронтенд)
-
-  В `js/api.js` добавляются три флага (выставляет серверный агент после деплоя):
-  ```js
-  CALENDAR_READY: false,  // true -> AGL.loadCalendar() активно
-  VERSIONS_READY: false,  // true -> AGL.loadVersions() активно
-  SKILLS_READY:   false,  // true -> AGL.loadSkills() активно
-  ```
-  В `app.objects.js` вызовы обёрнуты в `if (window.AGL.CALENDAR_READY) { ... }`.
-  При `DEV_MOCK=false` + флаг=false ни один запрос не уходит на backend, кнопки/секции не рендерятся.
-
-  ---
-
-  ## 6. Структура файлов backend
-
-  ```
-  backend/
-    README.md                    # Точка подключения для серверного агента
-      calendar/
-          models.py                  # SQLAlchemy ORM модель CalendarEvent
-              routes.py                  # FastAPI router /v1/calendar
-                  migrations/
-                        001_create_calendar_events.sql
-                            versions/          # ОДИН модуль для M9 (Versions + Skills)
-    models.py        # ORM модели DealVersion + TeamSkill
-    deals_versions_router.py  # FastAPI router /v1/deals/:id/versions
-    skills_router.py          # FastAPI router /v1/team/skills
-    migrations/
-      001_create_deal_versions.sql
-      002_create_team_skills.sql
-  main.py            # Единая точка входа FastAPI; регистрирует роутеры
+```json
+{
+  "id": "strategy_main",
+  "title": "string",
+  "horizon": "string (год/квартал)",
+  "scenarios": [
+    {
+      "id": "SC1",
+      "title": "string",
+      "description": "string",
+      "indicators": [
+        { "id": "IND1", "text": "string", "status": "green|yellow|red" }
+      ],
+      "action_lines": [
+        { "id": "AL1", "text": "string" }
+      ]
+    }
+  ],
+  "updated_at": "ISO-8601 datetime",
+  "updated_by": "string (user_name из JWT)"
+}
 ```
 
-                                                                ---
+Ограничения: от 2 до 4 сценариев. Каждый сценарий: 1–10 индикаторов, 1–10 линий действий.
 
-                                                                *Конец CONTRACTS.md*
-                                                                
+### 4.2 Эндпоинты M4
+
+#### `GET /v1/strategy`
+- Auth: required
+- Response `data`: объект `Strategy` (один глобальный объект системы)
+- Если ещё не создан — вернуть пустой шаблон с `scenarios: []`
+
+#### `PUT /v1/strategy`
+- Auth: required; `403` если не `isManager()` (role = manager|admin)
+- Body: полный объект `Strategy` (заменяет целиком)
+- `updated_at` и `updated_by` заполняются автоматически на backend
+- Response `200`: `data: Strategy`
+
+### 4.3 Флаг готовности
+
+В `js/api.js` добавить:
+```js
+STRATEGY_READY: false,  // true -> AGL.loadStrategy() активно
+```
+Активировать только после подъёма `/v1/strategy` на реальном стенде.
+
+### 4.4 Права доступа
+
+| Действие | Условие |
+|---|---|
+| Читать стратегию | Любой авторизованный |
+| Редактировать стратегию | role = manager или admin (`isManager()`) |
+
+### 4.5 Интеграция с ПЕТРУШКОЙ
+
+Стратегия = системный промпт ПЕТРУШКИ. После загрузки `owlContext()` обязан включать поле `strategy` с активными сценариями и индикаторами со статусом `yellow|red`.
+
+---
+
+## 5. Правила авторизации (сводка)
+
+| Действие | Условие |
+|---|---|
+| Читать calendar events | Только свои (owner_id = current_user) |
+| Создавать/изменять/удалять event | owner_id = current_user; `403` иначе |
+| Читать deal versions | Любой авторизованный |
+| Создавать/восстанавливать версию | Любой авторизованный |
+| Читать навыки | Любой авторизованный |
+| Изменять/удалить навык | user_id = current_user или role=admin |
+| Читать стратегию | Любой авторизованный |
+| Редактировать стратегию | role = manager или admin (`isManager()`) |
+
+> **Примечание:** admin-условие временно не реализовано — ожидает системы ролей (RBAC); DELETE/PUT /team/skills защищены только по `user_id == current_user`. См. TODO-комментарий в `backend/versions/skills_router.py`.
+
+---
+
+## 6. Флаги готовности backend (фронтенд)
+
+В `js/api.js` добавляются флаги (выставляет серверный агент после деплоя):
+```js
+CALENDAR_READY:  false,  // true -> AGL.loadCalendar() активно
+VERSIONS_READY:  false,  // true -> AGL.loadVersions() активно
+SKILLS_READY:    false,  // true -> AGL.loadSkills() активно
+STRATEGY_READY:  false,  // true -> AGL.loadStrategy() активно
+```
+В `app.objects.js` вызовы обёрнуты в `if (window.AGL.CALENDAR_READY) { ... }`.
+При `DEV_MOCK=false` + флаг=false ни один запрос не уходит на backend, кнопки/секции не рендерятся.
+
+---
+
+## 7. Структура файлов backend
+
+```
+backend/
+  README.md                    # Точка подключения для серверного агента
+  calendar/
+      models.py                # SQLAlchemy ORM модель CalendarEvent
+      routes.py                # FastAPI router /v1/calendar
+      migrations/
+          001_create_calendar_events.sql
+  versions/                    # ОДИН модуль для M9 (Versions + Skills)
+      models.py                # ORM модели DealVersion + TeamSkill
+      deals_versions_router.py # FastAPI router /v1/deals/:id/versions
+      skills_router.py         # FastAPI router /v1/team/skills
+      migrations/
+          001_create_deal_versions.sql
+          002_create_team_skills.sql
+  strategy/                    # M4 — будущий модуль
+      models.py                # ORM модель Strategy
+      routes.py                # FastAPI router /v1/strategy
+      migrations/
+          001_create_strategy.sql
+  main.py                      # Единая точка входа FastAPI; регистрирует роутеры
+```
+
+---
+
+*Конец CONTRACTS.md*
