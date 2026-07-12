@@ -19,6 +19,7 @@ function appObjects() {
     dealOwner: 'all',
     skillFilter: 'all', skillReachedOnly: false, // M9-c: фильтры Team View (#/skills)
     calendar_events: [],       // M7: загружаются через _loadCalendarLayer()
+        strategy: window.DEV_MOCK ? window.MOCKO.strategy : window.EMPTY_MODEL.strategy,
 calFilter: 'all',          // M7: фильтр по kind (all/meeting/call/deadline/other)
     collapsedStages: {},
     kanbanFilter: { owner: 'all', need: 'all', goal: 'all' },
@@ -83,6 +84,14 @@ const rows = await window.AGL.loadCalendar(from, to);
 if (Array.isArray(rows)) this.M.calendar_events = rows;
 } catch (e) { console.warn('[AGL] loadCalendar skipped:', e && e.message); }
 },
+    
+    // M4: Strategy layer — non-fatal, только при STRATEGY_READY (CONTRACTS.md §4)
+    _loadStrategyLayer() {
+      if (!window.AGL.STRATEGY_READY) return;
+      window.AGL.loadStrategy()
+        .then(d => { this.M.strategy = d; })
+        .catch(e => console.warn('[M4] loadStrategy error', e));
+    },
 
     async loadFromAPI() {
       if (!window.AGL) { console.warn('[AGL] window.AGL not found'); return false; }
@@ -244,6 +253,7 @@ if (Array.isArray(rows)) this.M.calendar_events = rows;
 await this._loadAiLayer();
 // M7: Calendar-слой — только при CALENDAR_READY (предохранитель CONTRACTS.md §5)
 if (window.AGL && window.AGL.CALENDAR_READY) await this._loadCalendarLayer();
+                    if (window.AGL && window.AGL.STRATEGY_READY) this._loadStrategyLayer();
 
           this.apiMode = true;
           return true;
@@ -403,6 +413,7 @@ if (window.AGL && window.AGL.CALENDAR_READY) await this._loadCalendarLayer();
         client: 'Карточка клиента',
         deal: 'Карточка сделки',
         settings: 'Настройки',
+                strategy: 'Стратегия',
       })[this.route] || 'AgroPILOT';
     },
 
@@ -479,6 +490,7 @@ if (window.AGL && window.AGL.CALENDAR_READY) await this._loadCalendarLayer();
         else if (this.route === 'team') html = this.vTeam();
         else if (this.route === 'skills') html = this.vSkills();
         else if (this.route === 'calendar') html = this.vCalendar();
+                  else if (this.route === 'strategy') html = this.vStrategy();
         else if (this.route === 'graph') html = this.vGraph();
         else if (this.route === 'client') html = this.vClientCard(this.routeArg);
         else if (this.route === 'deal') html = this.vDealCard(this.routeArg);
@@ -3713,4 +3725,50 @@ el.querySelectorAll('[data-skill-reached]').forEach(n => n.onchange = () => { th
       const kbR = document.getElementById('kbReset'); if (kbR) kbR.onclick = () => this.kanbanFilterReset();
     },
   };
+    // ======== M4: Вьюха Стратегии (CONTRACTS.md §4) ========
+    vStrategy() {
+      const st = this.M.strategy;
+      if (!st || !st.scenarios || !st.scenarios.length) {
+        return `<div class="p-4 text-gray-400">Стратегия не загружена</div>`;
+      }
+      const statusColor = s => ({ green: 'text-green-600', yellow: 'text-yellow-500', red: 'text-red-500' }[s] || '');
+      const statusIcon  = s => ({ green: '●', yellow: '●', red: '●' }[s] || '●');
+
+      const scenarioCards = st.scenarios.map(sc => {
+        const inds = sc.indicators.map(i =>
+          `<li class="flex gap-2 items-start">
+            <span class="${statusColor(i.status)} mt-0.5 text-xs">${statusIcon(i.status)}</span>
+            <span class="text-sm">${i.text}</span>
+          </li>`
+        ).join('');
+        const actions = sc.action_lines.map(a =>
+          `<li class="text-sm text-gray-700">→ ${a.text}</li>`
+        ).join('');
+        return `
+          <div class="rounded-xl border border-gray-200 bg-white shadow-sm p-4 mb-4">
+            <h3 class="font-semibold text-base mb-1">${sc.title}</h3>
+            <p class="text-xs text-gray-500 mb-3">${sc.description}</p>
+            <div class="mb-2">
+              <div class="text-xs font-medium text-gray-400 uppercase mb-1">Индикаторы</div>
+              <ul class="space-y-1">${inds}</ul>
+            </div>
+            <div>
+              <div class="text-xs font-medium text-gray-400 uppercase mb-1">Линии действий</div>
+              <ul class="space-y-1">${actions}</ul>
+            </div>
+          </div>`;
+      }).join('');
+
+      const updInfo = st.updated_by
+        ? `<p class="text-xs text-gray-400 mt-2">Обновлено: ${st.updated_at?.slice(0,10) || ''} · ${st.updated_by}</p>`
+        : '';
+
+      return `
+        <div class="max-w-2xl mx-auto px-4 py-4">
+          <h2 class="text-xl font-bold mb-1">${st.title}</h2>
+          <p class="text-sm text-gray-500 mb-4">Горизонт: ${st.horizon}</p>
+          ${scenarioCards}
+          ${updInfo}
+        </div>`;
+    },
 }
