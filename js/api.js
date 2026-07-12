@@ -281,6 +281,15 @@ const AGL = {
   async aiContentTrends(contentId) {
     return apiFetch(`/v1/content/${contentId}/ai/trends`, { method: 'POST' });
   },
+
+  // —— Calendar (M7) — CONTRACTS.md §1.2 ——
+  CALENDAR_READY: false,
+  async loadCalendar(from, to) {
+    return apiFetch('/v1/calendar?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to) + '&limit=200');
+  },
+  async createEvent(data)     { return apiFetch('/v1/calendar', { method: 'POST', data }); },
+  async updateEvent(id, data) { return apiFetch('/v1/calendar/' + id, { method: 'PATCH', data }); },
+  async deleteEvent(id)       { return apiFetch('/v1/calendar/' + id, { method: 'DELETE' }); },
 };
 
 window.AGL = AGL;

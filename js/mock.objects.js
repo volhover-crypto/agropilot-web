@@ -16,6 +16,7 @@ goals: [], projects: [], clients: [], deals: [], tasks: [],
 packages: [], folders: [], artifacts: [], signals: [], sources: [],
 owlSuggestions: [], posts: [],
 skills: [],
+calendar_events: [],
 agentConfig: { grades: [], privacyLocalOnly: true, routing: [] },
 infra: []
 };
@@ -261,5 +262,14 @@ const skills = [
     { name: 'BFF :5555 / фронт /agropilot', role: 'Шлюз и UI', status: 'ok' },
   ];
 
-  return { TODAY, STAGES, NEED, IND, SRC_TYPES, inbox, team, skills, strategy, goals, projects, clients, deals, tasks, packages, folders, artifacts, signals, sources, owlSuggestions, posts, agentConfig, infra };
+  // --- CALENDAR EVENTS (M7 mock) ---
+  const calendar_events = [
+    { id:'EV1', title:'Встреча: Теплица 1 га (2-я очередь)', description:'Обсуждение ТЗ по расширению',           start_at:TODAY+'T10:00:00Z', end_at:TODAY+'T11:00:00Z', all_day:false, deal_id:'D6', owner_id:'U3', owner_name:'Дмитрий',  kind:'meeting',  created_at:TODAY, updated_at:TODAY },
+    { id:'EV2', title:'Звонок: логистика зерна',              description:'',                                       start_at:TODAY+'T14:30:00Z', end_at:null,                all_day:false, deal_id:'D7', owner_id:'U5', owner_name:'Сергей',   kind:'call',     created_at:TODAY, updated_at:TODAY },
+    { id:'EV3', title:'Дедлайн КП: доукомплектация',         description:'Отправить коммерческое предложение',     start_at:TODAY+'T09:00:00Z', end_at:null,                all_day:true,  deal_id:'D8', owner_id:'U4', owner_name:'Марина',   kind:'deadline', created_at:TODAY, updated_at:TODAY },
+    { id:'EV4', title:'Демо системы капельного орошения',     description:'Выезд на объект',                        start_at:TODAY+'T16:00:00Z', end_at:TODAY+'T17:00:00Z', all_day:false, deal_id:'D1', owner_id:'U1', owner_name:'Екатерина', kind:'meeting',  created_at:TODAY, updated_at:TODAY },
+    { id:'EV5', title:'Планёрка команды',                    description:'',                                       start_at:TODAY+'T08:30:00Z', end_at:TODAY+'T09:00:00Z', all_day:false, deal_id:'',   owner_id:'U2', owner_name:'Оксана',   kind:'other',    created_at:TODAY, updated_at:TODAY },
+  ];
+
+  return { TODAY, STAGES, NEED, IND, SRC_TYPES, inbox, team, skills, strategy, goals, projects, clients, deals, tasks, packages, folders, artifacts, signals, sources, owlSuggestions, posts, agentConfig, infra, calendar_events };
 })();
