@@ -12,6 +12,7 @@ from backend.common.errors import register_error_handlers
 from backend.calendar.routes import router as calendar_router
 from backend.versions.deals_versions_router import router as deals_versions_router
 from backend.versions.skills_router import router as skills_router
+from backend.strategy.routes import router as strategy_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -40,6 +41,9 @@ app.include_router(deals_versions_router, prefix="/agropilot/api/v1")
 
 # M9 — Team Skills
 app.include_router(skills_router, prefix="/agropilot/api/v1")
+
+# M4 — Strategy
+app.include_router(strategy_router, prefix="/agropilot/api/v1")
 
 # Future modules: deals, tasks, contacts ...
 # app.include_router(deals_router, prefix="/agropilot/api/v1")
