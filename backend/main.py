@@ -10,8 +10,8 @@ from fastapi import FastAPI
 
 from backend.common.errors import register_error_handlers
 from backend.calendar.routes import router as calendar_router
-from backend.versions.deals_versions_router import router as deals_versions_router
-from backend.versions.skills_router import router as skills_router
+from backend.versions.deals_versions_router import deals_versions_router
+from backend.versions.skills_router import skills_router
 from backend.strategy.routes import router as strategy_router
 
 # -----------------------------------------------------------------------
