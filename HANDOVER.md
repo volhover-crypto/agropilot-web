@@ -52,10 +52,20 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 ## 7. Следующий шаг (ожидает решения пользователя)
 **PROD достигнут.** Следующий содержательный шаг — старт Этапа-2 (M10) по отдельному решению заказчика: реестр источников / монитор мультиопыта / knowledge base / обязательное цитирование / agent_questions.
 
+**Прод-стабилизация (опционально):** перевести backend с ручного процесса на systemd-сервис (порт 5555, `uvicorn backend.main:app --host 127.0.0.1 --port 5555`). Текущий процесс на 5555 работает, но не переживёт ребут сервера.
+
 ## 8. Как продолжить в новой сессии
 1. Вкладка github.dev: vscode.dev/github/volhover-crypto/agropilot-web (файлы читаются).
 2. Быстрое чтение кода: raw.githubusercontent.com/volhover-crypto/agropilot-web/main/js/<файл>.
 3. Первое действие: прочитать этот HANDOVER + при необходимости перечитать js/app.objects.js.
+
+## 8a. Продовая архитектура (зафиксировано 2026-07-13)
+- **Frontend (static):** `/opt/agropilot-web/` → nginx alias → https://mdked.hlab.kz/agropilot/
+- **Backend (FastAPI/uvicorn):** `127.0.0.1:5555`, запуск: `uvicorn backend.main:app --host 127.0.0.1 --port 5555`
+- **Database:** PostgreSQL, база `agropilot`, `localhost:5432`, пользователь `postgres`
+- **SSL:** Let's Encrypt для `mdked.hlab.kz`; HTTP → HTTPS redirect 302
+- **Nginx:** reverse proxy `/agropilot/api` → `127.0.0.1:5555`
+- **Текущий статус процесса:** backend запущен вручную; для выживания после ребута нужен systemd-сервис (задача открыта)
 
 ## 9. Журнал прогресса (новая сессия 2026-07-08)
 - ШАГ-1 оформлен: добавлены ROADMAP.md и ТЗ.md в корень (коммит docs: add ROADMAP.md и ТЗ.md — formal Step-1).
@@ -219,4 +229,6 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - **M4-backend ✅ подтверждён**: зафиксирован в HANDOVER (см. §11 выше). backend/strategy/ верифицирован независимо, HEAD 5fed256.
 - **M9-backend ✅ ЗАКРЫТ** (2026-07-13, коммит 81554dff): миграции 001+002 созданы, весь backend/versions/ верифицирован.
 - **PROD LIVE ✅** (2026-07-13): frontend flags активированы коммитом `a6d5ed01de0d64d4df0092189942854029326b43`; smoke test на живом сервере: `/agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31` → `200`, `/agropilot/api/v1/team/skills` → `200`, `/agropilot/api/v1/strategy` → `200`.
+- **Продовая архитектура зафиксирована** (2026-07-13): frontend nginx alias `/opt/agropilot-web/`, backend uvicorn `127.0.0.1:5555`, PostgreSQL `agropilot@localhost:5432`, SSL Let's Encrypt, домен `mdked.hlab.kz`. Внешний URL: https://mdked.hlab.kz/agropilot/. Все 4 endpoint (frontend + calendar + skills + strategy) проверены через HTTPS → `200`.
+- **Открытая задача**: перевод backend на systemd-сервис (порт 5555) — backend сейчас работает как ручной процесс, не переживёт ребут. Задача для OpenClaw по запросу заказчика.
 - **Следующий шаг**: старт Этапа-2 (M10) — по отдельному решению заказчика. Прод-стабилизация Шага-1 завершена.
