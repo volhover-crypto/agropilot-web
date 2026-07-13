@@ -1,11 +1,12 @@
 # HANDOVER — AgroPILOT / A PILOT (АгроЭлемент). Перенос состояния в новую сессию
-Дата: 2026-07-08 · Обновлено: 2026-07-12 · Репозиторий: github.com/volhover-crypto/agropilot-web (ветка main)
+Дата: 2026-07-08 · Обновлено: 2026-07-13 · Репозиторий: github.com/volhover-crypto/agropilot-web (ветка main)
 
 ## 0. Статус
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
 - Ветка по умолчанию: main ✅ (переименовано 2026-07-12, M8: создана ветка main на HEAD d950a860, default branch обновить в настройках GitHub Settings → Branches).
 - Ветка master: удалена 2026-07-12 ✅ Тег legacy/master → 1f571255 сохранён.
 - Ограничение: правки прод-исходников — ТОЛЬКО с явного подтверждения пользователя.
+- **PROD LIVE ✅ (2026-07-13):** backend поднят на живом сервере, frontend-флаги `CALENDAR_READY`, `SKILLS_READY`, `STRATEGY_READY` активированы коммитом `a6d5ed01`; smoke test дал три `200` на `/agropilot/api/v1/calendar`, `/agropilot/api/v1/team/skills`, `/agropilot/api/v1/strategy`.
 
 ## 1. Что за система (факт из кода)
 Объектно-ориентированный агро-B2B рабочий стол. Стек: Alpine.js (без сборки), Tailwind/Pico, ванильный JS, строковый innerHTML-рендер, hash-роутинг.
@@ -49,7 +50,7 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 - ✅ api.js: дубли `VERSIONS_READY`/`SKILLS_READY` не обнаружены; отступы и блок feature flags выровнены коммитом 5cd4c8c5 (2026-07-12).
 
 ## 7. Следующий шаг (ожидает решения пользователя)
-Деплой backend на живой сервер (OpenClave) — backend/common/errors.py + зависимости + uvicorn; активация флагов SKILLS_READY/CALENDAR_READY/STRATEGY_READY.
+**PROD достигнут.** Следующий содержательный шаг — старт Этапа-2 (M10) по отдельному решению заказчика: реестр источников / монитор мультиопыта / knowledge base / обязательное цитирование / agent_questions.
 
 ## 8. Как продолжить в новой сессии
 1. Вкладка github.dev: vscode.dev/github/volhover-crypto/agropilot-web (файлы читаются).
@@ -86,7 +87,7 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 
 **M7 — Calendar.** CALENDAR_READY: false → активировать после подъёма /v1/calendar.
 **M9 — Versions.** GET/POST /v1/{entity}/{id}/versions — revert history.
-**M9 — Skills.** GET /v1/skills; POST /v1/skills/measure. SKILLS_READY: false.
+**M9 — Skills.** GET /v1/team/skills; POST /v1/team/skills/measure. SKILLS_READY: false.
 **M4 — Strategy.** GET/PUT /v1/strategy. STRATEGY_READY: false → активировать после подъёма backend/strategy/.
 **Паттерн**: метод api.js → вызов в _loadAllData → mapping BFF→M → view. НЕ добавлять до готовности backend.
 
@@ -111,7 +112,8 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - backend/versions/migrations/001_create_deal_versions.sql — CREATE TABLE deal_versions + uq_deal_version + idx_deal_versions_deal_id
 - backend/versions/migrations/002_create_team_skills.sql — CREATE TABLE team_skills + uq_user_skill + idx_team_skills_user_id
 - skills_router.py + models.py (TeamSkill) + main.py (skills_router подключён) — верифицированы ранее (HEAD 49b536ba)
-Открыто: клиентское подключение к backend (SKILLS_READY, loadSkills() в api.js) — только после backend-подъёма.
+- **PROD smoke test (2026-07-13):** `GET /agropilot/api/v1/team/skills` → `200` на живом сервере
+Открыто: клиентское подключение к backend выполнено — `SKILLS_READY` активирован коммитом `a6d5ed01`.
 
 ## M7: Календарь — статус
 
@@ -120,6 +122,7 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - `backend/calendar/models.py` — ORM CalendarEvent
 - CONTRACTS.md §1 — схема CalendarEvent, права доступа, CALENDAR_READY-контракт
 - Эндпоинт: `/v1/calendar` (не `/v1/calendar/events` — исправлено CONTRACTS §1 2026-07-11)
+- **PROD smoke test (2026-07-13):** `GET /agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31` → `200`
 
 ### M7-frontend ✅ ЗАКРЫТ (верифицировано контролёром 2026-07-12)
 - Верифицированный HEAD: `44ab6c4f1cbf73ded02d1b803cfff466dfcfb9e7`
@@ -127,15 +130,12 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - state: `calendar_events[]`, `calFilter`; `_loadCalendarLayer()` + `CALENDAR_READY` guard
 - `render()` → `vCalendar()`; `pageTitle` 'Календарь'; `createEventModal()`; bindView handlers
 - `js/app.objects.js`: 3716 строк, все 12 контрольных точек подтверждены независимо
+- `CALENDAR_READY` активирован коммитом `a6d5ed01`
 
 ### M7-mock ✅ ЗАКРЫТ
 - `js/mock.objects.js` строки 266–272: 5 тестовых событий EV1–EV5
 - Охват: meeting × 2, call, deadline, other; `deal_id` ссылаются на D1/D6/D7/D8 (реальные)
 - `EMPTY_MODEL.calendar_events: []` (строка 19) — намеренно пустой, не трогать
-
-### Открыто до backend-подъёма
-- `CALENDAR_READY: false` в `js/api.js` — активировать только после проверки `/v1/calendar`
-- `index.html`: проверить наличие пункта «Календарь» в навигации и `#eventModal` в разметке
 
 ## M1: Де-IoT / терминологическая чистка — статус ✅ ЗАКРЫТ (2026-07-12)
 
@@ -174,6 +174,7 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - `index.html`: nav-link `#/strategy` добавлен
 - Верифицировано независимо (full patch коммитов b1fee6e + 2c5a2cb)
 - ✅ Дубли `VERSIONS_READY`/`SKILLS_READY` в api.js не обнаружены; блок feature flags выровнен коммитом `5cd4c8c5`.
+- `STRATEGY_READY` активирован коммитом `a6d5ed01`
 
 ### M4-backend ✅ ЗАКРЫТ (2026-07-12, HEAD 5fed256022052a998abb6dc2bae509fb005a46e1)
 - `backend/strategy/__init__.py` — пустой модуль (e27eb76)
@@ -182,9 +183,7 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - `backend/strategy/migrations/001_create_strategy.sql` — CREATE TABLE + seed strategy_main; перенесён из корня migrations/ в контрактный путь (e4a038b + 5fed256)
 - `backend/main.py` — strategy_router подключён по образцу calendar/versions (1b8d213)
 - Верифицировано независимо через GitHub API full_patch: все правки совпадают с CONTRACTS §4 и §7
-
-### Открыто до backend-подъёма (M4)
-- `STRATEGY_READY: false` → активировать только после подъёма `PUT /v1/strategy` на реальном стенде
+- **PROD smoke test (2026-07-13):** `GET /agropilot/api/v1/strategy` → `200`
 
 ## M3: Перегруппировка навигации в 4 блока ЖЦ — статус ✅ ЗАКРЫТ (2026-07-12)
 
@@ -219,4 +218,5 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - Коммиты v3.1: ТЗ.md §9 — `77af0154`; ROADMAP.md Этап-2 (M10–M12) — `598004a1`; CONTRACTS.md §8–§10 + флаги SOURCES_READY/KNOWLEDGE_READY/UX_READY — `cb3fdf55`.
 - **M4-backend ✅ подтверждён**: зафиксирован в HANDOVER (см. §11 выше). backend/strategy/ верифицирован независимо, HEAD 5fed256.
 - **M9-backend ✅ ЗАКРЫТ** (2026-07-13, коммит 81554dff): миграции 001+002 созданы, весь backend/versions/ верифицирован.
-- **Следующий шаг**: деплой backend на живой сервер (OpenClave) — backend/common/errors.py + зависимости + uvicorn; активация флагов SKILLS_READY/CALENDAR_READY/STRATEGY_READY. Старт Этапа-2 (M10) — по отдельному решению заказчика.
+- **PROD LIVE ✅** (2026-07-13): frontend flags активированы коммитом `a6d5ed01de0d64d4df0092189942854029326b43`; smoke test на живом сервере: `/agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31` → `200`, `/agropilot/api/v1/team/skills` → `200`, `/agropilot/api/v1/strategy` → `200`.
+- **Следующий шаг**: старт Этапа-2 (M10) — по отдельному решению заказчика. Прод-стабилизация Шага-1 завершена.
