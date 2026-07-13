@@ -283,10 +283,10 @@ const AGL = {
 
   // —— Feature flags (CONTRACTS.md §1/§2/§3/§4) ——
   // false = заглушка; активировать только после подъёма соответствующего backend-эндпоинта
-  CALENDAR_READY:  false,  // GET/POST /v1/calendar
+  CALENDAR_READY:  true,   // GET/POST /v1/calendar       ✅ backend активен
   VERSIONS_READY:  false,  // GET/POST /v1/{entity}/{id}/versions
-  SKILLS_READY:    false,  // GET /v1/skills
-  STRATEGY_READY:  false,  // GET/PUT /v1/strategy
+  SKILLS_READY:    true,   // GET /v1/skills               ✅ backend активен
+  STRATEGY_READY:  true,   // GET/PUT /v1/strategy         ✅ backend активен
 
   // —— Calendar (M7) — CONTRACTS.md §1.2 ——
   async loadCalendar(from, to) {
