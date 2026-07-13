@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.versions.models import DealVersion
 from backend.common.errors import NotFoundError, ConflictError
+from backend.common.deps import get_db, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +121,8 @@ async def create_version(
 @deals_versions_router.get("/{deal_id}/versions")
 async def list_versions(
     deal_id: str,
-    db: AsyncSession = Depends(),
-    user=Depends(),
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """GET /deals/:deal_id/versions"""
     result = await db.execute(
@@ -137,8 +138,8 @@ async def list_versions(
 async def post_version(
     deal_id: str,
     body:    VersionCreate,
-    db:      AsyncSession = Depends(),
-    user=Depends(),
+    db:      AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """POST /deals/:deal_id/versions"""
     snapshot = body.snapshot or {}
@@ -157,8 +158,8 @@ async def post_version(
 async def get_version(
     deal_id:     str,
     version_num: int,
-    db:          AsyncSession = Depends(),
-    user=Depends(),
+    db:          AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """GET /deals/:deal_id/versions/:version_num
 
@@ -180,8 +181,8 @@ async def get_version(
 async def restore_version(
     deal_id:     str,
     version_num: int,
-    db:          AsyncSession = Depends(),
-    user=Depends(),
+    db:          AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """POST /deals/:deal_id/versions/:version_num/restore
 

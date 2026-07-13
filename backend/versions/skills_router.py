@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.versions.models import TeamSkill
 from backend.common.errors import NotFoundError, ForbiddenError
+from backend.common.deps import get_db, get_current_user
 
 skills_router = APIRouter(
     prefix="/team/skills",
@@ -65,8 +66,8 @@ async def _get_skill_or_404(skill_id: str, db: AsyncSession) -> TeamSkill:
 @skills_router.get("")
 async def list_skills(
     user_id: Optional[str] = Query(default=None),
-    db:      AsyncSession = Depends(),
-    user=Depends(),
+    db:      AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """GET /team/skills — список навыков.
 
@@ -84,8 +85,8 @@ async def list_skills(
 @skills_router.get("/{skill_id}")
 async def get_skill(
     skill_id: str,
-    db:       AsyncSession = Depends(),
-    user=Depends(),
+    db:       AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """GET /team/skills/:id — один навык.
 
@@ -98,8 +99,8 @@ async def get_skill(
 @skills_router.put("")
 async def upsert_skill(
     body: SkillUpsert,
-    db:   AsyncSession = Depends(),
-    user=Depends(),
+    db:   AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """PUT /team/skills — идемпотентный upsert по (user_id, skill).
 
@@ -149,8 +150,8 @@ async def upsert_skill(
 @skills_router.delete("/{skill_id}", status_code=204)
 async def delete_skill(
     skill_id: str,
-    db:       AsyncSession = Depends(),
-    user=Depends(),
+    db:       AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     """DELETE /team/skills/:id — удалить навык.
 

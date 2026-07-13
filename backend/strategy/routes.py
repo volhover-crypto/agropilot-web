@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import Strategy, STRATEGY_ID
 from backend.common.errors import ForbiddenError
+from backend.common.deps import get_db, get_current_user
 
 # -- Dependency stubs (replace with your actual db/auth deps) --
 # from app.deps import get_db, current_user
@@ -27,7 +28,7 @@ def _ok(data):
 
 # --------------- GET /strategy ---------------
 @router.get("")
-async def get_strategy(db: AsyncSession = Depends(), user = Depends()):
+async def get_strategy(db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
     row = await db.get(Strategy, STRATEGY_ID)
     if not row:
         return _ok({"id": STRATEGY_ID, "scenarios": [], "updated_at": None, "updated_by": None})
@@ -38,8 +39,8 @@ async def get_strategy(db: AsyncSession = Depends(), user = Depends()):
 @router.put("")
 async def put_strategy(
     body: StrategyPut,
-    db: AsyncSession = Depends(),
-    user = Depends(),
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
 ):
     if getattr(user, "role", None) not in WRITE_ROLES:
         raise ForbiddenError("Only manager or admin can update strategy")

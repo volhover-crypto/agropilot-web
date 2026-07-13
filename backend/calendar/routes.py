@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from .models import CalendarEvent, EventKind
 from backend.common.errors import NotFoundError, ForbiddenError
+from backend.common.deps import get_db, get_current_user
 
 # -- Dependency stubs (replace with your actual db/auth deps) --
 # from app.deps import get_db, current_user
@@ -48,8 +49,8 @@ async def list_events(
     from_date: Optional[str] = Query(None, alias="from"),
     to_date:   Optional[str] = Query(None, alias="to"),
     limit: int = Query(200, le=500),
-    db: AsyncSession = Depends(),
-    user = Depends(),
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
 ):
     now = datetime.now(timezone.utc)
     # Default range: approx. current month ±7 days
@@ -70,7 +71,7 @@ async def list_events(
 # --------------- POST /calendar ---------------
 
 @router.post("", status_code=201)
-async def create_event(body: EventCreate, db: AsyncSession = Depends(), user = Depends()):
+async def create_event(body: EventCreate, db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
     ev = CalendarEvent(
         title=body.title,
         description=body.description,
@@ -94,8 +95,8 @@ async def create_event(body: EventCreate, db: AsyncSession = Depends(), user = D
 async def update_event(
     event_id: str,
     body: EventPatch,
-    db: AsyncSession = Depends(),
-    user = Depends(),
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
 ):
     ev = await db.get(CalendarEvent, event_id)
     if not ev:
@@ -114,8 +115,8 @@ async def update_event(
 @router.delete("/{event_id}", status_code=204)
 async def delete_event(
     event_id: str,
-    db: AsyncSession = Depends(),
-    user = Depends(),
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
 ):
     ev = await db.get(CalendarEvent, event_id)
     if not ev:
