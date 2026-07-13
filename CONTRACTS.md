@@ -294,6 +294,9 @@ CALENDAR_READY:  false,  // true -> AGL.loadCalendar() активно
 VERSIONS_READY:  false,  // true -> AGL.loadVersions() активно
 SKILLS_READY:    false,  // true -> AGL.loadSkills() активно
 STRATEGY_READY:  false,  // true -> AGL.loadStrategy() активно
+SOURCES_READY:   false,  // true -> AGL.loadSources() активно (Этап-2, M10)
+KNOWLEDGE_READY: false,  // true -> AGL.knowledgeQuery() активно (Этап-2, M11)
+UX_READY:        false,  // true -> AGL.loadInsights()/loadAgentQuestions() активно (Этап-2, M12)
 ```
 В `app.objects.js` вызовы обёрнуты в `if (window.AGL.CALENDAR_READY) { ... }`.
 При `DEV_MOCK=false` + флаг=false ни один запрос не уходит на backend, кнопки/секции не рендерятся.
@@ -324,6 +327,54 @@ backend/
           001_create_strategy.sql
   main.py                      # Единая точка входа FastAPI; регистрирует роутеры
 ```
+
+
+## 8. M10 — Реестр источников (Sources) · v3.1 · Этап-2
+
+### 8.1 Таблица `sources`
+| Поле | Тип | Описание |
+|---|---|---|
+| id | UUID PK | |
+| title | TEXT | название источника |
+| kind | TEXT | rss \| api \| web \| kb |
+| url | TEXT | адрес/точка подключения |
+| scope | JSONB | блоки ЖЦ, которые обслуживает (1..4) |
+| trust | INT | 1..3, уровень доверия |
+| status | TEXT | proposed \| pending \| verified \| revoked |
+| verified_by / verified_at | TEXT / TIMESTAMPTZ | аудит верификации |
+| scenario_id | TEXT NULL | привязка к сценарию Стратегии |
+
+### 8.2 Эндпоинты M10
+- `GET /v1/sources` — любой авторизованный.
+- `POST /v1/sources` — любой авторизованный; создаёт со status=proposed.
+- `POST /v1/sources/:id/verify` — любой авторизованный (кворум = 1) → status=verified.
+- `PATCH /v1/sources/:id` (trust, revoke) — только isManager().
+Стартовые коннекторы: arXiv, КиберЛенинка, открытые ресурсы. Среды (сайты/Telegram/соцсети) — подключение через SMM-раздел (Блок 1).
+Флаг: `SOURCES_READY: false`.
+
+## 9. M11 — Базы знаний (Knowledge / RAG) · v3.1 · Этап-2
+
+### 9.1 Таблица `knowledge_bases`
+{id UUID, title TEXT, corpus_version INT, doc_count INT, indexed_at TIMESTAMPTZ, verified_by TEXT, status TEXT}
+Хранилище векторного индекса: Qdrant. Версия корпуса фиксируется (принцип версий M9).
+
+### 9.2 Эндпоинты M11
+- `GET /v1/knowledge` — любой авторизованный; `POST /v1/knowledge` — isManager().
+- `POST /v1/knowledge/:id/query` — любой авторизованный; RAG-запрос для orchChat; ответ ОБЯЗАН содержать citations[] (источник каждого утверждения).
+Флаг: `KNOWLEDGE_READY: false`.
+
+## 10. M12 — МХ-мониторинг (UX Signals / Insights / Agent Questions) · v3.1 · Этап-2
+
+### 10.1 Таблицы
+- `ux_signals` {id, ts, channel: portal|social|search|chat, metric, value, ref}
+- `insights` {id, ts, kind: request|expectation|forecast|ux_issue, text, source_refs JSONB, related (deal|project|scenario), status: new|accepted|rejected, actor_name}
+- `agent_questions` {id, ts, user_id, question, context_ref, status: asked|deferred|answered|expired, answered_at, answer_text, insight_id}
+
+### 10.2 Эндпоинты M12
+- `GET /v1/ux/insights` — любой авторизованный; `POST` — агент/пользователь; `PATCH /:id` (accept|reject) — isManager().
+- `GET /v1/petrushka/questions` — свои: любой; все: isManager(). `POST` — агент (ПЕТРУШКА). `PATCH /:id` (answer|defer) — адресат вопроса.
+Правило автономности: проактивные вопросы ПЕТРУШКИ — AUTO и ОБЯЗАТЕЛЬНЫ, каждый вопрос фиксируется в agent_questions; пользователь может ответить отложенно из лога. Принятие/отклонение insight — обучающий сигнал Q-метрики навыка (M9).
+Флаг: `UX_READY: false`.
 
 ---
 
