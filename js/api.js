@@ -32,6 +32,23 @@ async function apiFetch(path, opts = {}) {
   return d.data;
 }
 
+/**
+ * safeLoad — wraps apiFetch for endpoints that may not be implemented yet.
+ * Returns fallback (default []) instead of throwing on HTTP 404/5xx.
+ * Lets deals/tasks/calendar fail loudly (real errors), but goals/packages/etc.
+ * degrade silently so _loadAllData (Promise.all) does not abort the whole load.
+ */
+async function safeLoad(path, fallback = []) {
+  try {
+    return await apiFetch(path);
+  } catch(e) {
+    // Only swallow "not implemented" errors; re-throw auth errors
+    if (e.message && (e.message.includes('401') || e.message.includes('403'))) throw e;
+    console.warn('[AGL safeLoad] endpoint unavailable, using fallback:', path, e.message);
+    return fallback;
+  }
+}
+
 const AGL = {
   token: getToken(),
 
@@ -66,7 +83,7 @@ const AGL = {
     return false;
   },
 
-  user: null,   // { id, name } — из JWT-payload (M8-a)
+  user: null,
 
   _decodeUser(token) {
     try {
@@ -82,7 +99,7 @@ const AGL = {
 
   _saveToken(data) {
     this.token = data.access_token;
-    this.user = this._decodeUser(data.access_token);   // M8-a
+    this.user = this._decodeUser(data.access_token);
     if (data.refresh_token) {
       localStorage.setItem('agropilot_refresh', data.refresh_token);
     }
@@ -93,16 +110,17 @@ const AGL = {
 
   initAuth() {
     this.token = localStorage.getItem('agropilot_token') || getToken();
-    this.user = this.token ? this._decodeUser(this.token) : null;   // M8-a
+    this.user = this.token ? this._decodeUser(this.token) : null;
   },
 
   async logout() {
     try { await apiFetch('/v1/auth/logout', { method: 'POST' }); } catch(e) {}
     this.token = null;
-    this.user = null;   // M8-a
+    this.user = null;
     localStorage.removeItem('agropilot_token');
     localStorage.removeItem('agropilot_refresh');
   },
+
   getAuthHeaders() {
     const h = { 'Content-Type': 'application/json' };
     if (this.token) h['Authorization'] = 'Bearer ' + this.token;
@@ -131,7 +149,7 @@ const AGL = {
     return clients;
   },
 
-  // ─── Deals ───
+  // ─── Deals (implemented — hard fail on error) ───
   async loadDeals() {
     return apiFetch('/v1/deals?limit=100');
   },
@@ -151,9 +169,9 @@ const AGL = {
     return apiFetch('/v1/deals/bulk-stage', { method: 'POST', data: { ids: [id], stage } });
   },
 
-  // ─── Goals ───
+  // ─── Goals (safeLoad — endpoint may be absent) ───
   async loadGoals() {
-    return apiFetch('/v1/goals?limit=100');
+    return safeLoad('/v1/goals?limit=100');
   },
   async createGoal(data) {
     return apiFetch('/v1/goals', { method: 'POST', data });
@@ -162,7 +180,7 @@ const AGL = {
     return apiFetch('/v1/goals/' + id, { method: 'PATCH', data });
   },
 
-  // ─── Tasks ───
+  // ─── Tasks (implemented — hard fail on error) ───
   async loadTasks() {
     return apiFetch('/v1/tasks?limit=100');
   },
@@ -176,46 +194,46 @@ const AGL = {
     return apiFetch('/v1/tasks/' + id, { method: 'DELETE' });
   },
 
-  // ─── Packages ───
+  // ─── Packages (safeLoad) ───
   async loadPackages() {
-    return apiFetch('/v1/packages?limit=100');
+    return safeLoad('/v1/packages?limit=100');
   },
   async createPackage(data) {
     return apiFetch('/v1/packages', { method: 'POST', data });
   },
 
-  // ─── Team ───
+  // ─── Team (safeLoad) ───
   async loadTeam() {
-    return apiFetch('/v1/team?limit=100');
+    return safeLoad('/v1/team?limit=100');
   },
 
-  // ─── Sources ───
+  // ─── Sources (safeLoad) ───
   async loadSources() {
-    return apiFetch('/v1/sources?limit=100');
+    return safeLoad('/v1/sources?limit=100');
   },
   async createSource(data) {
     return apiFetch('/v1/sources', { method: 'POST', data });
   },
 
-  // ─── Reports ───
+  // ─── Reports (safeLoad) ───
   async loadReports() {
-    return apiFetch('/v1/reports?limit=100');
+    return safeLoad('/v1/reports?limit=100');
   },
   async createReport(data) {
     return apiFetch('/v1/reports', { method: 'POST', data });
   },
 
-  // ─── Content ───
+  // ─── Content (safeLoad) ───
   async loadContent() {
-    return apiFetch('/v1/content?limit=100');
+    return safeLoad('/v1/content?limit=100');
   },
   async createContent(data) {
     return apiFetch('/v1/content', { method: 'POST', data });
   },
 
-  // ─── Artifacts ───
+  // ─── Artifacts (safeLoad) ───
   async loadArtifacts() {
-    return apiFetch('/v1/artifacts?limit=100');
+    return safeLoad('/v1/artifacts?limit=100');
   },
   async createArtifact(data) {
     return apiFetch('/v1/artifacts', { method: 'POST', data });
@@ -225,7 +243,7 @@ const AGL = {
   async search(q, type, limit = 20) {
     let path = `/v1/search?q=${encodeURIComponent(q)}&limit=${limit}`;
     if (type) path += `&type=${encodeURIComponent(type)}`;
-    return apiFetch(path);
+    return safeLoad(path, []);
   },
 
   // ─── Graph ───
@@ -233,10 +251,10 @@ const AGL = {
     return apiFetch('/v1/graph/sync', { method: 'POST' });
   },
   async graphStats() {
-    return apiFetch('/v1/graph/stats');
+    return safeLoad('/v1/graph/stats', {});
   },
   async nodeNeighbors(type, id) {
-    return apiFetch(`/v1/graph/neighbors/${type}/${id}`);
+    return safeLoad(`/v1/graph/neighbors/${type}/${id}`, []);
   },
 
   // ─── BFF status ───
@@ -245,7 +263,7 @@ const AGL = {
     return r.json();
   },
 
-  // ─── LLM AI functions ───
+  // ─── LLM AI functions (safeLoad where applicable) ───
   async aiScore(dealId) {
     return apiFetch(`/v1/deals/${dealId}/ai/score`, { method: 'POST' });
   },
@@ -262,10 +280,10 @@ const AGL = {
     return apiFetch(`/v1/deals/${dealId}/ai/generate-contract`, { method: 'POST' });
   },
   async aiDigest() {
-    return apiFetch('/v1/orchestrator/digest');
+    return safeLoad('/v1/orchestrator/digest', null);
   },
   async aiRecommendations() {
-    return apiFetch('/v1/orchestrator/recommendations', { method: 'POST' });
+    return safeLoad('/v1/orchestrator/recommendations', []);
   },
   async aiFeedback(message) {
     return apiFetch('/v1/orchestrator/feedback', { method: 'POST', data: { message } });
@@ -273,7 +291,6 @@ const AGL = {
   async aiContentDraft(contentId) {
     return apiFetch(`/v1/content/${contentId}/ai/draft`, { method: 'POST' });
   },
-  // ─── Orchestrator Chat (ПЕТРУШКА LLM) ───
   async orchChat(message) {
     return apiFetch('/v1/orchestrator/chat', { method: 'POST', data: { message } });
   },
@@ -281,14 +298,15 @@ const AGL = {
     return apiFetch(`/v1/content/${contentId}/ai/trends`, { method: 'POST' });
   },
 
-  // —— Feature flags (CONTRACTS.md §1/§2/§3/§4) ——
-  // false = заглушка; активировать только после подъёма соответствующего backend-эндпоинта
-  CALENDAR_READY:  true,   // GET/POST /v1/calendar       ✅ backend активен
-  VERSIONS_READY:  false,  // GET/POST /v1/{entity}/{id}/versions
-  SKILLS_READY:    true,   // GET /v1/skills               ✅ backend активен
-  STRATEGY_READY:  true,   // GET/PUT /v1/strategy         ✅ backend активен
+  // —— Feature flags ——
+  CALENDAR_READY:  true,
+  VERSIONS_READY:  false,
+  SKILLS_READY:    true,
+  STRATEGY_READY:  true,
+  DEALS_READY:     true,   // GET/PATCH /v1/deals   ✅ backend активен
+  TASKS_READY:     true,   // GET/PATCH /v1/tasks   ✅ backend активен
 
-  // —— Calendar (M7) — CONTRACTS.md §1.2 ——
+  // —— Calendar (M7) ——
   async loadCalendar(from, to) {
     return apiFetch('/v1/calendar?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to) + '&limit=200');
   },
@@ -296,9 +314,9 @@ const AGL = {
   async updateEvent(id, data) { return apiFetch('/v1/calendar/' + id, { method: 'PATCH', data }); },
   async deleteEvent(id)       { return apiFetch('/v1/calendar/' + id, { method: 'DELETE' }); },
 
-  // —— Strategy (M4) — CONTRACTS.md §4 ——
-  async loadStrategy()   { return apiFetch('/v1/strategy'); },
-  async updateStrategy(data) { return apiFetch('/v1/strategy', { method: 'PUT', data }); },
+  // —— Strategy (M4) ——
+  async loadStrategy()        { return apiFetch('/v1/strategy'); },
+  async updateStrategy(data)  { return apiFetch('/v1/strategy', { method: 'PUT', data }); },
 };
 
 window.AGL = AGL;
