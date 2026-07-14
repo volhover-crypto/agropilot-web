@@ -1,10 +1,8 @@
 # backend/main.py -- AgroPILOT FastAPI application entry point
 #
-# This is the SINGLE entry point for the backend application.
-# Run with: uvicorn backend.main:app --reload
+# Run with: uvicorn backend.main:app --host 127.0.0.1 --port 5555 --reload
 #
 # Error handlers are registered ONCE here, globally, before any routers.
-# All routers (calendar, versions, skills, ...) automatically inherit them.
 
 from fastapi import FastAPI
 
@@ -13,6 +11,8 @@ from backend.calendar.routes import router as calendar_router
 from backend.versions.deals_versions_router import deals_versions_router
 from backend.versions.skills_router import skills_router
 from backend.strategy.routes import router as strategy_router
+from backend.deals.routes import deals_router
+from backend.tasks.routes import tasks_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -24,9 +24,6 @@ app = FastAPI(
     description="Backend API for AgroPILOT — Calendar, Versions, Skills, Deals, Tasks.",
 )
 
-# Register shared error handlers BEFORE including routers.
-# This ensures all HTTPException / APIError / RequestValidationError
-# raised anywhere in the app are formatted per CONTRACTS.md §0.
 register_error_handlers(app)
 
 # -----------------------------------------------------------------------
@@ -45,5 +42,10 @@ app.include_router(skills_router, prefix="/agropilot/api/v1")
 # M4 — Strategy
 app.include_router(strategy_router, prefix="/agropilot/api/v1")
 
-# Future modules: deals, tasks, contacts ...
-# app.include_router(deals_router, prefix="/agropilot/api/v1")
+# M9 — Deals (team-wide, no owner filter)
+app.include_router(deals_router, prefix="/agropilot/api/v1")
+
+# M9 — Tasks (team-wide, no owner filter)
+app.include_router(tasks_router, prefix="/agropilot/api/v1")
+
+# Future: auth_router, clients_router, goals_router ...
