@@ -70,4 +70,4 @@ async def get_current_user() -> CurrentUser:
     STUB — returns a fixed dev user.
     Replace with real JWT validation before production deployment.
     """
-    return CurrentUser(id="dev-user-001", name="Dev User")
+    return CurrentUser(id="U1", name="Екатерина")
