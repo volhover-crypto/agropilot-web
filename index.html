@@ -41,7 +41,6 @@
   </script>
   <script>(function(){try{var st=window['local'+'Storage'];var t=(st&&st.getItem('agropilot_theme'))||'light';var r=document.documentElement;r.classList.remove('dark','light');r.classList.add(t);}catch(e){}})();</script>
   <link rel="stylesheet" href="css/tailwind-scanned.css?v=3" />
-  <script defer src="js/alpine.min.js"></script>
   <style>
     [x-cloak]{ display:none !important; }
     .cmdk-item:hover{ background:var(--accent-soft,rgba(0,0,0,.05)); }
@@ -231,9 +230,11 @@
     </template>
   </div>
 
+  <!-- Scripts: app dependencies first, Alpine last — ensures appObjects() is defined before Alpine initialises -->
   <script>window.DEV_MOCK = false;</script>
   <script src="js/mock.objects.js"></script>
   <script src="js/api.js"></script>
   <script src="js/app.objects.js"></script>
+  <script src="js/alpine.min.js"></script>
 </body>
 </html>
