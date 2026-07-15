@@ -6,16 +6,29 @@
   <title>AgroPILOT — эскиз (навигация ОТ ОБЪЕКТОВ)</title>
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
   <script>
-  /* Auth guard: redirect to login if no token */
+  /* DEV-BYPASS: sets a temporary token so the UI skips loginModal during testing.
+     Remove this block once auth_router is implemented (backend/auth/routes.py). */
   (function(){
-    var ss = window['session'+'Storage'];
-    var ls = window['local'+'Storage'];
-    var tk = ls.getItem('agropilot_token');
-    if(!tk){
-      // Show login modal instead of redirect
-      document.getElementById('loginModal').style.display = 'flex';
-    }
+    try {
+      var ls = window['local'+'Storage'];
+      if (!ls.getItem('agropilot_token')) {
+        ls.setItem('agropilot_token', 'dev-bypass');
+      }
+    } catch(e) {}
   })();
+  </script>
+  <script>
+  /* Auth guard: show login modal if no token — runs after DEV-BYPASS above */
+  function initAuthGuard() {
+    try {
+      var ls = window['local'+'Storage'];
+      var tk = ls.getItem('agropilot_token');
+      if (!tk) {
+        var modal = document.getElementById('loginModal');
+        if (modal) modal.style.display = 'flex';
+      }
+    } catch(e) {}
+  }
 
   async function doLogin() {
     var login = document.getElementById('loginInput').value;
@@ -235,6 +248,7 @@
   <script src="js/mock.objects.js"></script>
   <script src="js/api.js"></script>
   <script src="js/app.objects.js"></script>
-  <script src="js/alpine.min.js"></script>
+  <script src="js/alpine.min.js" defer></script>
+  <script>document.addEventListener('DOMContentLoaded', initAuthGuard);</script>
 </body>
 </html>
