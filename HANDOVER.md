@@ -1,5 +1,5 @@
 # HANDOVER — AgroPILOT / A PILOT (АгроЭлемент). Перенос состояния в новую сессию
-Дата: 2026-07-08 · Обновлено: 2026-07-13 · Репозиторий: github.com/volhover-crypto/agropilot-web (ветка main)
+Дата: 2026-07-08 · Обновлено: 2026-07-16 · Репозиторий: github.com/volhover-crypto/agropilot-web (ветка main)
 
 ## 0. Статус
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
@@ -48,11 +48,15 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 - ~~Ветка master вместо main~~ → ✅ ЗАКРЫТ M8 (2026-07-12).
 - ~~IoT-термины в mock (датчики, Телеметрия, фертигиration)~~ → ✅ ЗАКРЫТ M1 (2026-07-12, коммит 530a34fd).
 - ✅ api.js: дубли `VERSIONS_READY`/`SKILLS_READY` не обнаружены; отступы и блок feature flags выровнены коммитом 5cd4c8c5 (2026-07-12).
+- ~~`#view` не рендерит контент — `bindView()` не был определён~~ → ✅ ЗАКРЫТ issue#1-1 (2026-07-16, коммит `31ca92db`).
+- ~~ПЕТРУШКА не отвечала — `owlRender()` и `owlAsk()` не были определены~~ → ✅ ЗАКРЫТ issue#1-2 (2026-07-16, коммит `a63e68c0`).
 
 ## 7. Следующий шаг (ожидает решения пользователя)
 **PROD достигнут.** Следующий содержательный шаг — старт Этапа-2 (M10) по отдельному решению заказчика: реестр источников / монитор мультиопыта / knowledge base / обязательное цитирование / agent_questions.
 
 **Прод-стабилизация (опционально):** перевести backend с ручного процесса на systemd-сервис (порт 5555, `uvicorn backend.main:app --host 127.0.0.1 --port 5555`). Текущий процесс на 5555 работает, но не переживёт ребут сервера.
+
+**issue#1 — открыт (P1):** Дефект #3 — seed-данные не загружены в PostgreSQL (EV1–EV5, team_skills, SC1–SC3). Требует SQL-скрипта и запуска на проде.
 
 ## 8. Как продолжить в новой сессии
 1. Вкладка github.dev: vscode.dev/github/volhover-crypto/agropilot-web (файлы читаются).
@@ -98,7 +102,7 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 **M7 — Calendar.** CALENDAR_READY: false → активировать после подъёма /v1/calendar.
 **M9 — Versions.** GET/POST /v1/{entity}/{id}/versions — revert history.
 **M9 — Skills.** GET /v1/team/skills; POST /v1/team/skills/measure. SKILLS_READY: false.
-**M4 — Strategy.** GET/PUT /v1/strategy. STRATEGY_READY: false → активировать после подъёма backend/strategy/.
+**M4 — Strategy.** GET /v1/strategy. STRATEGY_READY: false → активировать после подъёма backend/strategy/.
 **Паттерн**: метод api.js → вызов в _loadAllData → mapping BFF→M → view. НЕ добавлять до готовности backend.
 
 ## M9: Навыки команды (team_skills) — статус
@@ -232,3 +236,32 @@ M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
 - **Продовая архитектура зафиксирована** (2026-07-13): frontend nginx alias `/opt/agropilot-web/`, backend uvicorn `127.0.0.1:5555`, PostgreSQL `agropilot@localhost:5432`, SSL Let's Encrypt, домен `mdked.hlab.kz`. Внешний URL: https://mdked.hlab.kz/agropilot/. Все 4 endpoint (frontend + calendar + skills + strategy) проверены через HTTPS → `200`.
 - **Открытая задача**: перевод backend на systemd-сервис (порт 5555) — backend сейчас работает как ручной процесс, не переживёт ребут. Задача для OpenClaw по запросу заказчика.
 - **Следующий шаг**: старт Этапа-2 (M10) — по отдельному решению заказчика. Прод-стабилизация Шага-1 завершена.
+
+## 13. Журнал прогресса (сессия 2026-07-16) — QA issue#1
+
+### Контекст
+QA-прогон 2026-07-13 выявил три P0/P1-дефекта (issue#1). Два P0 устранены в этой сессии.
+
+### issue#1-1 ✅ ЗАКРЫТ (2026-07-16, коммит `31ca92db527b2828b7cd6a8aded63ef61f7b24c4`)
+- **Дефект:** `#view` не рендерил контент — все 19 роутов показывали пустой контейнер.
+- **Корневая причина:** метод `bindView()` вызывался в `render()` → `$nextTick`, но не был определён в `appObjects()`. Alpine.js глотал `TypeError: this.bindView is not a function` молча.
+- **Патч:** добавлен `bindView()` в `js/app.objects.js` (строка 506), сразу после `render()`, перед `// ---- временные заглушки`. +43 / −2. Обработчики: `[data-go]`, `[data-cal-filter]`, `[data-skills-view]`, `[data-skill-filter]`, `[data-skill-reached]`.
+- **Верификация (контролёр):** full_patch через GitHub API — все 5 обработчиков присутствуют, цепочка parent линейна, соседние методы не задеты.
+
+### issue#1-2 ✅ ЗАКРЫТ (2026-07-16, коммит `a63e68c01465e5c3eec40039a649b24ccce69704`)
+- **Дефект:** ПЕТРУШКА (`owlBody`) не отвечала — `owlInput`/кнопка ↑ не давали ответа.
+- **Корневая причина:** методы `owlRender()` и `owlAsk()` вызывались (из `render()` и `index.html` через Alpine `@keydown.enter`/`@click`), но не были определены в `appObjects()`.
+- **Патч:** добавлены `owlRender()` и `async owlAsk()` в `js/app.objects.js` (строка 726), после `owlToggle()`, перед `initGoalStatus()`. +56 / −0.
+  - `owlRender()`: находит `#owlBody`, рендерит `M.owlSuggestions` через `gradeColor()`/`dealById()`/`esc()`; заглушка при пустом списке.
+  - `owlAsk()`: читает `#owlInput`, спиннер «Думаю…», в `apiMode` → `AGL.orchChat({message})`, в mock → `petReply(q)`, пушит ответ через `owlPush(makeHint(...))`, `catch` не глотает ошибку.
+- **Верификация (контролёр):** full_patch через GitHub API — оба метода присутствуют построчно, цепочка parent линейна `31ca92db→a63e68c0`, `owlToggle()` и `initGoalStatus()` не задеты.
+
+### issue#1-3 🔴 ОТКРЫТ (P1)
+- **Дефект:** seed-данные не загружены в PostgreSQL — `calendar_events` пусто, `team_skills` пусто, `strategy.scenarios[]` пусто.
+- **Что нужно:** SQL-скрипт INSERT для EV1–EV5 (`calendar_events`), U3/U5/команда (`team_skills`), SC1–SC3 (`strategy`); прогнать на проде.
+- **Статус:** ТЗ не выдано, ожидает решения заказчика.
+
+### Текущий HEAD js/app.objects.js
+- blob SHA: `8971ea067f16dc49e4b756dda87cafbcbeabd88d` (после fix(issue#1-1))
+- HEAD коммит: `a63e68c01465e5c3eec40039a649b24ccce69704`
+- Размер: 865 строк, 51.8 KB
