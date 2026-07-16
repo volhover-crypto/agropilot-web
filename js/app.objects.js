@@ -723,6 +723,62 @@ vSkillsMy() {
     // ======== ЧАНК 1.7: ОРЁЛ — ГЛОБАЛЬНЫЙ DOCK-МОДЕРАТОР ========
     // ПЕТРУШКА = Level-2 модератор НАД объектами (не роутер→агент). Подсказки по объектам, 3 грации.
     owlToggle() { this.owl.open = !this.owl.open; if (this.owl.open) this.$nextTick(() => this.owlRender()); },
+      // ===== ПЕТРУШКА: рендер панели + запрос =====
+  owlRender() {
+    const body = document.getElementById('owlBody');
+    if (!body) return;
+    const hints = (this.M.owlSuggestions || []).slice().reverse();
+    if (!hints.length) {
+      body.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:8px 0">\n      \u041d\u0435\u0442 \u043f\u043e\u0434\u0441\u043a\u0430\u0437\u043e\u043a. \u0417\u0430\u0434\u0430\u0439\u0442\u0435 \u0432\u043e\u043f\u0440\u043e\u0441 \u0438\u043b\u0438 \u043f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435 \u0435\u0436\u0435\u0434\u043d\u0435\u0432\u043d\u043e\u0433\u043e \u0430\u043d\u0430\u043b\u0438\u0437\u0430.</div>`;
+      return;
+    }
+    body.innerHTML = hints.map(h => {
+      const gc = this.gradeColor(h.grade);
+      const d = h.dealId ? this.dealById(h.dealId) : null;
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border)">`
+        + `<div style="display:flex;gap:6px;align-items:center;margin-bottom:3px">`
+        + `<span style="color:${gc};font-size:11px;font-weight:600">${this.esc(h.grade)}</span>`
+        + (d ? `<span style="font-size:11px;color:var(--text-dim)">${this.esc(d.title)}</span>` : '')
+        + `<span style="font-size:11px;color:var(--text-mute);margin-left:auto">${h.date || ''}</span>`
+        + `</div><div style="font-size:13px">${this.esc(h.text || '')}</div></div>`;
+    }).join('');
+  },
+
+  async owlAsk() {
+    const inp = document.getElementById('owlInput');
+    if (!inp) return;
+    const q = (inp.value || '').trim();
+    if (!q) return;
+    inp.value = '';
+    const body = document.getElementById('owlBody');
+    if (body) {
+      body.innerHTML = `<div style="color:var(--text-dim);font-size:13px;padding:8px 0">`
+        + `${this.petIco(14)} \u0414\u0443\u043c\u0430\u044e\u2026</div>`;
+    }
+    try {
+      let reply = '';
+      if (this.apiMode && window.AGL && window.AGL.orchChat) {
+        const res = await window.AGL.orchChat({ message: q });
+        reply = (res && (res.reply || res.text || res.message)) || '(\u043d\u0435\u0442 \u043e\u0442\u0432\u0435\u0442\u0430)';
+      } else {
+        reply = this.petReply(q);
+      }
+      this.owlPush(this.makeHint({
+        kind: 'chat',
+        grade: 'HINT',
+        text: `Q: ${q}\nA: ${reply}`,
+        source: 'chat',
+      }));
+    } catch (e) {
+      this.owlPush(this.makeHint({
+        kind: 'chat',
+        grade: 'HINT',
+        text: `Q: ${q}\nA: [\u043e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u043f\u0440\u043e\u0441\u0430: ${e && e.message}]`,
+        source: 'chat',
+      }));
+    }
+    this.owlRender();
+  },
     // ===== Goal status change =====
     initGoalStatus() {
       document.addEventListener('change', (e) => {
