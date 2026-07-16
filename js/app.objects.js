@@ -503,7 +503,48 @@ if (window.AGL && window.AGL.CALENDAR_READY) await this._loadCalendarLayer();
         this.owlRender();
       });
     },
-
+  bindView() {
+    const el = document.getElementById('view');
+    if (!el) return;
+    // data-go="route:arg" — навигация по клику
+    el.querySelectorAll('[data-go]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const val = btn.getAttribute('data-go');
+        const [r, arg] = val.split(':');
+        this.go(r, arg || null);
+      });
+    });
+    // data-cal-filter
+    el.querySelectorAll('[data-cal-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.calFilter = btn.getAttribute('data-cal-filter');
+        this.render();
+      });
+    });
+    // data-skills-view
+    el.querySelectorAll('[data-skills-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const v = btn.getAttribute('data-skills-view');
+        this._skillsViewSet(v);
+        this.render();
+      });
+    });
+    // data-skill-filter (select)
+    el.querySelectorAll('[data-skill-filter]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        this.skillFilter = sel.value;
+        this.render();
+      });
+    });
+    // data-skill-reached (checkbox)
+    el.querySelectorAll('[data-skill-reached]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        this.skillReachedOnly = cb.checked;
+        this.render();
+      });
+    });
+  },
     // ---- временные заглушки (заменяются в чанках 1.4-1.7) ----
     stub(name) { return `<div class="card p-8 text-center" style="color:var(--text-mute)">[заглушка] ${this.esc(name)}</div>`; },
     focusTile(label, val, col) {
