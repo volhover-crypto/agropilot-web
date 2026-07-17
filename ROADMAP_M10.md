@@ -6,6 +6,8 @@
 > Все новые роутеры монтируются в `backend/main.py` под `prefix="/agropilot/api/v1"`,
 > отдают конверт `{ok, data}` (`backend/common/errors.py`), используют `Depends(get_db, get_current_user)`.
 
+> Реализация без Computer: см. `docs/MAX_AS_COMPUTER.md` (режим Max-as-Computer).
+
 ## Легенда приоритетов
 - **P1** — раздел меню виден пользователю и сейчас пуст/деградирует; бизнес-ценность Этапа-2.
 - **P2** — AI/оркестратор-слой, повышает качество, но UI работает и без него (safeLoad-фолбэк).

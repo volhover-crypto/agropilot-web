@@ -165,3 +165,4 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 - Полное восстановление файла может затирать точечные фиксы — после restore сверять с последними правками (`b6f3c85a` → потерян в `af17232`).
 - Статус Issue проверять в GitHub, а не по markdown HANDOVER.
 - На проде рабочий бекенд = `agropilot-backend.service` (venv), НЕ `agropilot.service`.
+- Реализация M10 без Computer — по `docs/MAX_AS_COMPUTER.md` (режим Max-as-Computer: contract-first, verify после каждого шага, мультимодельное ревью).
