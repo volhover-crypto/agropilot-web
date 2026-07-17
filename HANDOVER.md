@@ -1,5 +1,5 @@
 # HANDOVER — AgroPILOT / A PILOT (АгроЭлемент). Перенос состояния в новую сессию
-Дата: 2026-07-08 · Обновлено: 2026-07-16 · Репозиторий: github.com/volhover-crypto/agropilot-web (ветка main)
+Дата: 2026-07-08 · Обновлено: 2026-07-17 · Репозиторий: github.com/volhover-crypto/agropilot-web (ветка main)
 
 ## 0. Статус
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
@@ -7,6 +7,7 @@
 - Ветка master: удалена 2026-07-12 ✅ Тег legacy/master → 1f571255 сохранён.
 - Ограничение: правки прод-исходников — ТОЛЬКО с явного подтверждения пользователя.
 - **PROD LIVE ✅ (2026-07-13):** backend поднят на живом сервере, frontend-флаги `CALENDAR_READY`, `SKILLS_READY`, `STRATEGY_READY` активированы коммитом `a6d5ed01`; smoke test дал три `200` на `/agropilot/api/v1/calendar`, `/agropilot/api/v1/team/skills`, `/agropilot/api/v1/strategy`.
+- **PROD STABLE ✅ (2026-07-17):** issue#1 полностью закрыт; backend переведён на systemd (`agropilot.service`), переживает ребут сервера; seed-данные в PostgreSQL.
 
 ## 1. Что за система (факт из кода)
 Объектно-ориентированный агро-B2B рабочий стол. Стек: Alpine.js (без сборки), Tailwind/Pico, ванильный JS, строковый innerHTML-рендер, hash-роутинг.
@@ -50,218 +51,57 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 - ✅ api.js: дубли `VERSIONS_READY`/`SKILLS_READY` не обнаружены; отступы и блок feature flags выровнены коммитом 5cd4c8c5 (2026-07-12).
 - ~~`#view` не рендерит контент — `bindView()` не был определён~~ → ✅ ЗАКРЫТ issue#1-1 (2026-07-16, коммит `31ca92db`).
 - ~~ПЕТРУШКА не отвечала — `owlRender()` и `owlAsk()` не были определены~~ → ✅ ЗАКРЫТ issue#1-2 (2026-07-16, коммит `a63e68c0`).
+- ~~seed-данные не загружены в PostgreSQL~~ → ✅ ЗАКРЫТ issue#1-3 (2026-07-17, данные подтверждены Comet: skills:7, scenarios:3, events:5).
 
 ## 7. Следующий шаг (ожидает решения пользователя)
-**PROD достигнут.** Следующий содержательный шаг — старт Этапа-2 (M10) по отдельному решению заказчика: реестр источников / монитор мультиопыта / knowledge base / обязательное цитирование / agent_questions.
-
-**Прод-стабилизация (опционально):** перевести backend с ручного процесса на systemd-сервис (порт 5555, `uvicorn backend.main:app --host 127.0.0.1 --port 5555`). Текущий процесс на 5555 работает, но не переживёт ребут сервера.
-
-**issue#1 — открыт (P1):** Дефект #3 — seed-данные не загружены в PostgreSQL (EV1–EV5, team_skills, SC1–SC3). Требует SQL-скрипта и запуска на проде.
+**PROD STABLE.** Этап-1 полностью закрыт. Следующий шаг — старт Этапа-2 (M10) по отдельному решению заказчика: реестр источников / монитор мультиопыта / knowledge base / обязательное цитирование / agent_questions.
 
 ## 8. Как продолжить в новой сессии
 1. Вкладка github.dev: vscode.dev/github/volhover-crypto/agropilot-web (файлы читаются).
 2. Быстрое чтение кода: raw.githubusercontent.com/volhover-crypto/agropilot-web/main/js/<файл>.
 3. Первое действие: прочитать этот HANDOVER + при необходимости перечитать js/app.objects.js.
 
-## 8a. Продовая архитектура (зафиксировано 2026-07-13)
+## 8a. Продовая архитектура (зафиксировано 2026-07-17)
 - **Frontend (static):** `/opt/agropilot-web/` → nginx alias → https://mdked.hlab.kz/agropilot/
-- **Backend (FastAPI/uvicorn):** `127.0.0.1:5555`, запуск: `uvicorn backend.main:app --host 127.0.0.1 --port 5555`
-- **Database:** PostgreSQL, база `agropilot`, `localhost:5432`, пользователь `postgres`
+- **Backend (FastAPI/uvicorn):** `127.0.0.1:5555`, systemd-сервис `agropilot.service` ✅ (переживает ребут)
+- **Database:** PostgreSQL, база `agropilot`, `localhost:5432`, пользователь `postgres`; seed-данные загружены ✅
 - **SSL:** Let's Encrypt для `mdked.hlab.kz`; HTTP → HTTPS redirect 302
 - **Nginx:** reverse proxy `/agropilot/api` → `127.0.0.1:5555`
-- **Текущий статус процесса:** backend запущен вручную; для выживания после ребута нужен systemd-сервис (задача открыта)
+- **systemd unit:** `/etc/systemd/system/agropilot.service` — `ExecStart=/usr/local/bin/uvicorn backend.main:app --host 127.0.0.1 --port 5555`, `Restart=on-failure`, `After=postgresql.service`
 
-## 9. Журнал прогресса (новая сессия 2026-07-08)
-- ШАГ-1 оформлен: добавлены ROADMAP.md и ТЗ.md в корень (коммит docs: add ROADMAP.md и ТЗ.md — formal Step-1).
-- M2.1 [x]: опечатка 'Новый пект' → 'Новый проект' в js/app.objects.js (addProject, стр.540). Единственное вхождение в коде (проверено поиском). Коммит fix(M2.1).
-- Следующие подшаги M2 (кандидаты): TODAY-хардкод → вычисляемая дата; stub() → реальные вьюхи; демо-логин index.html → убрать.
-- Метод работы: атомарные шаги, отдельный коммит на подшаг, документирование здесь после каждого.
-- M2.2 [x]: TODAY-хардкод '2026-06-24' → new Date().toISOString().slice(0,10) в js/mock.objects.js (стр.5, внутри window.MOCKO). Демо-даты сида (inbox/tasks и т.п.) не тронуты (DEV_MOCK). Коммит fix(M2.2).
-- M2.3 [x]: убран демо-логин в index.html (блок loginModal): удалён предзаполненный value="Александр" и placeholder="Александр" → placeholder="Логин"; удалена подсказка «Демо: Александр / test». Механизм auth (AGL.login/doLogin) не тронут — унификация в M8. Коммит fix(M2.3).
-- M2.4 [x]: stub()-аудит (js/app.objects.js). Факт: все реальные маршруты render() уже имеют реальные вьюхи; fallback this.stub('Раздел не найден') → аккуратная 404-вьюха (card + кнопка «На главную»). Коммит feat(M2.4).
-- M2.5 [x]: введён единый флаг window.DEV_MOCK в js/mock.objects.js. Коммит feat(M2.5).
-- M2.6-a1/a/b/c/d [x]: EMPTY_MODEL; DEV_MOCK→MOCKO/EMPTY_MODEL; сиды истории и restore() за флагом; allEmpty при !DEV_MOCK не откатывается на MOCKO. ВЕХА M2 ЗАКРЫТА.
-- M2.7 [x]: signals/owlSuggestions за DEV_MOCK. srcScan guard при !DEV_MOCK. Коммит feat(M2.7).
-- M6/Patch B [x]: logDeal(d,kind,text,actor), actor='ПЕТРУШКА'/'Оператор'/this.currentUser?.name. 16 вызовов. Коммиты feat(M6-a..d).
-- M8 (реальный actor) [x]: AGL._decodeUser(token), this.currentUser из JWT. Коммиты feat(M8-a..c).
-- M5-a..e [x]: ПЕТРУШКА-непрерывная. makeHint, _hintId, owlPush, дедуп, приоритизация. ВЕХА M5 ЗАКРЫТА.
-- M5-f [x]: owlUrgent бейдж в owlRender. Коммит feat(M5-f).
-- M6-a [x]: _loadAiLayer(), aiDigest/aiRecommendations/aiScore подключены. Коммит feat(M6-a).
+## 9–13. [см. предыдущие версии HANDOVER — сессии 2026-07-08..16]
 
-## 10. Журнал прогресса (сессия 2026-07-09)
-- M6-b [x]: moveDeal/dealAddModal/owlApply → AGL.setStage/createDeal/createTask. Коммит.
-- M6-c [x]: bulk-действия над задачами → AGL.updateTask. Коммит.
-- M8 (STAGE_MAP↔vMetrics) [x]: won: 'Выиграна'→'Реализация'. Коммит fix(M8) cc41e6d.
-- M8 (esc/XSS hardening) [x]: esc() + экранирование одинарной кавычки. Коммит fix(M8).
-- M7/M9 шаг 1 — CONTRACTS.md [x]: создан файл CONTRACTS.md (M7 Calendar, M9 Versions/Skills, правила auth, флаги READY).
-- КОРРЕКЦИЯ (2026-07-11): API Calendar — /v1/calendar (не /v1/calendar/events). CONTRACTS §1 актуален.
-- M9 backend versions/ [x]: models.py e5f11ae, deals_versions_router.py 399b792, skills_router.py 44611608, main.py 087c535 — весь backend/versions/ соответствует CONTRACTS.md.
+## 14. Журнал прогресса (сессия 2026-07-17) — issue#1 ЗАКРЫТ
 
-### КОНТРАКТЫ BACKEND (требуют реализации на сервере)
+### Исполнитель: Comet (браузерный агент) + Пользователь (SSH-терминал)
 
-**M7 — Calendar.** CALENDAR_READY: false → активировать после подъёма /v1/calendar.
-**M9 — Versions.** GET/POST /v1/{entity}/{id}/versions — revert history.
-**M9 — Skills.** GET /v1/team/skills; POST /v1/team/skills/measure. SKILLS_READY: false.
-**M4 — Strategy.** GET /v1/strategy. STRATEGY_READY: false → активировать после подъёма backend/strategy/.
-**Паттерн**: метод api.js → вызов в _loadAllData → mapping BFF→M → view. НЕ добавлять до готовности backend.
+### Шаг 0 — pre-check API (Comet через браузер)
+Проверка трёх эндпоинтов до запуска seed:
+- `GET /agropilot/api/v1/team/skills` → **skills: 7** ✅
+- `GET /agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31` → **events: 5** ✅
+- `GET /agropilot/api/v1/strategy` → **scenarios: 3** ✅
 
-## M9: Навыки команды (team_skills) — статус
+**Вывод:** seed-данные уже были в базе (коммит `c6ec10cc` от 2026-07-16 был применён ранее). Шаги git pull + psql пропущены как избыточные.
 
-### M9-doc — CONTRACTS.md: порог B→A (SHA 61d5d56) [x]
-Пороговые значения: V >= 10 (объём), Q >= 0.80 (качество), окно = 30 дней. Переход B→A при одновременном выполнении.
+### Бонус — systemd (Пользователь в терминале)
+- Создан `/etc/systemd/system/agropilot.service`
+  - `ExecStart=/usr/local/bin/uvicorn backend.main:app --host 127.0.0.1 --port 5555`
+  - `After=network.target postgresql.service`
+  - `Restart=on-failure`, `RestartSec=5`
+- Выполнено: `daemon-reload → enable → start`
+- Статус: `active (running)` ✅
+- Проверка: `curl http://127.0.0.1:5555/agropilot/api/v1/strategy` → `ok: true` ✅
 
-### M9-a — mock.objects.js: MOCKO.skills (SHA 3273b33) [x]
-7 записей team_skills по контракту §3.1: {id, user_id, user_name, skill, level, note, updated_at}.
+### Итог issue#1
 
-### M9-b — skillMaturity() resolver (SHA 76ad3d61) [x]
-Batch-агрегатор порога B→A в js/app.objects.js. CONFIRM→V+Q; AUTO→только V; HINT→игнор. Окно 30 дней.
-Пересчёт по данным: U3/Дмитрий V=11/Q=0.91/true ✅; U5/Сергей V=12/Q=0.50/false; U1/Екатерина V=3/false.
+| Дефект | Статус | Коммит / Дата |
+|---|---|---|
+| #1-1 — `#view` / `bindView` | ✅ ЗАКРЫТ | `31ca92db` · 2026-07-16 |
+| #1-2 — ПЕТРУШКА / `owlRender`/`owlAsk` | ✅ ЗАКРЫТ | `a63e68c0` · 2026-07-16 |
+| #1-3 — seed-данные PostgreSQL | ✅ ЗАКРЫТ | данные подтверждены · 2026-07-17 |
+| Бонус — systemd unit | ✅ СОЗДАН | `agropilot.service` · 2026-07-17 |
 
-### M9-c — вьюха #/skills (SHA feat(M9-c)) [x]
-Team View (таблица + batch skillMaturity() + сортировка по дистанции до порога) + My View (прогресс-бары V/Q, личные навыки, лента CONFIRM/AUTO за 30 дней). Role-gated: toggle только для isManager(). state skillFilter/skillReachedOnly. Bindview: data-skills-view/data-skill-filter/data-skill-reached. pageTitle skills='Навыки команды'. Nav-пункт '🎓 Навыки' в index.html.
+**issue#1 закрыт пользователем 2026-07-17. Этап-1 завершён полностью.**
 
-### Итог M9 (team_skills, порог B→A)
-M9-doc [x] · M9-a [x] · M9-b [x] · M9-c [x] · M9-backend [x] — все подшаги завершены и верифицированы.
-M9-backend ✅ ЗАКРЫТ (2026-07-13, коммиты 81554dff):
-- backend/versions/migrations/001_create_deal_versions.sql — CREATE TABLE deal_versions + uq_deal_version + idx_deal_versions_deal_id
-- backend/versions/migrations/002_create_team_skills.sql — CREATE TABLE team_skills + uq_user_skill + idx_team_skills_user_id
-- skills_router.py + models.py (TeamSkill) + main.py (skills_router подключён) — верифицированы ранее (HEAD 49b536ba)
-- **PROD smoke test (2026-07-13):** `GET /agropilot/api/v1/team/skills` → `200` на живом сервере
-Открыто: клиентское подключение к backend выполнено — `SKILLS_READY` активирован коммитом `a6d5ed01`.
-
-## M7: Календарь — статус
-
-### M7-backend ✅ ЗАКРЫТ
-- `backend/calendar/routes.py` — FastAPI router GET/POST/PATCH/DELETE `/v1/calendar`
-- `backend/calendar/models.py` — ORM CalendarEvent
-- CONTRACTS.md §1 — схема CalendarEvent, права доступа, CALENDAR_READY-контракт
-- Эндпоинт: `/v1/calendar` (не `/v1/calendar/events` — исправлено CONTRACTS §1 2026-07-11)
-- **PROD smoke test (2026-07-13):** `GET /agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31` → `200`
-
-### M7-frontend ✅ ЗАКРЫТ (верифицировано контролёром 2026-07-12)
-- Верифицированный HEAD: `44ab6c4f1cbf73ded02d1b803cfff466dfcfb9e7`
-- Цепочка: `revert(dff4b1072f)` → `M7-1(3cee337b)` → `M7-2(7776768b)` → `M7-3(44ab6c4f)`
-- state: `calendar_events[]`, `calFilter`; `_loadCalendarLayer()` + `CALENDAR_READY` guard
-- `render()` → `vCalendar()`; `pageTitle` 'Календарь'; `createEventModal()`; bindView handlers
-- `js/app.objects.js`: 3716 строк, все 12 контрольных точек подтверждены независимо
-- `CALENDAR_READY` активирован коммитом `a6d5ed01`
-
-### M7-mock ✅ ЗАКРЫТ
-- `js/mock.objects.js` строки 266–272: 5 тестовых событий EV1–EV5
-- Охват: meeting × 2, call, deadline, other; `deal_id` ссылаются на D1/D6/D7/D8 (реальные)
-- `EMPTY_MODEL.calendar_events: []` (строка 19) — намеренно пустой, не трогать
-
-## M1: Де-IoT / терминологическая чистка — статус ✅ ЗАКРЫТ (2026-07-12)
-
-### Коммит: 530a34fd
-- Файл: `js/mock.objects.js` (+2 −2, единственный изменённый файл)
-- DIR1.description: убраны «датчики», «фертигиration» → «Капельное орошение, фертигация, контроллеры»
-- PR2.title: «Телеметрия и контроллеры» → «Автоматизация и контроллеры»
-- 0 вхождений IoT-терминов («датчики», «Телеметрия», «фертигиration») в файле после коммита
-- Все остальные поля PR2 (goalId, need, status, ownerId, periodStart/End, target, dealPin) не тронуты
-- Верифицировано независимо через GitHub API (patch)
-
-## M4: Стратегия-сценарии (Strategy) — статус ✅ ЗАКРЫТ (2026-07-12)
-
-### M4-doc — CONTRACTS.md §4 (коммит 4fd417ed) ✅
-- Вставлен §4 M4 — Стратегия-сценарии между §3 (Навыки) и §4→§5 (Авторизация)
-- Схема: `strategy_main` / `scenarios[]` / `indicators[]` (green|yellow|red) / `action_lines[]`
-- Эндпоинты: `GET /v1/strategy` (любой авторизованный), `PUT /v1/strategy` (isManager() только)
-- Флаг: `STRATEGY_READY: false` — активировать только после подъёма backend/strategy/
-- Верифицировано независимо (новый SHA CONTRACTS.md: 0450001df33016f2f56c5a2e72dd8de9f78a7d02)
-
-### M4-mock — mock.objects.js (коммит e3f4ca28) ✅
-- `EMPTY_MODEL.strategy`: `directions[]` удалён → `{id, title, horizon, scenarios[], updated_at, updated_by}`
-- `MOCKO.strategy`: `directions[]` → `scenarios[SC1, SC2, SC3]`, каждый с `indicators[]` + `action_lines[]`
-- SC1 Орошение и автоматизация (IND1-3, AL1-2) · SC2 Хранение и логистика (IND4-6, AL3-4) · SC3 Продуктовое продвижение (IND7-8, AL5-6)
-- 0 вхождений `directions` в итоговом файле; +55 −13 строк; единственный изменённый файл
-- Верифицировано независимо (full patch)
-
-### M4-frontend — app.objects.js + api.js + index.html (коммиты b1fee6e / 2c5a2cb / 9683dfe) ✅
-- `js/api.js`: `STRATEGY_READY: false` + `async loadStrategy()` → `apiFetch('/v1/strategy')`
-- `js/app.objects.js`:
-  - `state.strategy` ← `MOCKO.strategy` / `EMPTY_MODEL.strategy` (DEV_MOCK guard)
-  - `_loadStrategyLayer()` — non-fatal, guard `STRATEGY_READY`, вызов из `loadFromAPI()`
-  - `vStrategy()` — 3 карточки сценариев: заголовок, описание, индикаторы (цвет green/yellow/red), линии действий
-  - `pageTitle()` → `strategy: 'Стратегия'`
-  - `render()` → `else if (route === 'strategy') html = this.vStrategy()`
-- `index.html`: nav-link `#/strategy` добавлен
-- Верифицировано независимо (full patch коммитов b1fee6e + 2c5a2cb)
-- ✅ Дубли `VERSIONS_READY`/`SKILLS_READY` в api.js не обнаружены; блок feature flags выровнен коммитом `5cd4c8c5`.
-- `STRATEGY_READY` активирован коммитом `a6d5ed01`
-
-### M4-backend ✅ ЗАКРЫТ (2026-07-12, HEAD 5fed256022052a998abb6dc2bae509fb005a46e1)
-- `backend/strategy/__init__.py` — пустой модуль (e27eb76)
-- `backend/strategy/models.py` — ORM Strategy: singleton id="strategy_main", scenarios JSONB, updated_at, updated_by, to_dict(); DeclarativeBase + mapped_column (4e3f7ac)
-- `backend/strategy/routes.py` — GET /v1/strategy (шаблон если нет строки, не 404) + PUT /v1/strategy (только manager/admin → ForbiddenError; upsert; updated_by=user_name из JWT); финальная версия коммит 5c973222 (c85f0e7→5c97322)
-- `backend/strategy/migrations/001_create_strategy.sql` — CREATE TABLE + seed strategy_main; перенесён из корня migrations/ в контрактный путь (e4a038b + 5fed256)
-- `backend/main.py` — strategy_router подключён по образцу calendar/versions (1b8d213)
-- Верифицировано независимо через GitHub API full_patch: все правки совпадают с CONTRACTS §4 и §7
-- **PROD smoke test (2026-07-13):** `GET /agropilot/api/v1/strategy` → `200`
-
-## M3: Перегруппировка навигации в 4 блока ЖЦ — статус ✅ ЗАКРЫТ (2026-07-12)
-
-### Коммит: febca173
-- Файл: `index.html` (+28 −15, единственный изменённый файл)
-- Старая группировка `Работа / Объекты / Рынок / Система` заменена на `Стратегия / Блок 1 · Маркетинг / Блок 2 · Клиент / Блок 3 · Реализация / Блок 4 · Сервис / Рабочий стол / Система`
-- Старый пункт `Цели · Стратегия` удалён → заменён двумя отдельными пунктами: `Стратегия` (`route==='strategy'`) и `Цели` (`route==='goals'`)
-- Все 19 маршрутов сохранены: `strategy`, `goals`, `monitoring`, `content`, `inbox`, `clients`, `deals`, `kanban`, `tasks`, `projects`, `packages`, `artifacts`, `team`, `myday`, `dashboard`, `calendar`, `skills`, `graph`, `settings`
-- `Блок 4 · Сервис` добавлен как placeholder label без пунктов
-- `app.objects.js` и `api.js` не тронуты
-- Верифицировано независимо через GitHub API (full patch)
-
-## 11. Журнал прогресса (сессия 2026-07-12)
-- **M7 frontend ✅ ЗАКРЫТ** (верифицировано контролёром): `vCalendar()`, `createEventModal()`, `bindView` data-cal-filter/data-create-event, mock EV1–EV5. Верифицированный HEAD: `44ab6c4f1c`.
-- **M8 — демо-логин**: аудит index.html подтвердил — демо-логин убран в M2.3; `index.html` чист, хардкодов нет.
-- **M8 — ветка main ✅ ЗАКРЫТ**: создана ветка `main` из `master` HEAD `d950a860023184c7d3440985be989bc85a48a950` (2026-07-12). Ветка `master` удалена, тег `legacy/master` → `1f571255` сохранён.
-- **M8 ✅ ПОЛНОСТЬЮ ЗАКРЫТ**: все 4 пункта выполнены (демо-логин M2.3, esc/XSS, STAGE_MAP↔vMetrics, ветка main).
-- **M9 — текущий статус**: M9-doc/M9-a/M9-b/M9-c все закрыты. Открыто: SKILLS_READY + loadSkills() — только после backend-подъёма.
-- **M1 ✅ ЗАКРЫТ** (2026-07-12, коммит 530a34fd): IoT-термины удалены из mock.objects.js. DIR1.description + PR2.title исправлены. 0 вхождений «датчики»/«Телеметрия»/«фертигиration».
-- **M4-doc ✅ ЗАКРЫТ** (2026-07-12, коммит 4fd417ed): CONTRACTS.md §4 Strategy — схема, эндпоинты, флаг STRATEGY_READY.
-- **M4-mock ✅ ЗАКРЫТ** (2026-07-12, коммит e3f4ca28): mock.objects.js — directions[]→scenarios[SC1/SC2/SC3].
-- **M4-frontend ✅ ЗАКРЫТ** (2026-07-12, коммиты b1fee6e/2c5a2cb/9683dfe): vStrategy(), _loadStrategyLayer(), STRATEGY_READY, nav #/strategy.
-- **M4 ✅ ПОЛНОСТЬЮ ЗАКРЫТ** (все подшаги: doc + mock + frontend).
-- **M3 ✅ ЗАКРЫТ** (2026-07-12, коммит febca173): навигация перегруппирована в 4 блока ЖЦ + Стратегия наверху; все 19 маршрутов сохранены; `Блок 4 · Сервис` добавлен как placeholder.
-- **api.js ✅ АУДИТ ЗАКРЫТ** (2026-07-12, коммит 5cd4c8c5): дублей `VERSIONS_READY`/`SKILLS_READY` не обнаружено; отступы и блок feature flags выровнены; добавлен `updateStrategy()`.
-- **M4-backend ✅ ЗАКРЫТ** (2026-07-12, HEAD 5fed256022052a998abb6dc2bae509fb005a46e1): backend/strategy/ создан по CONTRACTS §4/§7 — __init__.py, models.py, routes.py (GET-шаблон + PUT upsert + updated_by=user_name), migrations/001_create_strategy.sql перенесена в контрактный путь. Верифицировано независимо через GitHub API.
-- **M9-backend ✅ ЗАКРЫТ** (2026-07-13, коммит 81554dff): миграции 001_create_deal_versions.sql + 002_create_team_skills.sql созданы; skills_router.py + models.py (TeamSkill) + main.py верифицированы. Затронуты только 2 новых файла; +43 −0.
-
-## 12. Журнал прогресса (сессия 2026-07-13)
-- Регресс-анализ пространства Perplexity «ТРИ АГЕНТА»: STEP_00–12/INDEX.md зафиксированы как АРХИВ концепции v1; инструкции пространства заменены на правила v3 (источник правды — этот репозиторий).
-- **Концепция v3.1 УТВЕРЖДЕНА заказчиком** («монитор мультиопыта» + верифицированные знания): двухконтурный контекст ПЕТРУШКИ; реестр источников (кворум=1, trust/отзыв — isManager; стартовые коннекторы arXiv/КиберЛенинка/открытые ресурсы; среды — через SMM-раздел Блока 1); базы знаний Qdrant/RAG с обязательным цитированием; проактивные вопросы ПЕТРУШКИ обязательны + лог agent_questions с отложенным ответом. Новых агентов в UI нет — Путь B сохраняется.
-- Коммиты v3.1: ТЗ.md §9 — `77af0154`; ROADMAP.md Этап-2 (M10–M12) — `598004a1`; CONTRACTS.md §8–§10 + флаги SOURCES_READY/KNOWLEDGE_READY/UX_READY — `cb3fdf55`.
-- **M4-backend ✅ подтверждён**: зафиксирован в HANDOVER (см. §11 выше). backend/strategy/ верифицирован независимо, HEAD 5fed256.
-- **M9-backend ✅ ЗАКРЫТ** (2026-07-13, коммит 81554dff): миграции 001+002 созданы, весь backend/versions/ верифицирован.
-- **PROD LIVE ✅** (2026-07-13): frontend flags активированы коммитом `a6d5ed01de0d64d4df0092189942854029326b43`; smoke test на живом сервере: `/agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31` → `200`, `/agropilot/api/v1/team/skills` → `200`, `/agropilot/api/v1/strategy` → `200`.
-- **Продовая архитектура зафиксирована** (2026-07-13): frontend nginx alias `/opt/agropilot-web/`, backend uvicorn `127.0.0.1:5555`, PostgreSQL `agropilot@localhost:5432`, SSL Let's Encrypt, домен `mdked.hlab.kz`. Внешний URL: https://mdked.hlab.kz/agropilot/. Все 4 endpoint (frontend + calendar + skills + strategy) проверены через HTTPS → `200`.
-- **Открытая задача**: перевод backend на systemd-сервис (порт 5555) — backend сейчас работает как ручной процесс, не переживёт ребут. Задача для OpenClaw по запросу заказчика.
-- **Следующий шаг**: старт Этапа-2 (M10) — по отдельному решению заказчика. Прод-стабилизация Шага-1 завершена.
-
-## 13. Журнал прогресса (сессия 2026-07-16) — QA issue#1
-
-### Контекст
-QA-прогон 2026-07-13 выявил три P0/P1-дефекта (issue#1). Два P0 устранены в этой сессии.
-
-### issue#1-1 ✅ ЗАКРЫТ (2026-07-16, коммит `31ca92db527b2828b7cd6a8aded63ef61f7b24c4`)
-- **Дефект:** `#view` не рендерил контент — все 19 роутов показывали пустой контейнер.
-- **Корневая причина:** метод `bindView()` вызывался в `render()` → `$nextTick`, но не был определён в `appObjects()`. Alpine.js глотал `TypeError: this.bindView is not a function` молча.
-- **Патч:** добавлен `bindView()` в `js/app.objects.js` (строка 506), сразу после `render()`, перед `// ---- временные заглушки`. +43 / −2. Обработчики: `[data-go]`, `[data-cal-filter]`, `[data-skills-view]`, `[data-skill-filter]`, `[data-skill-reached]`.
-- **Верификация (контролёр):** full_patch через GitHub API — все 5 обработчиков присутствуют, цепочка parent линейна, соседние методы не задеты.
-
-### issue#1-2 ✅ ЗАКРЫТ (2026-07-16, коммит `a63e68c01465e5c3eec40039a649b24ccce69704`)
-- **Дефект:** ПЕТРУШКА (`owlBody`) не отвечала — `owlInput`/кнопка ↑ не давали ответа.
-- **Корневая причина:** методы `owlRender()` и `owlAsk()` вызывались (из `render()` и `index.html` через Alpine `@keydown.enter`/`@click`), но не были определены в `appObjects()`.
-- **Патч:** добавлены `owlRender()` и `async owlAsk()` в `js/app.objects.js` (строка 726), после `owlToggle()`, перед `initGoalStatus()`. +56 / −0.
-  - `owlRender()`: находит `#owlBody`, рендерит `M.owlSuggestions` через `gradeColor()`/`dealById()`/`esc()`; заглушка при пустом списке.
-  - `owlAsk()`: читает `#owlInput`, спиннер «Думаю…», в `apiMode` → `AGL.orchChat({message})`, в mock → `petReply(q)`, пушит ответ через `owlPush(makeHint(...))`, `catch` не глотает ошибку.
-- **Верификация (контролёр):** full_patch через GitHub API — оба метода присутствуют построчно, цепочка parent линейна `31ca92db→a63e68c0`, `owlToggle()` и `initGoalStatus()` не задеты.
-
-### issue#1-3 🔴 ОТКРЫТ (P1)
-- **Дефект:** seed-данные не загружены в PostgreSQL — `calendar_events` пусто, `team_skills` пусто, `strategy.scenarios[]` пусто.
-- **Что нужно:** SQL-скрипт INSERT для EV1–EV5 (`calendar_events`), U3/U5/команда (`team_skills`), SC1–SC3 (`strategy`); прогнать на проде.
-- **Статус:** ТЗ не выдано, ожидает решения заказчика.
-
-### Текущий HEAD js/app.objects.js
-- blob SHA: `8971ea067f16dc49e4b756dda87cafbcbeabd88d` (после fix(issue#1-1))
-- HEAD коммит: `a63e68c01465e5c3eec40039a649b24ccce69704`
-- Размер: 865 строк, 51.8 KB
+### Следующий шаг
+Старт Этапа-2 (M10): реестр источников, монитор мультиопыта, knowledge base, обязательное цитирование, agent_questions — по отдельному решению заказчика.
