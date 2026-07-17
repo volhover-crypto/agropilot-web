@@ -165,8 +165,10 @@ source: 'ai',
             ownerId: t.owner_id || '',
             goalId: t.goal_id || '',
             due: t.due_at || '',
+            date: t.due_at || '',        // алиас для vMyDay4() (fix: t.date.slice(5) TypeError)
             priority: t.priority || 'normal',
             dealId: t.deal_id || '',
+            score: t.score || 0,         // fix: hot[] был всегда пуст без этого поля
             updated: t.updated_at || t.created_at,
           }));
 
