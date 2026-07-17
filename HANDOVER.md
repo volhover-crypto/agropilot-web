@@ -63,7 +63,7 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 
 ## 8a. Продовая архитектура (зафиксировано 2026-07-17)
 - **Frontend (static):** `/opt/agropilot-web/` → nginx alias → https://mdked.hlab.kz/agropilot/
-- **Backend (FastAPI/uvicorn):** `127.0.0.1:5555`, systemd-сервис `agropilot.service` ✅ (переживает ребут)
+- **Backend (FastAPI/uvicorn):** `127.0.0.1:5555`, рабочий systemd-сервис `agropilot-backend.service` (venv: `/opt/agropilot-web/venv/bin/uvicorn`), `enabled` ✅ переживает ребут. ⚠️ Дубль `agropilot.service` (`/usr/local/bin/uvicorn`) ОТКЛЮЧЁН 2026-07-17 (спамил `address already in use`, счётчик рестартов 7696)
 - **Database:** PostgreSQL, база `agropilot`, `localhost:5432`, пользователь `postgres`; seed-данные загружены ✅
 - **SSL:** Let's Encrypt для `mdked.hlab.kz`; HTTP → HTTPS redirect 302
 - **Nginx:** reverse proxy `/agropilot/api` → `127.0.0.1:5555`
@@ -122,3 +122,46 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 - Remote `origin/main` подтверждён через `git ls-remote` → `af172328...` = local HEAD.
 - Файл: 1 file changed, 2940 insertions(+), 35 deletions(-); маркеры в закоммиченной версии отсутствуют.
 - **Статус: ЗАКРЫТ** · 2026-07-17
+
+## 15. Журнал прогресса (сессия 2026-07-17, вечер) — issue#1-regression #2 + Stage-1 backend team/goals
+
+### Исполнитель: Perplexity (аудит + патчи + GitHub) + Пользователь (SSH root@mdked)
+
+### Диагностика (QA-отладчик高level)
+Статический аудит prod↔repo (побайтно), карта роутеров, runtime-съём в браузере.
+**Root cause:** `vMyDay4()` падал с `Cannot read properties of undefined (reading 'slice')` — BFF-задачи маппились без `date`/`score`, UI звал `t.date.slice(5)`. Исключение убивало `render()` → `#view` пустой (нули + онбординг), клик по «Задачам» тоже не рендерился. Фикс существовал в `b6f3c85a`, но был **потерян при restore `af17232`** (полное восстановление файла затёрло правку).
+
+### Коммиты
+| Коммит | Уровень | Что |
+|---|---|---|
+| `5fa3f87` | P0 фронт | Переприменён `b6f3c85a`: `date: t.due_at` + `score: t.score` в маппинге задач (+2 строки), `node --check` OK, raw-проверка после push |
+| `94e1377` | P1 backend | `backend/team/` + `backend/goals/` (models+routes+__init__), регистрация в `main.py`. Паттерн deals: `AsyncSession`, `Depends(get_db/get_current_user)`, конверт `{ok,data}`, `NotFoundError`, read-only Stage-1. `py_compile` OK |
+
+### Деплой (Пользователь, SSH)
+- `git pull origin main` → `0753bd9..94e1377` fast-forward
+- Обнаружены 4 сервиса agro; порт 5555 держал `agropilot-backend.service` (venv, рабочий), а `agropilot.service` (`/usr/local/bin/uvicorn`) 7696 раз падал `address already in use`
+- `systemctl stop + disable agropilot.service` (дубль устранён)
+- `systemctl restart agropilot-backend.service` → `active (running)`
+- `is-enabled`: `agropilot-backend.service` = **enabled**, `agropilot.service` = **disabled** ✅
+
+### Верификация (публичный домен + браузер, hard-reload)
+| Проверка | Было | Стало |
+|---|---|---|
+| `slice`-ошибка | краш render() | нет |
+| Зона 1 «Мой день» | 0/0/0/0 | Просрочено 1 · Горячие 0 · На сегодня 0 · Сделок в работе 8 |
+| Онбординг «База пуста» | показывался | заменён реальными данными |
+| «Задачи» | рендерил «Мой день» | список из 8 задач |
+| «Команда» | 0 человек | 5 человек (U1–U5) с загрузкой |
+| `/api/v1/team` | 404 | 200 |
+| `/api/v1/goals` | 404 | 200 |
+
+### Статус
+**issue#1 ЗАКРЫТ пользователем 2026-07-17** (comment #5005537630 + close). Регрессия #2 устранена, Stage-1 backend team/goals активирован на проде.
+
+### Остаётся вне гейта Этапа-1 (safeLoad-фолбэк, не влияет на рендер)
+404 по роадмапу: `/v1/clients` (деривится из deals на фронте), `/v1/health`, `/v1/skills`, `/v1/orchestrator/{digest,recommendations}`, `/v1/packages`, `/v1/artifacts`, `/v1/content`, `/v1/reports`. Кандидаты в Этап-2 (M10).
+
+### Durable-правила (подтверждены этой сессией)
+- Полное восстановление файла может затирать точечные фиксы — после restore сверять с последними правками (`b6f3c85a` → потерян в `af17232`).
+- Статус Issue проверять в GitHub, а не по markdown HANDOVER.
+- На проде рабочий бекенд = `agropilot-backend.service` (venv), НЕ `agropilot.service`.
