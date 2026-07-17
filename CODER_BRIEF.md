@@ -1,6 +1,6 @@
-# CODER BRIEF — issue#1-3 + systemd (2026-07-16)
+# CODER BRIEF — issue#1-3 + systemd (2026-07-17)
 
-> Для агента-кодера. Сразу приступай к действиям. Отчитайся по каждому шагу.
+> Для агента Comet. Сразу приступай к действиям. Отчитайся по каждому шагу.
 
 ---
 
@@ -10,26 +10,46 @@
 |---|---|---|
 | #1-1 — `#view` не рендерил (`bindView` не был определён) | ✅ ЗАКРЫТ | `31ca92db` |
 | #1-2 — ПЕТРУШКА не отвечала (`owlRender`/`owlAsk` не были определены) | ✅ ЗАКРЫТ | `a63e68c0` |
-| #1-3 — seed-данные не загружены в PostgreSQL | 🔴 **ТВОЯ ЗАДАЧА** | — |
+| #1-3 — seed-данные не загружены в PostgreSQL | 🔴 **ТЕКУЩАЯ ЗАДАЧА** | — |
+
+---
+
+## Две роли: кто что делает
+
+У тебя (**Comet**) нет SSH-доступа к серверу. Работа сплит между двумя:
+
+| Роль | Исполнитель | Что делает |
+|---|---|---|
+| **Comet** | Браузерный агент | Проверяет API через браузер, читает GitHub, фиксирует результат |
+| **Пользователь** | SSH-терминал | Выполняет команды на сервере, вставляет вывод в чат |
+
+**Схема работы:**
+1. Comet смотрит API → даёт команду для копирования
+2. Пользователь запускает команду в терминале, вставляет вывод в чат
+3. Comet читает вывод, проверяет API, фиксирует результат
+
+---
+
+## Шаг 0 — pre-check: проверить состояние до seed
+
+**Comet** — до любых действий открой эти URL в браузере и зафиксируй результат:
+
+```
+https://mdked.hlab.kz/agropilot/api/v1/team/skills
+https://mdked.hlab.kz/agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31
+https://mdked.hlab.kz/agropilot/api/v1/strategy
+```
+
+Если `data.length > 0` во всех трёх — seed уже выполнен, шаги 1–3 пропускать, сразу к бонусу.
 
 ---
 
 ## Задача #1-3 — запустить SQL seed на проде
 
-### Симптом
-
-Три эндпоинта возвращают пустые массивы:
-
-```
-GET /agropilot/api/v1/calendar?from=2026-07-01  →  {"data":[]}
-GET /agropilot/api/v1/team/skills               →  {"data":[]}
-GET /agropilot/api/v1/strategy                  →  {"data":{"scenarios":[]}}
-```
-
 ### SQL-скрипт уже готов в репозитории
 
 Файл: [`backend/migrations/003_seed_calendar_skills_strategy.sql`](https://github.com/volhover-crypto/agropilot-web/blob/main/backend/migrations/003_seed_calendar_skills_strategy.sql)  
-Коммит: `c6ec10cc` (запущен 2026-07-16)
+Коммит: `c6ec10cc`
 
 Скрипт содержит:
 - **5 записей** `calendar_events` (EV1–EV5) — `ON CONFLICT (id) DO NOTHING`
@@ -38,66 +58,71 @@ GET /agropilot/api/v1/strategy                  →  {"data":{"scenarios":[]}}
 
 Скрипт **идемпотентный** — повторный запуск безопасен.
 
-### Твои шаги
+---
 
-**Шаг 1 — подтянуть репозиторий:**
+### Шаг 1 — Пользователь запускает в терминале
+
+Копируй и выполняй поблочно:
+
 ```bash
 cd /opt/agropilot-web && git pull
 ```
-Проверить, что файл есть:
-```bash
-ls backend/migrations/003_seed_calendar_skills_strategy.sql
-```
 
-**Шаг 2 — запустить скрипт:**
 ```bash
 psql -U postgres -d agropilot \
   -f /opt/agropilot-web/backend/migrations/003_seed_calendar_skills_strategy.sql
 ```
-Ожидаемый вывод:
+
+Вставь вывод в чат полностью.
+
+Ожидаемый вывод (first run):
 ```
 INSERT 0 5
 INSERT 0 7
 INSERT 0 1
 ```
-(если seed уже запускался раньше — `INSERT 0 0`, это норма)
+(если seed уже был раньше: `INSERT 0 0` — это норма)
 
-**Шаг 3 — проверить API:**
-```bash
-curl -s "https://mdked.hlab.kz/agropilot/api/v1/team/skills" | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); print('skills:', len(d.get('data',[])))"
+### Шаг 2 — Comet проверяет API
 
-curl -s "https://mdked.hlab.kz/agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31" | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); print('events:', len(d.get('data',[])))"
-
-curl -s "https://mdked.hlab.kz/agropilot/api/v1/strategy" | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); sc=d.get('data',{}).get('scenarios',[]); print('scenarios:', len(sc))"
+**Comet** — открой в браузере:
 ```
+https://mdked.hlab.kz/agropilot/api/v1/team/skills
+https://mdked.hlab.kz/agropilot/api/v1/calendar?from=2026-07-01&to=2026-07-31
+https://mdked.hlab.kz/agropilot/api/v1/strategy
+```
+Убедись, что `data` уже не пустой. Зафиксируй количество записей в отчёте.
+
 Ожидаемый результат:
 ```
-skills: 7
-events: 5
-scenarios: 3
+skills: 7 ✔️
+events: 5 ✔️
+scenarios: 3 ✔️
 ```
 
-**Шаг 4 — отчитайся пользователю.** Дефект закрывает только пользователь. HANDOVER.md не трогать.
+### Шаг 3 — отчёт
+
+Comet сообщает пользователю результат. Дефект закрывает только пользователь. HANDOVER.md не трогать.
 
 ---
 
 ## Бонус-задача: перевести backend на systemd
 
-> Выполняй только если шаг 1–3 успешно закрыт. Без согласования с пользователем не выполнять.
+> **Согласовано заказчиком заранее.** Выполняй сразу после успешного шага 0/1/2.
 
 ### Проблема
 
-Backend uvicorn запущен вручную (не переживёт ребут сервера):
+Backend запущен вручную и не переживёт ребут сервера.
+
+### Пользователь выполняет в терминале
+
+**Шаг A — узнать путь к uvicorn:**
 ```bash
-uvicorn backend.main:app --host 127.0.0.1 --port 5555
+which uvicorn
 ```
+Вставь вывод в чат — Comet подскажет правильный `ExecStart`.
 
-### Шаги
-
-**Шаг A — создать unit-файл:**
+**Шаг B — создать unit-файл** (подставь путь из вывода `which uvicorn`):
 ```bash
 cat > /etc/systemd/system/agropilot.service << 'EOF'
 [Unit]
@@ -108,7 +133,7 @@ After=network.target postgresql.service
 Type=simple
 User=www-data
 WorkingDirectory=/opt/agropilot-web
-ExecStart=/usr/local/bin/uvicorn backend.main:app --host 127.0.0.1 --port 5555
+ExecStart=<PATH_FROM_WHICH> backend.main:app --host 127.0.0.1 --port 5555
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -119,38 +144,27 @@ WantedBy=multi-user.target
 EOF
 ```
 
-> Если uvicorn установлен в venv, замени путь: `/usr/local/bin/uvicorn` → `/opt/agropilot-web/.venv/bin/uvicorn` или `/home/<user>/.local/bin/uvicorn`.
-> Проверить: `which uvicorn`
-
-**Шаг B — активировать и запустить:**
+**Шаг C — активировать:**
 ```bash
 systemctl daemon-reload
 systemctl enable agropilot
 systemctl start agropilot
 systemctl status agropilot
 ```
+Вставь вывод `status` в чат полностью.
 
-Ожидаемый вывод статуса:
+**Шаг D — Comet проверяет API** через браузер:
 ```
-● agropilot.service - AgroPILOT Backend
-   Active: active (running) ...
+https://mdked.hlab.kz/agropilot/api/v1/strategy
 ```
-
-**Шаг C — проверить что API живой:**
-```bash
-curl -s http://127.0.0.1:5555/agropilot/api/v1/strategy | python3 -c \
-  "import sys,json; print(json.load(sys.stdin).get('ok'))"
-# → True
-```
-
-**Шаг D — отчитайся:** сообщи пользователю вывод `systemctl status` + результат curl.
+Ожидаем ответ: `{"ok": true, ...}`
 
 ---
 
 ## Что НЕ делать
 
 - ❌ Не менять исходные файлы (`js/`, `backend/`)
-- ❌ Не выполнять DROP/TRUNCATE без явного указания пользователя
+- ❌ Не выполнять DROP/TRUNCATE без явного указания
 - ❌ Не закрывать issue #1 — это делает только пользователь
 - ❌ Не трогать HANDOVER.md
 
