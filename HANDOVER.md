@@ -105,3 +105,20 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 
 ### Следующий шаг
 Старт Этапа-2 (M10): реестр источников, монитор мультиопыта, knowledge base, обязательное цитирование, agent_questions — по отдельному решению заказчика.
+
+### issue#1-regression — merge conflict в app.objects.js (2026-07-17)
+
+**Симптом:** Alpine init ломался, `#view` пустой — из-за незакрытых conflict-маркеров (`<<<<<<<` / `=======` / `>>>>>>>`) в `js/app.objects.js`. HEAD репозитория содержал обрезанную версию (обрыв на строке 768). Рабочая, полная версия (3673 строки) находилась на диске прода — **диск = источник правды**.
+
+**Действия:**
+- Создан бэкап `js/app.objects.js.bak` (untracked).
+- Удалены conflict-маркеры, оставлен рабочий код (`const toggleSp` ...).
+- `node --check js/app.objects.js` → SYNTAX OK; `grep` маркеров → 0.
+- Разрешение выполнено в рамках interactive rebase onto `1a21d0f`: `git add` → `git rebase --continue`.
+- `git push --force-with-lease origin main` (история переписана, старый `7e91463` заменён).
+
+**Результат:**
+- Новый HEAD: `af17232` (полн. `af172328b92e31e54a1687a1b88a362ad767da0d`)
+- Remote `origin/main` подтверждён через `git ls-remote` → `af172328...` = local HEAD.
+- Файл: 1 file changed, 2940 insertions(+), 35 deletions(-); маркеры в закоммиченной версии отсутствуют.
+- **Статус: ЗАКРЫТ** · 2026-07-17
