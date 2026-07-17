@@ -13,6 +13,8 @@ from backend.versions.skills_router import skills_router
 from backend.strategy.routes import router as strategy_router
 from backend.deals.routes import deals_router
 from backend.tasks.routes import tasks_router
+from backend.team.routes import team_router
+from backend.goals.routes import goals_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -48,4 +50,10 @@ app.include_router(deals_router, prefix="/agropilot/api/v1")
 # M9 — Tasks (team-wide, no owner filter)
 app.include_router(tasks_router, prefix="/agropilot/api/v1")
 
-# Future: auth_router, clients_router, goals_router ...
+# Stage-1 — Team (read-only, fix issue#1: /v1/team 404 → «Команда из 0 человек»)
+app.include_router(team_router, prefix="/agropilot/api/v1")
+
+# Stage-1 — Goals (read-only, fix issue#1: /v1/goals 404)
+app.include_router(goals_router, prefix="/agropilot/api/v1")
+
+# Future: auth_router, clients_router ...
