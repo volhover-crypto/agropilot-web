@@ -166,3 +166,5 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 - Статус Issue проверять в GitHub, а не по markdown HANDOVER.
 - На проде рабочий бекенд = `agropilot-backend.service` (venv), НЕ `agropilot.service`.
 - Реализация M10 без Computer — по `docs/MAX_AS_COMPUTER.md` (режим Max-as-Computer: contract-first, verify после каждого шага, мультимодельное ревью).
+
+> **2026-07-18:** ТЗ Этап-2 зафиксировано в `docs/TZ_STAGE2.md`; работаем 1 шаг = 1 тред (`docs/PROMPT_STEP_TEMPLATE.md`); без Issues.
