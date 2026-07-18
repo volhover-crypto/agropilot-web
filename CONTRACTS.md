@@ -378,4 +378,30 @@ backend/
 
 ---
 
+## 11. E — Справочник пользователей / компетенции / права · v3.1 · Этап-2
+
+Расширяет существующий задел М9 (таблица `team`). Отдельная таблица `users` НЕ вводится — team-member = user (ТЗ §5.1: «опирается на задел М9»; Non-goals: без лишних сущностей).
+
+### 11.1 Таблица (расширение `team`)
+- `competencies` JSONB DEFAULT '[]' — зоны/ниши (маршрутизация D-5 по совпадению).
+- `permissions` JSONB DEFAULT '[]' — данные для будущего полного RBAC (DoD E п.3).
+- `status` TEXT DEFAULT 'active' — active|inactive (D-5: неактивный → маршрут по компетенции).
+- `role_key` TEXT NULL — нормализованная роль (admin|manager|smm|engineer). Существующий `role` НЕ трогаем (на него завязан фронт isManager()).
+
+### 11.2 Эндпоинты
+- `GET /v1/team`, `GET /v1/team/{id}` — любой авторизованный; `to_dict()` += competencies/permissions/status/role_key.
+- `PATCH /v1/team/{id}` (competencies|permissions|status|role_key) — isManager() (enforcement по конвенции проекта; permissions[] пока данные, не gate).
+
+### 11.3 Миграция / seed
+- `backend/migrations/004_team_rbac.sql`: ALTER TABLE team ADD COLUMN (4 колонки с DEFAULT — seed U1–U5 и /v1/team не ломаются); UPDATE role_key: U1,U2→manager · U3,U5→engineer · U4→smm.
+
+### 11.4 DoD Блока E
+1. `/v1/team` отдаёт competencies/permissions/status/role_key (конверт {ok,data}).
+2. Автор задания (added_by) — зависимость Шага 4 (Блок D), не в scope E.
+3. Enforcement через isManager() (полный permissions[]-RBAC — позже, §7).
+
+Scope-заметка: фронт isManager() (строковая роль 'Руководитель продаж') на Шаге 2 НЕ трогаем — перевод на role_key/permissions вынесен в Шаг 5 (Блок A, раздел team).
+
+Флаг: USERS_READY: false
+
 *Конец CONTRACTS.md*
