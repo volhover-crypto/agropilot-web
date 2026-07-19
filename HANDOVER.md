@@ -178,3 +178,13 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 > - gate-логика _is_manager корректна; E2E негативный тест (403) невозможен — get_current_user = STUB (всегда U1/manager).
 > - **Stage 3 блокер (prod-security):** заменить STUB на реальный JWT в backend/common/deps.py до продакшн-релиза RBAC.
 > - Техдолг: _is_manager делает доп. db.get по user.id (избыточно при JWT с role_key в payload); enum-валидация status/role_key в PATCH отсутствует.
+
+> **2026-07-19: M10-2 Sources — CRUD /sources задеплоен.**
+> commit `b25e3c6` feat(M10-2): sources CRUD — GET/POST/PATCH/DELETE /sources, migration 005, VALID_TYPES guard.
+> - migration 005_sources.sql: CREATE TABLE sources (id SERIAL PK, type VARCHAR(16) CHECK IN(site/rss/telegram/tender), url, handle, keywords JSONB, active BOOL, created_at TIMESTAMPTZ).
+> - models.py: Source ORM + to_dict().
+> - routes.py: GET(filter active/limit) / POST / PATCH / DELETE, VALID_TYPES 422-guard, NotFoundError, конверт {ok,data}.
+> - main.py: +import sources_router + include_router /agropilot/api/v1.
+> - raw-verify VALID_TYPES OK; restart active; smoke GET /sources = 200 {"ok":true,"data":[]}.
+> - RBAC нет (любой авторизованный); техдолг: общий Base, enum-валидация через app (есть) и DB CHECK (есть).
+> - Следующий блок: M10-3 /content.
