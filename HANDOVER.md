@@ -194,3 +194,12 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 > По TZ_STAGE2.md §5.3 (Блок D) финальная схема sources: type=news/supplier/competitor/market/tech, +linked_strategy_task, +added_by, +status (active/proposed/disabled/rejected), +receiver_user_id, +routing_reason.
 > Расширение sources до полной Блок-D схемы — отдельный шаг ПОСЛЕ реализации Блока C (стратег.задачи) и Блока E (RBAC).
 > Текущий /v1/sources работает как scaffold — не ломает прод, расширяется миграцией.
+
+> **2026-07-19: M10-3 Content — CRUD /content задеплоен.**
+> commit `b75ab70` feat(M10-3): content CRUD — GET/POST/PATCH/DELETE /content, migration 006, VALID_PLATFORMS/STATUSES guard, auto published_at.
+> - migration 006_content.sql: CREATE TABLE content (id SERIAL PK, title, body, platform VARCHAR(32) CHECK IN(telegram/instagram/vk/linkedin/other), status VARCHAR(16) CHECK IN(draft/published/archived) DEFAULT draft, author_id→team(id) FK ON DELETE SET NULL, published_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT now()).
+> - models.py: Content ORM + to_dict().
+> - routes.py: GET(platform/status/limit) / POST / PATCH / DELETE, VALID_PLATFORMS/VALID_STATUSES 422-guards, NotFoundError, auto published_at=now() при PATCH status=published.
+> - raw-verify VALID_PLATFORMS OK; restart active; smoke GET /content = 200 {"ok":true,"data":[]}.
+> - RBAC нет (любой авторизованный); техдолг: общий Base.
+> - Следующий блок: M10-4 /packages.
