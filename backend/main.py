@@ -16,6 +16,7 @@ from backend.tasks.routes import tasks_router
 from backend.team.routes import team_router
 from backend.goals.routes import goals_router
 from backend.sources.routes import sources_router
+from backend.content.routes import content_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -57,5 +58,8 @@ app.include_router(team_router, prefix="/agropilot/api/v1")
 # Stage-1 — Goals (read-only, fix issue#1: /v1/goals 404)
 app.include_router(goals_router, prefix="/agropilot/api/v1")
 app.include_router(sources_router, prefix="/agropilot/api/v1")
+
+# M10-3 — Content
+app.include_router(content_router, prefix="/agropilot/api/v1")
 
 # Future: auth_router, clients_router ...
