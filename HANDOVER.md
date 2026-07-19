@@ -169,3 +169,12 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 
 > **2026-07-18:** ТЗ Этап-2 зафиксировано в `docs/TZ_STAGE2.md`; работаем 1 шаг = 1 тред (`docs/PROMPT_STEP_TEMPLATE.md`); без Issues.
 > **2026-07-18:** Issues #2–#10 и Milestone «M10 — Этап-2» закрыты как superseded; трекинг Этапа-2 — `docs/TZ_STAGE2.md` + `HANDOVER.md`.
+
+> **2026-07-19: Блок E (Stage 2) — RBAC PATCH /team/{member_id} задеплоен.**
+> commit `1553719` feat(stage2/E): RBAC PATCH /team/{member_id}, models+routes (§11).
+> - models.py: +competencies/permissions(JSONB)/status/role_key + to_dict; id→String(16); dead import Any удалён.
+> - routes.py: +TeamPatch, +_is_manager (role_key∈{manager,admin}), +PATCH /{member_id} с ForbiddenError-гейтом (whitelist, exclude_unset).
+> - push b11e196..1553719; raw-verify ForbiddenError OK; restart active; smoke GET /team = 200.
+> - gate-логика _is_manager корректна; E2E негативный тест (403) невозможен — get_current_user = STUB (всегда U1/manager).
+> - **Stage 3 блокер (prod-security):** заменить STUB на реальный JWT в backend/common/deps.py до продакшн-релиза RBAC.
+> - Техдолг: _is_manager делает доп. db.get по user.id (избыточно при JWT с role_key в payload); enum-валидация status/role_key в PATCH отсутствует.
