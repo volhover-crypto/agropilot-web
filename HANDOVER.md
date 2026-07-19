@@ -188,3 +188,9 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 > - raw-verify VALID_TYPES OK; restart active; smoke GET /sources = 200 {"ok":true,"data":[]}.
 > - RBAC нет (любой авторизованный); техдолг: общий Base, enum-валидация через app (есть) и DB CHECK (есть).
 > - Следующий блок: M10-3 /content.
+
+> **2026-07-19: Техдолг — sources vs TZ_STAGE2.md (Блок D).**
+> Реализованный /v1/sources (commit b25e3c6) — упрощённый MVP: type=site/rss/telegram/tender, без полей linked_strategy_task/added_by/status=proposed.
+> По TZ_STAGE2.md §5.3 (Блок D) финальная схема sources: type=news/supplier/competitor/market/tech, +linked_strategy_task, +added_by, +status (active/proposed/disabled/rejected), +receiver_user_id, +routing_reason.
+> Расширение sources до полной Блок-D схемы — отдельный шаг ПОСЛЕ реализации Блока C (стратег.задачи) и Блока E (RBAC).
+> Текущий /v1/sources работает как scaffold — не ломает прод, расширяется миграцией.
