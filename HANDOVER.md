@@ -212,3 +212,19 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 > - raw-verify VALID_STATUSES OK; restart active; smoke GET /packages = 200 {"ok":true,"data":[]}.
 > - RBAC нет (любой авторизованный).
 > - Следующий блок: M10-5 (уточнить по ROADMAP_M10.md).
+
+> **2026-07-20: M10-5 Artifacts — CRUD /artifacts задеплоен.**
+> commit `98edecc` feat(M10-5): artifacts CRUD — GET/POST/PATCH/DELETE /artifacts, migration 008, VALID_KINDS guard, FK на уровне БД.
+> - migration 008_artifacts.sql: CREATE TABLE artifacts (id SERIAL PK, kind VARCHAR(32) CHECK IN(kp/contract/schema/other), title VARCHAR(300), url TEXT, deal_id VARCHAR(16) FK→deals(id) ON DELETE SET NULL, created_at TIMESTAMPTZ DEFAULT now()).
+> - models.py: Artifact ORM, локальный Base(DeclarativeBase), to_dict(), deal_id БЕЗ ORM-ForeignKey (FK только в миграции на уровне БД).
+> - routes.py: GET(kind/deal_id/limit) / POST / PATCH / DELETE, VALID_KINDS 422-guard (в POST и PATCH), NotFoundError→404, конверт {ok,data}.
+> - main.py: +import (стр.21) router as artifacts_router + include_router (стр.69) /agropilot/api/v1.
+> - Полный CRUD-smoke: POST/GET/PATCH/DELETE + guard'ы + DELETE 9999→404 OK. raw-verify маркеров OK; restart active; smoke GET /artifacts = 200 {"ok":true,"data":[]}.
+> - RBAC нет (любой авторизованный).
+> - ПРОТОКОЛ: исходный контракт M10-5 содержал 4 дефекта, устранены при деплое. ЭТАЛОН для новых модулей = backend/packages (M10-4), НЕ artifacts-контракт:
+>   1) python -> python3 (нет алиаса на сервере).
+>   2) импорты: backend.common.deps (get_db, get_current_user) + backend.common.errors (NotFoundError), НЕ backend.database/auth/errors.
+>   3) сериализация: метод to_dict(), НЕ obj.__dict__ (иначе 500 на _sa_instance_state).
+>   4) модель: локальный Base(DeclarativeBase), БЕЗ ORM-ForeignKey (иначе NoReferencedTableError на commit); FK только в миграции.
+> - Регрессия M10-4 packages проверена LIVE POST → багов нет (packages написан по эталону изначально).
+> - Следующий блок: M10-1 Clients (по порядку ROADMAP: sources→content→packages→artifacts→clients).
