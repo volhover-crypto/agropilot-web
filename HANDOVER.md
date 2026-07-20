@@ -203,3 +203,12 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 > - raw-verify VALID_PLATFORMS OK; restart active; smoke GET /content = 200 {"ok":true,"data":[]}.
 > - RBAC нет (любой авторизованный); техдолг: общий Base.
 > - Следующий блок: M10-4 /packages.
+
+> **2026-07-20: M10-4 Packages — CRUD /packages задеплоен.**
+> commit `6ed666b` feat(M10-4): packages CRUD — GET/POST/PATCH/DELETE /packages, migration 007, VALID_STATUSES guard.
+> - migration 007_packages.sql: CREATE TABLE packages (id SERIAL PK, title VARCHAR(300), description TEXT, price NUMERIC(12,2), status VARCHAR(16) CHECK IN(draft/active/archived) DEFAULT draft, deal_id→deals(id) FK ON DELETE SET NULL, created_at TIMESTAMPTZ DEFAULT now()).
+> - models.py: Package ORM + to_dict() (price → float).
+> - routes.py: GET(status/deal_id/limit) / POST / PATCH / DELETE, VALID_STATUSES 422-guard, NotFoundError, конверт {ok,data}.
+> - raw-verify VALID_STATUSES OK; restart active; smoke GET /packages = 200 {"ok":true,"data":[]}.
+> - RBAC нет (любой авторизованный).
+> - Следующий блок: M10-5 (уточнить по ROADMAP_M10.md).
