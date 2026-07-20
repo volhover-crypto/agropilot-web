@@ -1,0 +1,8 @@
+-- 009_artifacts_upload.sql — M10-5-UPLOAD: поля для файловой загрузки
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS blob_uri  TEXT;
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS filename  VARCHAR(300);
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS ext       VARCHAR(16);
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS mime      VARCHAR(128);
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS size      BIGINT;
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS type      VARCHAR(32);
+ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS status    VARCHAR(16);

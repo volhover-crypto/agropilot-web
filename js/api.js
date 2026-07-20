@@ -238,6 +238,16 @@ const AGL = {
   async createArtifact(data) {
     return apiFetch('/v1/artifacts', { method: 'POST', data });
   },
+  async uploadArtifact(formData) {
+    const r = await fetch(API_BASE + '/v1/artifacts/upload', {
+      method: 'POST',
+      credentials: 'include',
+      headers: AGL.token ? { 'Authorization': 'Bearer ' + AGL.token } : {},
+      body: formData,
+    });
+    if (!r.ok) throw new Error('upload failed: ' + r.status);
+    return await r.json();
+  },
 
   // ─── Search ───
   async search(q, type, limit = 20) {

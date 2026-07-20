@@ -31,3 +31,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# upload storage (вне репо)
+/opt/agropilot-data/
+*.bak

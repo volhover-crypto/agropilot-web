@@ -442,7 +442,6 @@ await this._loadAiLayer();
     render() {
       this.$nextTick(() => {
         const el = document.getElementById('view');
-        console.log('[AgroPILOT] render() route:', this.route, 'view el:', !!el);
         if (!el) return;
         let html = '';
         if (this.route === 'myday') html = this.vMyDay4();
@@ -3227,10 +3226,62 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         });
       this.$nextTick(() => { const i = document.getElementById('artFolderName'); if (i) i.focus(); });
     },
+    artUpload() {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
+      inp.onchange = async () => {
+        const f = inp.files && inp.files[0];
+        if (!f) { inp.remove(); return; }
+        if (f.size > 25 * 1024 * 1024) { this.toast('Файл больше 25 МБ', 'warn'); return; }
+        const fd = new FormData();
+        fd.append('file', f);
+        fd.append('kind', 'other');
+        fd.append('title', f.name);
+        try {
+          const res = await AGL.uploadArtifact(fd);
+          if (res && res.ok) {
+            this.toast('Файл «' + f.name + '» загружен', 'ok');
+            const list = await AGL.loadArtifacts();
+            if (list && list.data) {
+              const mapped = list.data.map(a => ({
+                id: a.id,
+                blobUri: a.blob_uri || '',
+                type: a.type || '',
+                linkedType: a.linked_type || '',
+                linkedId: a.linked_id || '',
+                dealId: a.deal_id || a.dealId || '',
+                title: a.name || a.title || 'Артефакт',
+                kind: a.kind || '',
+                ext: a.ext || '',
+                date: a.date || a.created_at || '',
+                status: a.status || '',
+                folderId: a.folder_id || null,
+              }));
+              this.M.artifacts.splice(0, this.M.artifacts.length, ...mapped);
+            }
+          this.artFolder = null;
+            this.render();
+            this.$nextTick(() => this.render());
+          } else {
+            this.toast('Ошибка загрузки: ' + ((res && res.error) || 'unknown'), 'warn');
+          }
+        } catch (e) {
+          this.toast('Ошибка загрузки: ' + e.message, 'warn');
+        }
+      };
+      inp.click();
+      setTimeout(() => { if (inp.parentNode) inp.remove(); }, 60000);
+    },
     artOpenFile(id) {
-      const a = this.M.artifacts.find(x => x.id === id); if (!a) return;
-      const d = a.dealId ? this.dealById(a.dealId) : null;
-      this.toast('Открытие: ' + a.title + (d ? ' · сделка ' + d.title : '') + ' (эскиз)', 'ok');
+      const a = this.M.artifacts.find(x => String(x.id) === String(id));
+      if (!a) return;
+      if (a.blobUri) {
+        window.open(a.blobUri, '_blank');
+      } else {
+        this.toast('Файл недоступен (нет blobUri)', 'warn');
+      }
     },
     // ======== ЧАНК 6.4: ГЕНЕРАЦИЯ / ВЫБОР АРТЕФАКТА ПЕТРУШКОЙ ИЗ КАРТОЧКИ СДЕЛКИ ========
     _artGenType: 'КП',
@@ -3317,6 +3368,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="flex gap-2">
             <button class="btn text-[13px]" data-art-up ${this.artFolder ? '' : 'disabled style="opacity:.4;cursor:default"'}>↑ Вверх</button>
             <button class="btn btn-accent text-[13px]" data-art-newfolder>+ Папка</button>
+        <button class="btn text-[13px]" data-art-upload>+ Файл</button>
           </div>
         </div>
         <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${items || emptyMsg}</div>
@@ -3662,6 +3714,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-art-open-file]').forEach(n => n.onclick = () => this.artOpenFile(n.getAttribute('data-art-open-file')));
       const aup = el.querySelector('[data-art-up]'); if (aup && !aup.disabled) aup.onclick = () => this.artUp();
       const anf = el.querySelector('[data-art-newfolder]'); if (anf) anf.onclick = () => this.artNewFolder();
+      const aupl = el.querySelector('[data-art-upload]'); if (aupl) aupl.onclick = () => this.artUpload();
       el.querySelectorAll('[data-art-gen]').forEach(n => n.onclick = () => this.artGenModal(n.getAttribute('data-art-gen')));
       // 6.5: упаковки (Этап 2)
       const pn = el.querySelector('[data-pkg-new]'); if (pn) pn.onclick = () => this.pkgFromDealModal();
