@@ -228,3 +228,16 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 >   4) модель: локальный Base(DeclarativeBase), БЕЗ ORM-ForeignKey (иначе NoReferencedTableError на commit); FK только в миграции.
 > - Регрессия M10-4 packages проверена LIVE POST → багов нет (packages написан по эталону изначально).
 > - Следующий блок: M10-1 Clients (по порядку ROADMAP: sources→content→packages→artifacts→clients).
+
+## Context Guard — 2026-07-21
+
+`CG-20260721-01 | Блок E: пользователи / компетенции / права | docs/TZ_STAGE2.md §5.1 + CONTRACTS.md §11 | drift caught YES | rework NO | PASS`
+
+- ШАГ D-1 завершён PASS: аудит `owlContext()` выполнен read-only, gap-отчёт утверждён Оркестратором.
+- ШАГ-0-E обнаружил, что Блок E уже реализован коммитом `1553719` и закрыт HANDOVER-коммитом `99075c9`.
+- Проверены модель, маршруты, миграция `004_team_rbac.sql`, схема `public.team` и `GET /agropilot/api/v1/team`.
+- Повторная реализация E предотвращена; backend-изменения и новые миграции не требуются.
+- `USERS_READY` остаётся `false`; frontend Блока E не включался.
+- Документационное замечание: CONTRACTS.md называет `status`/`role_key` типом TEXT, фактически используются VARCHAR(16)/VARCHAR(32).
+- Следующая точка по утверждённому порядку Этапа-2: Context Guard перед Блоком C.
+
