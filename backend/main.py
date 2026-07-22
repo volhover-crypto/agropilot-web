@@ -19,6 +19,7 @@ from backend.sources.routes import sources_router
 from backend.content.routes import content_router
 from backend.packages.routes import packages_router
 from backend.artifacts.routes import router as artifacts_router
+from backend.strategy_tasks.routes import strategy_tasks_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -67,5 +68,6 @@ app.include_router(content_router, prefix="/agropilot/api/v1")
 # M10-4 — Packages
 app.include_router(packages_router, prefix="/agropilot/api/v1")
 app.include_router(artifacts_router, prefix="/agropilot/api/v1")
+app.include_router(strategy_tasks_router, prefix="/agropilot/api/v1")
 
 # Future: auth_router, clients_router ...
