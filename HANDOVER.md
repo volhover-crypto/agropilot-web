@@ -246,3 +246,17 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 > циклом: правка файла → git diff → «ОК» → commit → push → raw-verify по full
 > SHA. Промежуточные payload-файлы, манифесты, Base64-транспорт и DRY-RUN-замены
 > НЕ используются. Контракт, не закоммиченный в repo, считается несуществующим.
+
+## Блок C (strategy_tasks) — прогресс 2026-07-22/23
+
+> **2026-07-22, backend (8b8a5d8cae860f32f7ef1df1afca15e7153398a0):** миграция
+> 010_strategy_tasks.sql + backend/strategy_tasks/ (models, routes по эталону
+> backend/packages) + регистрация в main.py. Smoke 200 {ok,data} на проде.
+> Верификация: raw-verify Ревизора (состав коммита, py_compile) — PASS.
+
+> **2026-07-23, frontend §12.5 (8da69bf17c8d21faaece8cbfff64c6cba8ab3699):**
+> js/api.js — STRATEGY_TASKS_READY:true + 4 CRUD-метода /v1/strategy/tasks;
+> js/app.objects.js — M.strategyTasks в цепочке loadFromAPI (порядок по контракту).
+> repo==prod байт-сверкой (api.js 10865 B), visual smoke PASS.
+> Верификация: независимо Архитектор (raw@SHA сам) и Ревизор — оба PASS.
+> Осталось по §12: owlContext §12.6 → DoD §12.8.
