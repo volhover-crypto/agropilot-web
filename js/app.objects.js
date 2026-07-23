@@ -1110,34 +1110,49 @@ owlUrgent() { return (this.M.owlSuggestions || []).filter(o => o.grade === 'CONF
     // type: 'goal'|'project'|'client'|'deal'|'task'|null (null = общий контекст «Все объекты»).
     owlContext() {
       const r = this.route, a = this.routeArg;
-      const all = () => ({ type: null, id: null, obj: null, icon: '🗂', label: 'Все объекты', sub: `${this.M.deals.length} сделок`, count: this.M.deals.length });
+      let strategyTasks = [];
+      try {
+        strategyTasks = (this.M.strategyTasks || [])
+          .filter(t => t && t.status === 'active')
+          .map(t => ({
+            id: t.id,
+            title: t.title,
+            owner_id: t.owner_id,
+            monitoring_focus: Array.isArray(t.monitoring_focus) ? t.monitoring_focus : [],
+            linked_scenario: t.linked_scenario ?? null,
+            priority: t.priority ?? null,
+            status: t.status,
+          }));
+      } catch (e) { strategyTasks = []; }
+      const withST = o => ({ ...o, strategyTasks });
+      const all = () => withST({ type: null, id: null, obj: null, icon: '🗂', label: 'Все объекты', sub: `${this.M.deals.length} сделок`, count: this.M.deals.length });
       if (!a) return all();
       try {
         if (r === 'goal') {
           const g = this.goalById(a); if (!g) return all();
           const deals = this.goalDeals ? this.goalDeals(g) : [];
           const pr = (this.goalProgress ? this.goalProgress(g) : { pct: 0 });
-          return { type: 'goal', id: g.id, obj: g, icon: '🎯', label: 'Цель: ' + g.title, sub: `Сделок: ${deals.length} · Прогресс: ${pr.pct}%`, count: deals.length };
+          return withST({ type: 'goal', id: g.id, obj: g, icon: '🎯', label: 'Цель: ' + g.title, sub: `Сделок: ${deals.length} · Прогресс: ${pr.pct}%`, count: deals.length });
         }
         if (r === 'project') {
           const p = this.projectById(a); if (!p) return all();
           const deals = this.projectDeals ? this.projectDeals(p) : [];
           const pr = (this.projectProgress ? this.projectProgress(p) : { pct: 0 });
-          return { type: 'project', id: p.id, obj: p, icon: '📁', label: 'Проект: ' + p.title, sub: `Сделок: ${deals.length} · Прогресс: ${pr.pct}%`, count: deals.length };
+          return withST({ type: 'project', id: p.id, obj: p, icon: '📁', label: 'Проект: ' + p.title, sub: `Сделок: ${deals.length} · Прогресс: ${pr.pct}%`, count: deals.length });
         }
         if (r === 'client') {
           const c = this.clientById(a); if (!c) return all();
           const deals = this.M.deals.filter(d => d.clientId === c.id);
-          return { type: 'client', id: c.id, obj: c, icon: '👤', label: 'Клиент: ' + (c.name || c.title || ''), sub: `Сделок: ${deals.length}${c.niche ? ' · ' + c.niche : ''}`, count: deals.length };
+          return withST({ type: 'client', id: c.id, obj: c, icon: '👤', label: 'Клиент: ' + (c.name || c.title || ''), sub: `Сделок: ${deals.length}${c.niche ? ' · ' + c.niche : ''}`, count: deals.length });
         }
         if (r === 'deal') {
           const d = this.dealById(a); if (!d) return all();
           const c = this.clientById(d.clientId);
-          return { type: 'deal', id: d.id, obj: d, icon: '🤝', label: 'Сделка: ' + d.title, sub: `${c ? (c.name || c.title) : ''}${d.stage ? ' · ' + d.stage : ''}`, count: 1 };
+          return withST({ type: 'deal', id: d.id, obj: d, icon: '🤝', label: 'Сделка: ' + d.title, sub: `${c ? (c.name || c.title) : ''}${d.stage ? ' · ' + d.stage : ''}`, count: 1 });
         }
         if (r === 'task') {
           const t = this.taskById(a); if (!t) return all();
-          return { type: 'task', id: t.id, obj: t, icon: '✅', label: 'Задача: ' + t.title, sub: `${t.status || ''}${t.owner ? ' · ' + t.owner : ''}`, count: 1 };
+          return withST({ type: 'task', id: t.id, obj: t, icon: '✅', label: 'Задача: ' + t.title, sub: `${t.status || ''}${t.owner ? ' · ' + t.owner : ''}`, count: 1 });
         }
       } catch (e) { return all(); }
       return all();
