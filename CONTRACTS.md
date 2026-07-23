@@ -538,3 +538,72 @@ Frontend использует отдельную коллекцию `M.strategyT
 7. Проверены `git diff --check`, импорт приложения, регистрация router и raw HTTP-ответы; существующие `/v1/strategy` и route/object-контекст не регрессировали.
 
 *Конец CONTRACTS.md*
+
+## 13. D — ПЕТРУШКА: реестр источников /v1/sources + proposed на «Мой день» · Этап-2
+
+Расширяет существующую таблицу `sources` (миграция 005, на проде пустая — 0 строк, подтверждено psql 2026-07-23). Блок E-min (team.competencies) выполнен (011, SHA 43817f2). owlContext strategyTasks-инжект уже есть (Блок C, §12.6).
+
+### 13.1 Таблица (ревизия `sources`, вариант 1a)
+Тип `type` приводится к TZ-набору (замена CHECK; таблица пуста → без миграции данных). Существующий канал `site/rss/telegram/tender` не используется фронтом и заменяется.
+
+- `id` SERIAL PK — без изменений.
+- `type` VARCHAR(16) NOT NULL CHECK IN ('news','supplier','competitor','market','tech') — ЗАМЕНА набора.
+- `url` VARCHAR(500) NOT NULL — без изменений.
+- `handle` VARCHAR(200) NULL — без изменений.
+- `keywords` JSONB NOT NULL DEFAULT '[]' — без изменений (фильтрация).
+- `active` BOOLEAN NOT NULL DEFAULT true — сохраняется (легаси-совместимость чтения); НЕ путать со `status`.
+- `status` VARCHAR(16) NOT NULL DEFAULT 'active' CHECK IN ('active','proposed','disabled','rejected') — НОВОЕ (lifecycle D-6).
+- `linked_strategy_task` VARCHAR(64) NULL — НОВОЕ, FK → strategy_tasks(id) ТОЛЬКО в миграции (локальный Base без ORM-FK, протокол 4 дефектов).
+- `added_by` VARCHAR(16) NULL — НОВОЕ, FK → team(id) в миграции; автор задания (D-5.1).
+- `receiver_user_id` VARCHAR(16) NULL — НОВОЕ, FK → team(id) в миграции; кому доставлено сейчас (D-5 служебное).
+- `routing_reason` VARCHAR(16) NULL CHECK IN ('added_by','competency') — НОВОЕ, причина маршрутизации (D-5 служебное).
+- `created_at` TIMESTAMPTZ NOT NULL DEFAULT now() — без изменений.
+
+### 13.2 Эндпоинты /v1/sources (конверт {ok,data}; ошибки {ok:false,error:{code,message}})
+- GET /v1/sources?status=&active=&limit= — любой авторизованный; фильтры опциональны.
+- POST /v1/sources — создание. Роль manager/admin ИЛИ ПЕТРУШКА (proposed). added_by = get_current_user (клиент не задаёт).
+- PATCH /v1/sources/{id} — правка полей type|url|handle|keywords|status|linked_strategy_task; id/added_by/created_at неизменяемы.
+- POST /v1/sources/{id}/approve — только receiver (адресат D-5); переводит status='proposed'→'active'.
+- POST /v1/sources/{id}/reject — только receiver; status→'rejected'.
+- DELETE /v1/sources/{id} — manager/admin (soft: status='disabled').
+Enforcement: role_key ∈ {manager,admin} через _is_manager() (эталон team/routes.py); адресность approve/reject — по receiver_user_id == user.id. Полный permissions[]-RBAC — вне scope (Stage-3 JWT).
+
+### 13.3 Валидация (ValidationError → 422 VALIDATION_ERROR)
+- `type` ∈ набора 13.1; `url` после trim не пуст; каждый keyword — непустая строка.
+- `status` ∈ набора 13.1; `linked_strategy_task`, если задан, существует в strategy_tasks; `added_by`/`receiver_user_id`, если заданы, существуют в team и status='active'.
+- POST от ПЕТРУШКИ обязан ставить status='proposed'; approve/reject на не-proposed → 409 CONFLICT.
+
+### 13.4 Маршрутизация proposed (D-5, зафиксировано ТЗ §5.3)
+При создании источника со status='proposed':
+1. Если added_by задан и его team.status='active' → receiver_user_id=added_by, routing_reason='added_by'.
+2. Иначе → по компетенции: пользователи team с status='active' и непустым пересечением competencies[] с keywords[]/linked_strategy_task.monitoring_focus → receiver_user_id первого подходящего, routing_reason='competency'.
+3. Fallback «некуда» → тоже по компетенции (п.2). Если совпадений нет — receiver_user_id=NULL (в UI не доставлено, требует ручного назначения).
+Approve/Reject доступны ТОЛЬКО пользователю receiver_user_id (не всей роли).
+
+### 13.5 Контекст ПЕТРУШКИ (owlContext) — закрытие gap D-1
+owlContext() дополняется:
+- `activeSources` — источники со status='active', нормализованы до {id,type,url,keywords,linked_strategy_task,status}.
+- `strategy` — заголовок/сценарий из M.strategy (закрытие G-2 gap-отчёта D-1).
+Оба поля подмешиваются во ВСЕ 6 веток (all + goal/project/client/deal/task) тем же паттерном withST(), что и strategyTasks. Пустые массивы не ломают route/object-контекст. owlContextDealIds() не трогается.
+
+### 13.6 Frontend-интеграция
+- js/api.js: флаг SOURCES_READY:true; методы loadSources(), createSource(data), updateSource(id,data), approveSource(id), rejectSource(id) для /v1/sources.
+- app.objects.js::_loadAllData(): loadSources() в Promise.all, destructuring, allEmpty, apiData, this.M.sources — БЕЗ подмены production mock-снимком (протокол Блока C).
+- js/mock.objects.js: пустая и mock-модели получают sources:[].
+- Легаси-UI (строки ~3504–3576) переводится с локального push({id:'SRC'...}) на createSource() BFF; локальная мутация srcToggle → PATCH status.
+
+### 13.7 UI «Мой день»
+Виджет «Предложения на мониторинг (N)» = источники status='proposed' с receiver_user_id == текущий пользователь; действия Одобрить/Отклонить (approve/reject). Одобренный → status='active' и попадает в owlContext активных источников; отклонённый → 'rejected'. Виджет рендерится в js/app.objects.js::vMyDay4() как отдельная зона.
+
+### 13.8 Границы scope
+В scope: ревизия sources (1a), CRUD+approve/reject, маршрутизация D-5, owlContext activeSources+strategy, frontend M.sources+SOURCES_READY, виджет «Мой день».
+Вне scope: реальные внешние скрейперы (mock-слой сигналов), cron/авто-рекомендации (v2), лента мониторинга «по какому источнику» (DoD D п.5 — под-шаг Блока A-3), полный permissions[]-RBAC.
+
+### 13.9 Definition of Done (по ТЗ §5.3)
+1. owlContext() включает route/объект + strategy + активные strategyTasks + активные sources.
+2. /v1/sources поддерживает типы news/supplier/competitor/market/tech и роль-автора (added_by).
+3. ПЕТРУШКА может создать источник со status='proposed'.
+4. proposed попадает в «Мой день» правильного пользователя по D-5; approve/reject доступны только receiver.
+5. Миграция проходит на PostgreSQL без потери существующих строк (таблица пуста); git diff --check=0; router зарегистрирован; /v1/strategy, strategy_tasks и route/object-контекст без регрессий.
+
+Флаг: SOURCES_READY: false → true (проставляется на Шаге frontend).
