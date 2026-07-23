@@ -260,3 +260,36 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 > repo==prod байт-сверкой (api.js 10865 B), visual smoke PASS.
 > Верификация: независимо Архитектор (raw@SHA сам) и Ревизор — оба PASS.
 > Осталось по §12: owlContext §12.6 → DoD §12.8.
+
+> **2026-07-23, owlContext §12.6 (6d872db4a1d6563228e4f3165de48d5b8da7c8ce):**
+> js/app.objects.js — owlContext() дополнена полем strategyTasks: активные
+> задачи (status='active') нормализуются до {id,title,owner_id,monitoring_focus,
+> linked_scenario,priority,status}; monitoring_focus→[] фолбэк; хелпер withST(o)
+> подмешивает поле во ВСЕ 6 веток возврата (all + goal/project/client/deal/task).
+> owlContextDealIds() не тронут. node --check OK. repo==prod (264974 B).
+> Верификация: Архитектор raw@6d872db сам — PASS; visual smoke на проде — PASS.
+> Известные хвосты: двойной init()/loadFromAPI в консоли (не влияет на данные);
+> mock.objects.js без поля strategyTasks (в mock-режиме массив пуст — корректно).
+
+## Блок C (strategy_tasks) — ПРИНЯТ 2026-07-23
+
+> DoD §12.8 — приёмка Архитектора:
+> [PASS] #1 миграция 010_strategy_tasks, strategy не изменена (8b8a5d8)
+> [PASS] #2 CRUD /v1/strategy/tasks {ok,data}, smoke 200 (8b8a5d8)
+> [PASS] #4 frontend M.strategyTasks, без подмены M.tasks/M.strategy (8da69bf)
+> [PASS] #5 owlContext active-only + monitoring_focus (6d872db)
+> [PASS] #7 git diff --check=0, регистрация router, /v1/strategy и
+>        route/object-контекст без регрессий
+> [ПРИНЯТО С ОГОВОРКОЙ] #3 RBAC: enforce на запись = dev-fallback STUB
+>        (get_current_user без role_key); manager/admin-контроль активируется
+>        с реальным JWT — известный Stage-3 blocker (см. Блок E).
+> [ТЕХДОЛГ] #6 автотесты (pytest CRUD/401/403/404/validation/active-inactive
+>        + frontend smoke) НЕ написаны; только ручная верификация.
+
+## ТЕХДОЛГ Этапа-2
+
+> - #6 §12.8: автотесты strategy_tasks (pytest по эталону backend/packages).
+> - Двойной init()/loadFromAPI/Splitter в консоли прода — двойная инициализация
+>   Alpine; на данные/функциональность не влияет, требует разбора.
+> - mock.objects.js: добавить strategyTasks: [] для полноты mock-модели.
+> - RBAC strategy_tasks enforce — со Stage-3 JWT.
