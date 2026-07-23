@@ -315,6 +315,7 @@ const AGL = {
   STRATEGY_READY:  true,
   DEALS_READY:     true,   // GET/PATCH /v1/deals   ✅ backend активен
   TASKS_READY:     true,   // GET/PATCH /v1/tasks   ✅ backend активен
+  STRATEGY_TASKS_READY:  true,
 
   // —— Calendar (M7) ——
   async loadCalendar(from, to) {
@@ -327,6 +328,10 @@ const AGL = {
   // —— Strategy (M4) ——
   async loadStrategy()        { return apiFetch('/v1/strategy'); },
   async updateStrategy(data)  { return apiFetch('/v1/strategy', { method: 'PUT', data }); },
+  async loadStrategyTasks()          { return safeLoad('/v1/strategy/tasks?limit=100'); },
+  async createStrategyTask(data)     { return apiFetch('/v1/strategy/tasks', { method: 'POST', data }); },
+  async updateStrategyTask(id, data) { return apiFetch(`/v1/strategy/tasks/${id}`, { method: 'PATCH', data }); },
+  async deleteStrategyTask(id)       { return apiFetch(`/v1/strategy/tasks/${id}`, { method: 'DELETE' }); },
 };
 
 window.AGL = AGL;

@@ -30,7 +30,7 @@ function appObjects() {
 
     async _loadAllData() {
       // Don't swallow errors — let 401/403 propagate so loadFromAPI can refresh
-      const [deals, goals, tasks, team, packages, artifacts, content, reports, clients] = await Promise.all([
+      const [deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks] = await Promise.all([
         window.AGL.loadDeals(),
         window.AGL.loadGoals(),
         window.AGL.loadTasks(),
@@ -40,8 +40,9 @@ function appObjects() {
         window.AGL.loadContent(),
         window.AGL.loadReports(),
         window.AGL.loadClients(),
+        window.AGL.loadStrategyTasks(),
       ]);
-      return { deals, goals, tasks, team, packages, artifacts, content, reports, clients };
+      return { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks };
     },
 
 // M6-a (Класс A): подключение уже существующих AGL AI-методов. Non-fatal: сбой AI не рушит основную загрузку.
@@ -90,7 +91,7 @@ source: 'ai',
         tryCount++;
         try {
           const data = await this._loadAllData();
-          const { deals, goals, tasks, team, packages, artifacts, content, reports, clients } = data;
+          const { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks } = data;
 
           // Deals: map BFF fields to mock format
           // BFF: name, stage, region, culture, finance, score, signal, need_type, industry, owner_id, owner_sales, goal_id
@@ -111,7 +112,8 @@ source: 'ai',
             return false;
           }
 
-          this.apiData = { deals, goals, tasks, team, packages, artifacts, content, reports, clients };
+          this.apiData = { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks };
+          this.M.strategyTasks = strategyTasks || [];
 
           // Map BFF format to mock format
           const STAGE_MAP = { lead: 'Зацепка', assess: 'Оценка', proposal: 'Договор', deal: 'Проектирование', won: 'Реализация', lost: 'Проиграна', service: 'Сервис', cancelled: 'Отменена' };
