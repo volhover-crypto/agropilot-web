@@ -293,3 +293,40 @@ M1 Де-IoT/терминология ✅ · M2 Устранение заглуш
 >   Alpine; на данные/функциональность не влияет, требует разбора.
 > - mock.objects.js: добавить strategyTasks: [] для полноты mock-модели.
 > - RBAC strategy_tasks enforce — со Stage-3 JWT.
+
+## Блок E-seed — ПРИНЯТ 2026-07-23
+
+> 011_team_competencies_seed.sql (43817f27e1675ae64ea9f24792ad57693a89c97d):
+> идемпотентное наполнение team.competencies[] по role_key.
+> manager(U1,U2)=[стратегия,клиенты,сделки]; engineer(U3,U5)=[поставщики
+> оборудования,агротех,сопредельные рынки]; smm(U4)=[агро-инфополе,соцсети,контент].
+> Применено: UPDATE 2/2/1. Верификация: Архитектор raw@full SHA сам + psql SELECT — PASS.
+> Предусловие маршрутизации proposed (Блок D D-5.2/D-5.3) выполнено.
+
+## Блок D (sources revision + proposed routing) — ПРИНЯТ 2026-07-24
+
+> **2026-07-24, миграция K1 (955f753f):** 012_sources_revision.sql —
+> ревизия таблицы sources: CHECK type-набор ТЗ (news/supplier/competitor/market/tech),
+> status/routing/FK (status VARCHAR(16) DEFAULT 'active', linked_strategy_task,
+> added_by, receiver_user_id, routing_reason). Таблица была пуста — без потери данных.
+
+> **2026-07-24, backend K2 (5f4f6486):** sources backend — VALID_TYPES ТЗ, RBAC
+> (_is_manager()), D-5 routing (added_by→receiver/competency), approve/reject
+> эндпоинты, 3 новых поля. Эталон backend/packages, протокол 4 дефектов соблюдён.
+
+> **2026-07-24, frontend K3 (94f9bdb3):** js/api.js — SOURCES_READY:true,
+> loadSources/createSource/updateSource/approveSource/rejectSource;
+> app.objects.js — M.sources в _loadAllData(), owlContext activeSources+strategy.
+
+> **2026-07-24, vMyDay4 K4 (4864137):** app.objects.js — виджет «Предложения
+> на мониторинг» зона 5: sources status='proposed' с receiver_user_id==me(U1 stub
+> до JWT); кнопки Одобрить/Отклонить. §13.7 выполнен.
+
+> DoD §13.9 — приёмка Архитектора:
+> [PASS] #1 owlContext activeSources+strategy — K3 (94f9bdb3)
+> [PASS] #2 /v1/sources типы news/supplier/competitor/market/tech — K2 (5f4f6486)
+> [PASS] #3 ПЕТРУШКА POST status=proposed — K2 (5f4f6486)
+> [PASS] #4 proposed → «Мой день» receiver_user_id + approve/reject — K2+K4
+> [PASS] #5 миграция без потери строк, git diff --check=0, router зарегистрирован
+> [ПРИНЯТО С ОГОВОРКОЙ] RBAC: me=U1 stub до JWT (Stage-3 blocker, Блок E)
+> HEAD на момент приёмки: 48641374863b5fa0058e9175825bf97725cac429
