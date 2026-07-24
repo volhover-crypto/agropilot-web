@@ -637,3 +637,25 @@ owlContext() дополняется:
 
 Приёмка: #/strategy рендерит список из M.strategyTasks (или пустое состояние),
          консоль без красных ошибок, node --check pass.
+
+## 12.11 Мониторинг: рендер источников под реальную схему sources (Блок D)
+
+Файл: js/app.objects.js, метод vMonitoring(), блок «источники» (this.M.sources.map).
+Причина: вью читает старую mock-схему (value/scope/industry/last), которых нет в backend
+sources.to_dict() (реально: id/type/url/handle/keywords/active/status). На реальных данных —
+undefined и КРАСШ на s.last.slice(5) (TypeError по undefined).
+
+Backend НЕ трогаем. Маппинг полей во вью (блок источников):
+  s.value          -> s.url
+  s.scope          -> убрать
+  s.industry       -> s.keywords (теги-пилюли, join по keyword)
+  s.last.slice(5)  -> УДАЛИТЬ (нет поля даты; иначе TypeError)
+  добавить s.handle рядом с url при наличии
+  active / type / id -> без изменений (совпадают с backend)
+Защита: (this.M.sources || []) — пустой список не должен ронять вью.
+
+Блок «сигналы» (this.M.signals) — mock, НЕ трогаем (нет backend /v1/signals).
+Кнопки data-src-scan / data-src-toggle — оставить как есть (обработчики к backend — отдельный шаг).
+
+Приёмка: раздел «Мониторинг» рендерит источники из реальных sources (url/handle/type/keywords/
+статус активности) без TypeError; пустой список не роняет вью; node --check pass; консоль чистая.
