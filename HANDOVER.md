@@ -384,3 +384,17 @@ proposed).
 ОСТАЁТСЯ: Блок A (7 разделов «полноценно» + /v1/clients вместо derive), Блок B («Справочник»
 tree /v1/catalog), сквозной smoke D-5 (proposed→approve→owlContext) с наполнением данных,
 хвост C (CRUD-UI создания стратег.задач).
+
+### 2026-07-24 — §12.12 форма «+ Источник» пишет в backend (DONE)
+Контракт: 8a144acffd4b82b617be7355afb3c878de7776d8 (CONTRACTS.md §12.12)
+Код:      79c4a1236b3a1ccde19ad27c1ee6691e314e5d57 (js/app.objects.js, srcAddModal)
+Суть: форма делала mock this.M.sources.push(value/scope/industry) — источник пропадал
+после перезагрузки. Теперь POST /v1/sources через window.AGL.createSource:
+{type,url,handle||null,keywords[],status:'active'}. added_by НЕ шлём с фронта —
+проставляет backend (_route_source, D-5). Успех -> loadSources()+render()+toast.
+Ошибка/сеть -> toast, форма не падает.
+Приёмка: node --check CHECK_OK; raw-verify обоих SHA Архитектором PASS;
+UI-smoke persist после Ctrl+Shift+R — PASS; консоль без ошибок по sources.
+Известный фон (не регресс): 404 на /v1/reports и /v1/orchestrator/* — роутеров нет в
+backend/, safeLoad отдаёт fallback штатно.
+Не тронуты: vMonitoring §12.11, блок сигналов, scan/toggle, backend.
