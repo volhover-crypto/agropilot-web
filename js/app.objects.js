@@ -3548,10 +3548,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
     // ======== ЧАНК 2.3: МОНИТОРИНГ РЫНКА ========
     vMonitoring() {
-      const rows = this.M.sources.map(s => `<div class="card-2 p-3 flex items-center gap-3">
+      const rows = (this.M.sources || []).map(s => `<div class="card-2 p-3 flex items-center gap-3">
         <span style="color:${s.active ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
         <span class="pill">${s.type}</span>
-        <div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">${this.esc(s.value)}</div><div class="text-[12px]" style="color:var(--text-dim)">${s.scope}${s.industry ? ' · ' + s.industry : ''} · проверен ${s.last.slice(5)}</div></div>
+        <div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">${this.esc(s.url || '')}${s.handle ? ' · ' + this.esc(s.handle) : ''}</div><div class="text-[12px]" style="color:var(--text-dim)">${s.active ? 'активен' : 'пауза'} ${(s.keywords||[]).map(k=>`<span class="pill text-[10px]">${this.esc(k)}</span>`).join('')}</div></div>
         <button class="btn text-[12px]" data-src-scan="${s.id}">Проверить</button>
         <button class="btn text-[12px]" data-src-toggle="${s.id}">${s.active ? 'Пауза' : 'Вкл'}</button>
       </div>`).join('');
