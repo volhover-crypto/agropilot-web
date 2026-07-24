@@ -672,7 +672,14 @@ vSkillsMy() {
       // S9: онбординг пустой базы — мастер «Клиент → Источник → Сделка»
       const wiz = (M.clients.length === 0 || M.deals.length === 0) ? this.wizardCard() : '';
       const metrics = wiz ? '' : this.vMetrics();
-      return `<div class="grid grid-cols-1 gap-4">${wiz}${z1}${metrics}<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${z2}${z3}</div>${z4}</div>`;
+      // Зона 5 (Блок D §13.7): предложенные источники для получателя.
+      // me = STUB 'U1' (синхронно с backend get_current_user); заменить на JWT-identity в Stage-3.
+      const me = this.M.myId || 'U1';
+      const proposed = (M.sources || []).filter(s => s.status === 'proposed' && s.receiver_user_id === me);
+      const z5 = proposed.length ? `<div class="card p-4"><div class="label mb-3">Предложения на мониторинг · ${proposed.length}</div><div class="flex flex-col gap-2">${
+        proposed.map(s => `<div class="card-2 p-3 flex items-start gap-3"><div class="flex-1 min-w-0"><div class="text-sm font-medium leading-snug">${this.esc(s.url)}</div><div class="text-[12px]" style="color:var(--text-dim)">${this.esc(s.type)}${(s.keywords&&s.keywords.length)?' · '+this.esc(s.keywords.join(', ')):''}</div></div><div class="flex gap-2 shrink-0"><button class="btn text-[12px]" data-src-approve="${s.id}">Одобрить</button><button class="btn text-[12px]" data-src-reject="${s.id}">Отклонить</button></div></div>`).join('')
+      }</div></div>` : '';
+      return `<div class="grid grid-cols-1 gap-4">${wiz}${z1}${metrics}<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${z2}${z3}</div>${z4}${z5}</div>`;
     },
     // Мастер первого запуска (S9): 3 шага, галочки по факту наличия данных
     wizardCard() {
@@ -3780,6 +3787,8 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-src-scan]').forEach(n => n.onclick = () => this.srcScan(n.getAttribute('data-src-scan')));
       el.querySelectorAll('[data-signal-act]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.signalAction(n.getAttribute('data-signal-act')); });
       el.querySelectorAll('[data-src-toggle]').forEach(n => n.onclick = () => this.srcToggle(n.getAttribute('data-src-toggle')));
+  el.querySelectorAll('[data-src-approve]').forEach(n => n.onclick = async () => { await window.AGL.approveSource(n.getAttribute('data-src-approve')); await this.loadFromAPI(); this.render(); });
+  el.querySelectorAll('[data-src-reject]').forEach(n => n.onclick = async () => { await window.AGL.rejectSource(n.getAttribute('data-src-reject')); await this.loadFromAPI(); this.render(); });
       // чанк 2.4: клиенты
       const ca = el.querySelector('[data-cli-add]'); if (ca) ca.onclick = () => this.cliAddModal();
       const ci = el.querySelector('[data-cli-import]'); if (ci) ci.onclick = () => this.cliImportModal();
