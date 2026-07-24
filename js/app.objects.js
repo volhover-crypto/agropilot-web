@@ -3610,18 +3610,25 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     srcToggle(id) { const s = this.M.sources.find(x => x.id === id); if (s) { s.active = !s.active; this.render(); } },
     // модал добавления источника
     srcAddModal() {
-      const opts = this.M.SRC_TYPES.map(t => `<option>${t}</option>`).join('');
-      const inds = this.M.IND.map(i => `<option>${i}</option>`).join('');
+      const TYPES = [['news','Новости/RSS'],['supplier','Поставщик'],['competitor','Конкурент'],['market','Рынок'],['tech','Технологии']];
+      const opts = TYPES.map(t => `<option value="${t[0]}">${this.esc(t[1])}</option>`).join('');
       this.openModal('Добавить источник', `
         <label class="label">Тип</label><select id="m_type" class="input w-full mb-2">${opts}</select>
-        <label class="label">Значение (URL / @канал / ключевые слова)</label><input id="m_value" class="input w-full mb-2" placeholder="напр. agro.ru/feed" />
-        <label class="label">Привязка</label><select id="m_scope" class="input w-full mb-2"><option>глобальный</option><option>отрасль</option></select>
-        <label class="label">Отрасль (если привязка = отрасль)</label><select id="m_ind" class="input w-full"><option value="">—</option>${inds}</select>
-      `, () => {
+        <label class="label">URL</label><input id="m_url" class="input w-full mb-2" placeholder="напр. agro.ru/feed" />
+        <label class="label">Handle (@канал, необяз.)</label><input id="m_handle" class="input w-full mb-2" placeholder="@channel" />
+        <label class="label">Ключевые слова (через запятую)</label><input id="m_keywords" class="input w-full" placeholder="орошение, теплицы" />
+      `, async () => {
         const v = (id) => document.getElementById(id);
-        const val = v('m_value').value.trim(); if (!val) { this.toast('Укажите значение', 'err'); return false; }
-        this.M.sources.push({ id: 'SRC' + (this.M.sources.length + 1), type: v('m_type').value, value: val, scope: v('m_scope').value, industry: v('m_scope').value === 'отрасль' ? v('m_ind').value : '', active: true, last: this.M.TODAY });
-        this.toast('Источник добавлен', 'ok'); this.render(); return true;
+        const url = v('m_url').value.trim(); if (!url) { this.toast('Укажите URL', 'err'); return false; }
+        const handle = v('m_handle').value.trim();
+        const keywords = v('m_keywords').value.split(',').map(k => k.trim()).filter(Boolean);
+        const data = { type: v('m_type').value, url, handle: handle || null, keywords, status: 'active' };
+        try {
+          const r = await window.AGL.createSource(data);
+          if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка сохранения', 'err'); return false; }
+          this.M.sources = await window.AGL.loadSources();
+          this.render(); this.toast('Источник добавлен', 'ok'); return true;
+        } catch (e) { console.warn('[sources] create error', e); this.toast('Ошибка сети', 'err'); return false; }
       });
     },
 
