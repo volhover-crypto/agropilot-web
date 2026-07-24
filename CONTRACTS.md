@@ -659,3 +659,24 @@ Backend НЕ трогаем. Маппинг полей во вью (блок и�
 
 Приёмка: раздел «Мониторинг» рендерит источники из реальных sources (url/handle/type/keywords/
 статус активности) без TypeError; пустой список не роняет вью; node --check pass; консоль чистая.
+
+## 12.12 Мониторинг: форма «+ Источник» пишет в backend sources (persist, active)
+
+Файл: js/app.objects.js, метод srcAddModal().
+Проблема: форма делала this.M.sources.push(...) (mock value/scope/industry) без POST →
+источник пропадал после перезагрузки. Backend: createSource -> POST /v1/sources.
+Backend требует: type ∈ {news,supplier,competitor,market,tech}, url (обязат.),
+handle (опц.), keywords (list), status ∈ VALID_STATUS.
+
+Изменения (srcAddModal):
+  - Поля: Тип (select value=backend-ключ, подпись рус.), URL (обязат.), Handle (опц.),
+    Ключевые слова (строка через запятую -> keywords[]).
+  - Убраны value/scope/industry и this.M.sources.push(...).
+  - onSubmit async: r = await createSource({type,url,handle,keywords,status:'active'});
+    r.ok===false -> toast(err), return false; успех -> M.sources = await loadSources();
+    render(); toast('Источник добавлен','ok').
+  - added_by НЕ шлём с фронта — проставляет backend (текущий пользователь / маршрутизация D-5).
+
+НЕ трогаем: vMonitoring §12.11, блок сигналов, кнопки scan/toggle, backend.
+Приёмка: источник сохраняется (POST 200), виден, ОСТАЁТСЯ после Ctrl+Shift+R; пустой url ->
+toast без падения; node --check pass; консоль чистая.
