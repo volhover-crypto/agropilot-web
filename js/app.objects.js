@@ -183,6 +183,10 @@ source: 'ai',
             avatar: u.avatar || '',
             cap: u.cap || 5,
             canConfirm: u.can_confirm || false,
+            role_key:     u.role_key || null,
+            competencies: u.competencies || [],
+            permissions:  u.permissions || [],
+            status:       u.status || 'active',
           }));
 
           this.M.clients = (clients || []).map(c => ({
