@@ -206,6 +206,9 @@ const AGL = {
   async loadTeam() {
     return safeLoad('/v1/team?limit=100');
   },
+  async patchMember(id, data) {
+    return apiFetch('/v1/team/' + id, { method: 'PATCH', data });
+  },
 
   // ─── Sources (safeLoad) ───
   async loadSources() {
@@ -327,6 +330,7 @@ const AGL = {
   STRATEGY_TASKS_READY:  true,
   STRATEGY_VIEW_READY:   true,
   SOURCES_READY:         true,
+  TEAM_RBAC_READY:      true,   // PATCH /v1/team/{id}
 
   // —— Calendar (M7) ——
   async loadCalendar(from, to) {

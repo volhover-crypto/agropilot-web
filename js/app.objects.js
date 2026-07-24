@@ -2176,6 +2176,23 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
     teamLoadColor(pct) { return pct >= 100 ? 'var(--err)' : pct >= 70 ? 'var(--warn)' : 'var(--ok)'; },
     teamToggle(id) { this.teamSel = this.teamSel === id ? null : id; this.render(); },
+    async saveMemberRBAC(id) {
+      const root = document.getElementById("view") || document;
+      const csv = (sel) => { const el = root.querySelector(sel); if (!el) return undefined; return el.value.split(",").map(x => x.trim()).filter(Boolean); };
+      const val = (sel) => { const el = root.querySelector(sel); return el ? el.value : undefined; };
+      const data = {
+        competencies: csv('[data-rbac-comp="' + id + '"]'),
+        permissions:  csv('[data-rbac-perm="' + id + '"]'),
+        status:       val('[data-rbac-status="' + id + '"]'),
+        role_key:     val('[data-rbac-rolekey="' + id + '"]'),
+      };
+      try {
+        const r = await window.AGL.patchMember(id, data);
+        if (r && r.ok === false) { console.warn("[RBAC] patch failed", r); return; }
+        this.M.team = await window.AGL.loadTeam();
+        this.render();
+      } catch (e) { console.warn("[RBAC] patchMember error", e); }
+    },
     teamReassignModal(dealId) {
       const d = this.dealById(dealId); if (!d) return;
       const opts = (this.M.team || []).map(u => `<option value="${u.name}" ${d.owner === u.name ? 'selected' : ''}>${u.avatar} ${this.esc(u.name)} — ${this.esc(u.role)}</option>`).join('');
@@ -2192,6 +2209,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     vTeam() {
       const team = this.M.team || [];
       const totalDeals = (this.M.deals || []).length;
+    const _MGR_KEYS = ['manager','admin'];
+    const _meId = this.currentUserId();
+    const _me = (this.M.team||[]).find(t => t.id === _meId);
+    const mgr = !!(_me && _MGR_KEYS.includes(_me.role_key));
       const cards = team.map(u => {
         const L = this.teamLoad(u);
         const open = this.teamSel === u.id;
@@ -2226,7 +2247,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
               <span>💰 ${this.money(L.amount)}</span><span>✅ задач: ${L.ts.length}</span>${L.overdue ? `<span style="color:var(--err)">🔴 просрочено: ${L.overdue}</span>` : ''}
             </div>
           </div>
-          ${open ? `<div class="mt-2"><div class="label mb-1">Сделки</div>${dealRows}${taskRows ? `<div class="label mt-2 mb-1">Задачи</div>${taskRows}` : ''}</div>` : ''}
+          ${open ? `<div class="mt-2"><div class="label mb-1">RBAC</div><div class="flex flex-col gap-2 text-[12px]"><div><span style="color:var(--text-mute)">role_key:</span> ${this.esc(u.role_key||`—`)}</div><div class="flex gap-2 flex-wrap items-center"><span style="color:var(--text-mute)">competencies:</span>${(u.competencies||[]).map(c=>`<span class="pill text-[11px]">${this.esc(c)}</span>`).join('')||`<span style="color:var(--text-mute)">—</span>`}</div><div class="flex gap-2 flex-wrap items-center"><span style="color:var(--text-mute)">permissions:</span>${(u.permissions||[]).map(p=>`<span class="pill text-[11px]">${this.esc(p)}</span>`).join('')||`<span style="color:var(--text-mute)">—</span>`}</div><div><span style="color:var(--text-mute)">status:</span> ${this.esc(u.status||`—`)}</div></div>${mgr ? `<div class="mt-2 flex flex-col gap-2"><input class="input text-[12px]" data-rbac-comp="${u.id}" placeholder="competencies (comma)" value="${this.esc((u.competencies||[]).join(', '))}"><input class="input text-[12px]" data-rbac-perm="${u.id}" placeholder="permissions (comma)" value="${this.esc((u.permissions||[]).join(', '))}"><select class="input text-[12px]" data-rbac-status="${u.id}">${['active','invited','disabled'].map(o=>`<option value="${o}" ${(u.status)===o?'selected':''}>${o}</option>`).join('')}</select><select class="input text-[12px]" data-rbac-rolekey="${u.id}">${['manager','member'].map(o=>`<option value="${o}" ${(u.role_key)===o?'selected':''}>${o}</option>`).join('')}</select><button class="btn text-[12px]" data-team-rbac-save="${u.id}">Сохранить</button></div>` : ''}</div><div class="mt-2"><div class="label mb-1">Сделки</div>${dealRows}${taskRows ? `<div class="label mt-2 mb-1">Задачи</div>${taskRows}` : ''}</div>` : ''}
         </div>`;
       }).join('');
       return `<div class="flex flex-col gap-3">
@@ -3792,6 +3813,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       // 6.8: команда
       el.querySelectorAll('[data-team-toggle]').forEach(n => n.onclick = () => this.teamToggle(n.getAttribute('data-team-toggle')));
       el.querySelectorAll('[data-team-reassign]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.teamReassignModal(n.getAttribute('data-team-reassign')); });
+      el.querySelectorAll('[data-team-rbac-save]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.saveMemberRBAC(n.getAttribute('data-team-rbac-save')); });
       // 6.7: цели (Стратегия → Цели)
       el.querySelectorAll('[data-goal-toggle]').forEach(n => n.onclick = () => this.goalToggle(n.getAttribute('data-goal-toggle')));
       el.querySelectorAll('[data-goal-pin]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.goalPinModal(n.getAttribute('data-goal-pin')); });
