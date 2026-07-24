@@ -325,6 +325,7 @@ const AGL = {
   DEALS_READY:     true,   // GET/PATCH /v1/deals   ✅ backend активен
   TASKS_READY:     true,   // GET/PATCH /v1/tasks   ✅ backend активен
   STRATEGY_TASKS_READY:  true,
+  STRATEGY_VIEW_READY:   true,
   SOURCES_READY:         true,
 
   // —— Calendar (M7) ——

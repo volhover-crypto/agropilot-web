@@ -607,3 +607,33 @@ owlContext() дополняется:
 5. Миграция проходит на PostgreSQL без потери существующих строк (таблица пуста); git diff --check=0; router зарегистрирован; /v1/strategy, strategy_tasks и route/object-контекст без регрессий.
 
 Флаг: SOURCES_READY: false → true (проставляется на Шаге frontend).
+
+## 12.9 Вью-раздел «Стратегия» (frontend, Alpine SPA)
+
+Файл:         js/app.objects.js
+Точка врезки: диспетчер вью, ветка `route === 'strategy'` -> this.vStrategy();
+              ДОБАВЛЯЕТСЯ после ветки 'settings' (стр. ~472), ДО финальной
+              else-заглушки «Раздел не найден» (стр. ~473 / полный ~758).
+Метод:        vStrategy() — новый, по паттерну соседних vXxx().
+
+Источник данных (read-only, из уже готового §12.5):
+  - this.M.strategyTasks — массив стратегических задач (наполнен в loadFromAPI,
+    app.objects.js:117; флаг STRATEGY_TASKS_READY: true, api.js:327).
+  - НИКАКИХ новых fetch: рендер только уже загруженного this.M.strategyTasks.
+
+Рендер (минимальный, только просмотр — CRUD-UI отдельным шагом):
+  - Заголовок раздела «Стратегия».
+  - Список задач: title, priority, status, monitoring_focus[] (как теги).
+  - Пустое состояние: «Стратегических задач пока нет».
+
+Флаг готовности: STRATEGY_VIEW_READY (реестр флагов §12).
+
+НЕ ТРОГАЕМ:
+  - Диспетчерные ветки других разделов (451–472) — только вставка одной ветки.
+  - else-заглушку (473/758) — остаётся fallback.
+  - §12.5 data-слой (api.js CRUD, loadFromAPI, M.strategyTasks) — без изменений.
+  - §12.6 «Контекст ПЕТРУШКИ» (owlContext) — НЕ трогать, номер занят.
+  - Backend /v1/strategy/tasks — без изменений.
+
+Приёмка: #/strategy рендерит список из M.strategyTasks (или пустое состояние),
+         консоль без красных ошибок, node --check pass.

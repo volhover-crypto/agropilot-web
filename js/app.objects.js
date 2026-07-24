@@ -470,6 +470,7 @@ await this._loadAiLayer();
         else if (this.route === 'client') html = this.vClientCard(this.routeArg);
         else if (this.route === 'deal') html = this.vDealCard(this.routeArg);
         else if (this.route === 'settings') html = this.vSettings();
+        else if (this.route === 'strategy') html = this.vStrategy();
         else html = `<div class="card p-8 text-center" style="color:var(--text-mute)"><div class="text-2xl font-semibold mb-2">Раздел не найден</div><div class="mb-4">Такого раздела нет или он ещё не подключён.</div><button class="btn btn-accent" data-go="myday:">На главную</button></div>`;
         el.innerHTML = `<div class="fade-in">${html}</div>`;
         this.bindView();
@@ -3673,6 +3674,27 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.M.agentConfig.privacyLocalOnly = !this.M.agentConfig.privacyLocalOnly;
       this.toast(this.M.agentConfig.privacyLocalOnly ? 'Приватные данные — только локальные LLM' : 'ВНИМАНИЕ: приватность ослаблена', this.M.agentConfig.privacyLocalOnly ? 'ok' : 'err');
       this.render();
+    },
+    vStrategy() {
+        const list = this.M.strategyTasks || [];
+        if (!list.length) {
+            return `<div class="card p-4" style="color:var(--text-mute)">Стратегических задач пока нет</div>`;
+        }
+        const rows = list.map(t => {
+            const tags = (t.monitoring_focus || []).map(f => `<span class="pill text-[11px]">${this.esc(f)}</span>`).join('');
+            return `<div class="card-2 p-3 flex flex-col gap-2">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="text-sm font-medium">${this.esc(t.title)}</div>
+                    <span class="pill text-[11px]">${this.esc(t.priority)}</span>
+                </div>
+                <div class="text-[12px]" style="color:var(--text-mute)">${this.esc(t.status)}</div>
+                <div class="flex gap-2 flex-wrap">${tags}</div>
+            </div>`;
+        }).join('');
+        return `<div class="card p-4">
+            <div class="text-2xl font-semibold mb-3">Стратегия</div>
+            <div class="flex flex-col gap-2">${rows}</div>
+        </div>`;
     },
     vSettings() {
       const A = this.M.agentConfig;
