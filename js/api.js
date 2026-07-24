@@ -214,6 +214,15 @@ const AGL = {
   async createSource(data) {
     return apiFetch('/v1/sources', { method: 'POST', data });
   },
+  async updateSource(id, data) {
+    return apiFetch('/v1/sources/' + id, { method: 'PATCH', data });
+  },
+  async approveSource(id) {
+    return apiFetch('/v1/sources/' + id + '/approve', { method: 'POST' });
+  },
+  async rejectSource(id) {
+    return apiFetch('/v1/sources/' + id + '/reject', { method: 'POST' });
+  },
 
   // ─── Reports (safeLoad) ───
   async loadReports() {
@@ -316,6 +325,7 @@ const AGL = {
   DEALS_READY:     true,   // GET/PATCH /v1/deals   ✅ backend активен
   TASKS_READY:     true,   // GET/PATCH /v1/tasks   ✅ backend активен
   STRATEGY_TASKS_READY:  true,
+  SOURCES_READY:         true,
 
   // —— Calendar (M7) ——
   async loadCalendar(from, to) {

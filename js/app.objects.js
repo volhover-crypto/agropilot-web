@@ -30,7 +30,7 @@ function appObjects() {
 
     async _loadAllData() {
       // Don't swallow errors — let 401/403 propagate so loadFromAPI can refresh
-      const [deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks] = await Promise.all([
+      const [deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks, sources] = await Promise.all([
         window.AGL.loadDeals(),
         window.AGL.loadGoals(),
         window.AGL.loadTasks(),
@@ -41,8 +41,9 @@ function appObjects() {
         window.AGL.loadReports(),
         window.AGL.loadClients(),
         window.AGL.loadStrategyTasks(),
+        window.AGL.loadSources(),
       ]);
-      return { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks };
+      return { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks, sources };
     },
 
 // M6-a (Класс A): подключение уже существующих AGL AI-методов. Non-fatal: сбой AI не рушит основную загрузку.
@@ -91,7 +92,7 @@ source: 'ai',
         tryCount++;
         try {
           const data = await this._loadAllData();
-          const { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks } = data;
+          const { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks, sources } = data;
 
           // Deals: map BFF fields to mock format
           // BFF: name, stage, region, culture, finance, score, signal, need_type, industry, owner_id, owner_sales, goal_id
@@ -112,8 +113,9 @@ source: 'ai',
             return false;
           }
 
-          this.apiData = { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks };
+          this.apiData = { deals, goals, tasks, team, packages, artifacts, content, reports, clients, strategyTasks, sources };
           this.M.strategyTasks = strategyTasks || [];
+        this.M.sources = sources || [];
 
           // Map BFF format to mock format
           const STAGE_MAP = { lead: 'Зацепка', assess: 'Оценка', proposal: 'Договор', deal: 'Проектирование', won: 'Реализация', lost: 'Проиграна', service: 'Сервис', cancelled: 'Отменена' };
@@ -1124,7 +1126,19 @@ owlUrgent() { return (this.M.owlSuggestions || []).filter(o => o.grade === 'CONF
             status: t.status,
           }));
       } catch (e) { strategyTasks = []; }
-      const withST = o => ({ ...o, strategyTasks });
+      let activeSources = [];
+      try {
+        activeSources = (this.M.sources || [])
+          .filter(s => s && s.status === 'active')
+          .map(s => ({ id: s.id, type: s.type, url: s.url,
+                       keywords: Array.isArray(s.keywords) ? s.keywords : [],
+                       linked_strategy_task: s.linked_strategy_task ?? null,
+                       status: s.status }));
+      } catch (e) { activeSources = []; }
+      const strategy = (this.M.strategy && (this.M.strategy.title || this.M.strategy.scenario))
+        ? { title: this.M.strategy.title ?? null, scenario: this.M.strategy.scenario ?? null }
+        : null;
+      const withST = o => ({ ...o, strategyTasks, activeSources, strategy });
       const all = () => withST({ type: null, id: null, obj: null, icon: '🗂', label: 'Все объекты', sub: `${this.M.deals.length} сделок`, count: this.M.deals.length });
       if (!a) return all();
       try {
