@@ -136,7 +136,12 @@ const AGL = {
     if (params.status) qs.set('status', params.status);
     if (params.owner)  qs.set('owner',  params.owner);
     if (params.q)      qs.set('q',      params.q);
+    if (params.sort)   qs.set('sort',   params.sort);
+    if (params.order)  qs.set('order',  params.order);
     return safeLoad('/v1/leads?' + qs.toString(), { items: [], total: 0, limit: 50, offset: 0 });
+  },
+  async loadLeadsStats() {
+    return safeLoad('/v1/leads/stats', { total: 0, new: 0, active: 0, inactive: 0, converted: 0 });
   },
   async loadLead(id) { return apiFetch('/v1/leads/' + id); },
   async updateLead(id, data) { return apiFetch('/v1/leads/' + id, { method: 'PATCH', data }); },

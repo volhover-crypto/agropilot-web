@@ -1342,13 +1342,31 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     },
 
     // ======== ЧАНК 1.6: СПИСКИ ОБЪЕКТОВ ========
-    leadsState: { items: [], total: 0, limit: 50, offset: 0, status: '', q: '', loading: false },
+    leadsState: {
+    items: [], total: 0, limit: 50, offset: 0,
+    status: '', q: '', sort: 'name', order: 'asc',
+    stats: { total: 0, new: 0, active: 0, inactive: 0, converted: 0 },
+    loading: false, loaded: false,
+  },
+
+  LEAD_STATUS_UI: {
+    new:       { label: 'Новый',    cls: 'badge-gray'  },
+    active:    { label: 'В работе', cls: 'badge-green' },
+    inactive:  { label: 'Отклонён', cls: 'badge-mute'  },
+    converted: { label: 'Клиент',   cls: 'badge-blue'  },
+  },
 
   async leadsLoad() {
     const st = this.leadsState;
-    st.loading = true;
-    const d = await window.AGL.loadLeads({ limit: st.limit, offset: st.offset, status: st.status, q: st.q });
-    st.items = d.items || []; st.total = d.total || 0; st.loading = false;
+    st.loading = true; st.loaded = true;
+    const [d, stats] = await Promise.all([
+      window.AGL.loadLeads({ limit: st.limit, offset: st.offset, status: st.status,
+                             q: st.q, sort: st.sort, order: st.order }),
+      window.AGL.loadLeadsStats(),
+    ]);
+    st.items = d.items || []; st.total = d.total || 0;
+    st.stats = stats || st.stats;
+    st.loading = false;
     this.render();
   },
 
@@ -1367,39 +1385,97 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     this.leadsState.q = q; this.leadsState.offset = 0; this.leadsLoad();
   },
 
+  leadsSetLimit(n) {
+    const st = this.leadsState;
+    st.limit = parseInt(n, 10) || 50; st.offset = 0; this.leadsLoad();
+  },
+
+  async leadsConvert(id, name) {
+    if (!confirm('Создать клиента из лида ' + (name || id) + '?')) return;
+    try {
+      const res = await window.AGL.convertLead(id);
+      const st = this.leadsState;
+      const i = st.items.findIndex(l => l.id === id);
+      if (i >= 0 && res && res.lead) st.items[i] = res.lead;
+      st.stats = await window.AGL.loadLeadsStats();
+      this.render();
+      this.toast
+        ? this.toast('Клиент ' + ((res && res.client && res.client.id) || '') + ' создан')
+        : null;
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      const dup = msg.indexOf('already converted') >= 0 || msg.indexOf('409') >= 0;
+      this.toast
+        ? this.toast(dup ? 'Лид уже сконвертирован' : ('Ошибка: ' + msg))
+        : alert(dup ? 'Лид уже сконвертирован' : ('Ошибка: ' + msg));
+      if (dup) this.leadsLoad();
+    }
+  },
+
+  leadsSort(col) {
+    const st = this.leadsState;
+    if (st.sort === col) { st.order = st.order === 'asc' ? 'desc' : 'asc'; }
+    else { st.sort = col; st.order = 'asc'; }
+    st.offset = 0; this.leadsLoad();
+  },
+
   vLeads() {
     const st = this.leadsState;
-    if (!st.items.length && !st.total && !st.loading) { this.leadsLoad(); }
-    const page = Math.floor(st.offset / st.limit) + 1;
-    const pages = Math.max(1, Math.ceil(st.total / st.limit));
-    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const chip = (val, label) =>
-      `<button class="btn btn-sm ${st.status === val ? 'btn-primary' : ''}" data-lead-status="${val}">${label}</button>`;
-    const rows = st.items.map(l => `
-      <tr>
-        <td>${esc(l.id)}</td>
-        <td>${esc(l.name)}</td>
-        <td>${esc(l.status)}</td>
-        <td>${esc(l.contact_person)}</td>
-        <td>${esc(l.phone)}</td>
-        <td>${esc(l.owner)}</td>
-        <td>${esc(l.converted_client_id)}</td>
-      </tr>`).join('');
+    if (!st.loaded) { this.leadsLoad(); }
+    const e = (v) => this.esc(v == null ? '' : String(v));
+    const S = this.LEAD_STATUS_UI;
+    const from = st.total ? st.offset + 1 : 0;
+    const to = Math.min(st.offset + st.limit, st.total);
+
+    const tab = (val, label, n) =>
+      `<button class="btn text-[12px] ${st.status === val ? 'btn-accent' : ''}" data-lead-status="${val}">${label} ${n}</button>`;
+    const th = (col, label) =>
+      `<th class="cursor-pointer" data-lead-sort="${col}">${label}${st.sort === col ? (st.order === 'asc' ? ' ↑' : ' ↓') : ''}</th>`;
+
+    const rows = st.items.map(l => {
+      const ui = S[l.status] || { label: l.status, cls: 'badge-gray' };
+      const extra = (l.phone_extra || []).length;
+      const tel = l.phone
+        ? `<a href="tel:${e(l.phone)}">${e(l.phone)}</a>` +
+          (extra ? ` <span class="text-[11px]" title="${e((l.phone_extra || []).join(', '))}">+${extra}</span>` : '')
+        : '';
+      const canConvert = l.status === 'new' || l.status === 'active';
+      const acts =
+        (l.phone ? `<a class="btn text-[11px]" href="tel:${e(l.phone)}">Позвонить</a> ` : '') +
+        (canConvert ? `<button class="btn text-[11px]" data-lead-convert="${e(l.id)}" data-lead-name="${e(l.name)}">В клиенты</button> ` : '') +
+        `<button class="btn text-[11px]" data-lead-open="${e(l.id)}">Открыть</button>`;
+      const cell = (v) => `<td class="truncate max-w-[180px]" title="${e(v)}">${e(v)}</td>`;
+      return `<tr>
+        ${cell(l.name)}
+        ${cell(l.contact_person)}
+        <td class="whitespace-nowrap">${tel}</td>
+        <td><span class="badge ${ui.cls}">${ui.label}</span></td>
+        ${cell(l.owner)}
+        ${cell(l.comment)}
+        <td class="whitespace-nowrap">${acts}</td>
+      </tr>`;
+    }).join('');
+
+    const S2 = st.stats;
     return `
-      <div class="label">Лиды · ${st.total}${st.status ? ' · ' + esc(st.status) : ''}</div>
-      <div class="mb-2">
-        ${chip('', 'Все')} ${chip('new', 'Новые')} ${chip('active', 'Активные')}
-        ${chip('inactive', 'Неактивные')} ${chip('converted', 'Конвертированные')}
-        <input id="leadSearch" class="input" placeholder="Поиск: название, контакт, телефон"
-               value="${esc(st.q)}" >
+      <div class="label">Лиды</div>
+      <div class="flex flex-wrap gap-1 items-center mb-2">
+        ${tab('', 'Все', S2.total)}${tab('new', 'Новые', S2.new)}${tab('active', 'В работе', S2.active)}${tab('inactive', 'Отклонённые', S2.inactive)}${tab('converted', 'Клиенты', S2.converted)}
+        <input id="leadSearch" class="input flex-1 min-w-[180px] text-[13px]" placeholder="Поиск: название, контакт, телефон…" value="${e(st.q)}" />
       </div>
-      <table class="table"><thead><tr>
-        <th>ID</th><th>Название</th><th>Статус</th><th>Контакт</th><th>Телефон</th><th>Ответственный</th><th>Клиент</th>
-      </tr></thead><tbody>${rows}</tbody></table>
-      <div class="mt-2">
-        <button class="btn btn-sm" data-lead-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
-        <span class="px-2">Стр. ${page} из ${pages}</span>
-        <button class="btn btn-sm" data-lead-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
+      <div class="card p-0 overflow-hidden">
+        <table class="table w-full text-[13px]"><thead><tr>
+          ${th('name', 'Название')}<th>Контакт</th><th>Телефон</th>${th('status', 'Статус')}${th('owner', 'Ответственный')}<th>Комментарий</th><th>Действия</th>
+        </tr></thead><tbody>${rows || '<tr><td colspan="7" class="p-4 text-center">Нет данных</td></tr>'}</tbody></table>
+      </div>
+      <div class="flex items-center gap-2 mt-2 text-[12px]">
+        <span>${from}-${to} из ${st.total}</span>
+        <button class="btn text-[12px]" data-lead-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
+        <button class="btn text-[12px]" data-lead-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
+        <select id="leadLimit" class="input text-[12px] w-auto">
+          <option value="50" ${st.limit === 50 ? 'selected' : ''}>50</option>
+          <option value="100" ${st.limit === 100 ? 'selected' : ''}>100</option>
+        </select>
       </div>`;
   },
 
@@ -3919,8 +3995,16 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-lead-page]').forEach(b => {
         b.onclick = () => this.leadsPage(parseInt(b.getAttribute('data-lead-page'), 10));
       });
+      el.querySelectorAll('[data-lead-sort]').forEach(b => {
+        b.onclick = () => this.leadsSort(b.getAttribute('data-lead-sort'));
+      });
+      el.querySelectorAll('[data-lead-convert]').forEach(b => {
+        b.onclick = () => this.leadsConvert(b.getAttribute('data-lead-convert'), b.getAttribute('data-lead-name'));
+      });
+      const ll = el.querySelector('#leadLimit');
+      if (ll) ll.onchange = (ev) => this.leadsSetLimit(ev.target.value);
       const ls = el.querySelector('#leadSearch');
-      if (ls) ls.onchange = (e) => this.leadsSearch(e.target.value);
+      if (ls) ls.onchange = (ev) => this.leadsSearch(ev.target.value);
       const cs = el.querySelector('#cliSearch');
       if (cs) {
         cs.oninput = (e) => { this.cliQuery = e.target.value; const pos = e.target.selectionStart; this.render(); this.$nextTick(() => { const f = document.getElementById('cliSearch'); if (f) { f.focus(); try { f.setSelectionRange(pos, pos); } catch (_) { } } }); };
