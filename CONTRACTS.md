@@ -741,3 +741,92 @@ Frontend (js/api.js): loadClients() БЫЛО дерив из /v1/deals?limit=200
   [ ] невалидный health -> 422
   [ ] UI «Входящие клиенты» рендерит 5 клиентов после Ctrl+Shift+R, консоль чистая
   [ ] py_compile pass; node --check js/api.js pass
+
+## 14. A-6.1 «Лиды» — /v1/leads + импорт базы Bitrix24
+
+ПРИЧИНА: у клиента есть выгрузка Bitrix24 (contacts_bitrix24.csv, 1491 строка).
+916 уникальных компаний. Из них 693 — недозвон/отказ/не ЦА, 223 перспективных.
+Заливать это в clients НЕЛЬЗЯ: clients = реестр тех, с кем работают (5 записей,
+живой FK от 8 сделок). Лид = стадия ДО клиента (§6 ТЗ: Сигнал -> может стать
+клиентом). Поэтому отдельная сущность leads + явная конвертация лид->клиент.
+
+НУМЕРАЦИЯ: номер 13.2 в этом файле УЖЕ ЗАНЯТ (13.2 Эндпоинты /v1/sources).
+Данный контракт = §14. Не путать.
+
+Миграция 014_leads.sql (новая таблица, FK на clients сразу):
+  CREATE TABLE IF NOT EXISTS leads (
+    id                  varchar(16) PRIMARY KEY,
+    name                varchar(255) NOT NULL,
+    status              varchar(16) NOT NULL DEFAULT 'new',
+    contact_person      varchar(255),
+    phone               varchar(32),
+    phone_extra         text[],
+    email               varchar(255),
+    owner               varchar(64),
+    region              varchar(100),
+    industry            varchar(100),
+    ext_id              varchar(32),
+    comment             varchar(255),
+    source              varchar(32) DEFAULT 'bitrix24',
+    converted_client_id varchar(16),
+    created_at          date,
+    imported_at         timestamptz DEFAULT now(),
+    CONSTRAINT leads_converted_client_id_fkey
+      FOREIGN KEY (converted_client_id) REFERENCES clients(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS leads_status_idx ON leads(status);
+  CREATE INDEX IF NOT EXISTS leads_ext_id_idx ON leads(ext_id);
+FK создаётся В МИГРАЦИИ. В ORM-модели ForeignKey НЕТ (протокол 4 дефектов).
+region/industry = NULL: в выгрузке Bitrix24 этих полей нет вообще.
+
+Backend (паттерн backend/clients, эталон backend/packages):
+  backend/leads/{__init__.py,models.py,routes.py}
+  models.py: Lead, __tablename__="leads", локальный Base, phone_extra ARRAY(Text),
+             created_at Date, imported_at TIMESTAMP(timezone=True),
+             to_dict() -> camelCase: contactPerson, phoneExtra, extId,
+             convertedClientId, createdAt, importedAt.
+  routes.py: leads_router = APIRouter(prefix="/leads", tags=["leads"])
+  main.py:   app.include_router(leads_router, prefix="/agropilot/api/v1")
+
+Эндпоинты, конверт {"ok":true,"data":...}:
+  GET  /leads   ?status=&owner=&q=&limit=50&offset=0
+                ПАГИНАЦИЯ ОБЯЗАТЕЛЬНА (916 записей). limit по умолчанию 50, le=200.
+                q = ILIKE по name/contact_person/phone.
+                data = {"items":[...],"total":<int>,"limit":<int>,"offset":<int>}
+                order by name.
+  GET  /leads/{id}         -> объект; нет -> NotFoundError
+  PATCH /leads/{id}        -> частичное обновление
+  POST /leads/{id}/convert -> создаёт клиента в clients:
+       id клиента = _next_id() (C6, C7...), name/region/industry из лида,
+       health='green', source='bitrix24', status='active';
+       затем лиду: status='converted', converted_client_id=<новый C-id>.
+       Повторная конвертация -> 409. Возврат: {"lead":{...},"client":{...}}
+  VALID_STATUS = {new, active, inactive, converted}
+  Невалидный status -> 422 (не 500).
+
+Импорт данных (ПОСЛЕ проверки API на пустой таблице):
+  10 фрагментов по ~92 строки, INSERT ... ON CONFLICT (id) DO NOTHING.
+  Идемпотентны, порядок не важен, повторный прогон безопасен.
+  Ожидаемый итог: 916 строк, 223 active / 693 inactive, phone у 909.
+  Телефоны восстановлены из Excel-нотации (+7.9780001738e+10 -> +79780001738,
+  все 11 цифр сохранены); склейки по 22/33 цифры разрезаны по 11.
+
+Frontend: новый раздел «Лиды» с пагинацией и фильтром по статусу.
+  clients/deals/sources НЕ ТРОГАЕМ. Флаг LEADS_READY после curl 200.
+
+НЕ трогаем: clients (кроме вставки строк при convert), deals, sources, RBAC,
+seed_prod.sql, 013_clients_api.sql.
+
+Приёмка:
+  [ ] \d leads: таблица есть, FK leads_converted_client_id_fkey -> clients(id) ON DELETE SET NULL
+  [ ] curl /v1/leads на ПУСТОЙ таблице = {ok,data:{items:[],total:0}}
+  [ ] импорт 10 фрагментов -> SELECT count(*) = 916
+  [ ] SELECT status,count(*) GROUP BY -> active 223, inactive 693
+  [ ] SELECT count(*) WHERE phone IS NOT NULL = 909
+  [ ] curl /v1/leads?limit=5 -> 5 items, total 916
+  [ ] curl /v1/leads?q=агро -> непустой результат
+  [ ] POST /leads/{id}/convert -> клиент создан, лид converted, clients 5->6
+  [ ] невалидный status -> 422
+  [ ] регресс: clients/deals/sources = 200
+  [ ] UI раздел «Лиды» рендерит с пагинацией
+  [ ] py_compile pass; node --check pass
