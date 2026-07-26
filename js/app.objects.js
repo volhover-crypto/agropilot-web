@@ -1350,10 +1350,10 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
   },
 
   LEAD_STATUS_UI: {
-    new:       { label: 'Новый',    cls: 'badge-gray'  },
-    active:    { label: 'В работе', cls: 'badge-green' },
-    inactive:  { label: 'Отклонён', cls: 'badge-mute'  },
-    converted: { label: 'Клиент',   cls: 'badge-blue'  },
+    new:       { label: 'Новый',    col: 'var(--warn)'      },
+    active:    { label: 'В работе', col: 'var(--ok)'        },
+    inactive:  { label: 'Отклонён', col: 'var(--text-mute)' },
+    converted: { label: 'Клиент',   col: 'var(--accent)'    },
   },
 
   async leadsLoad() {
@@ -1433,7 +1433,7 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
       `<th class="cursor-pointer" data-lead-sort="${col}">${label}${st.sort === col ? (st.order === 'asc' ? ' ↑' : ' ↓') : ''}</th>`;
 
     const rows = st.items.map(l => {
-      const ui = S[l.status] || { label: l.status, cls: 'badge-gray' };
+      const ui = S[l.status] || { label: l.status, col: 'var(--text-mute)' };
       const extra = (l.phone_extra || []).length;
       const tel = l.phone
         ? `<a href="tel:${e(l.phone)}">${e(l.phone)}</a>` +
@@ -1449,7 +1449,7 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
         ${cell(l.name)}
         ${cell(l.contact_person)}
         <td class="whitespace-nowrap">${tel}</td>
-        <td><span class="badge ${ui.cls}">${ui.label}</span></td>
+        <td><span class="pill text-[11px] whitespace-nowrap" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span></td>
         ${cell(l.owner)}
         ${cell(l.comment)}
         <td class="whitespace-nowrap">${acts}</td>
