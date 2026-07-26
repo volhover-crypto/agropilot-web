@@ -398,3 +398,48 @@ UI-smoke persist после Ctrl+Shift+R — PASS; консоль без оши�
 Известный фон (не регресс): 404 на /v1/reports и /v1/orchestrator/* — роутеров нет в
 backend/, safeLoad отдаёт fallback штатно.
 Не тронуты: vMonitoring §12.11, блок сигналов, scan/toggle, backend.
+
+### 2026-07-26 — A-6 «Входящие клиенты» /v1/clients (DONE, CLIENTS_READY=true)
+Контракт: 98b5d961af50bd323eb3f72449b587569889f628 (CONTRACTS.md §13.1)
+Backend:  3e22a6bd3d915e1d239df201cb60574787d634f7 (backend/clients/*, main.py,
+          migrations/013_clients_api.sql)
+Frontend: 0ab355dacb014391d2eb08d2b7b112ba86ef1579 (js/api.js loadClients ->
+          safeLoad('/v1/clients?limit=100'), дерив из deals удалён)
+
+ФАКТ, найденный при recon: таблица clients УЖЕ существовала (создана ранним
+seed_prod.sql, вне backend/migrations), 5 записей C1-C5, живой FK
+deals.client_id -> clients(id), 8 сделок ссылаются. Исходный план с CREATE TABLE
+и backfill отменён — пересоздание разрушило бы FK. Сделан API-слой поверх неё.
+
+Миграция 013_clients_api.sql — идемпотентная, ADD-only:
+  +source varchar(32), +status varchar(16) default 'active',
+  +created_at timestamptz default now(); затем UPDATE ... WHERE IS NULL.
+  Факт применения: ALTER x3, UPDATE 0 (status уже был) / 5 (source был NULL) /
+  0 (health уже заполнен). Бэкап до ALTER: /tmp/clients_backup_20260726_175325.sql
+  Колонка deals_count НЕ трогалась и НЕ читается API — она разошлась с фактом.
+
+API: GET /clients (?status=&health=&limit=), GET /clients/{id}, POST, PATCH,
+контракт {ok,data}. dealsCount считается агрегатом из deals
+(select client_id, count() group_by) — не из колонки deals_count.
+VALID_HEALTH={green,yellow,red}, VALID_STATUS={active,inactive,archived},
+VALID_SOURCE={manual,signal,smm,petrushka}, невалидное -> 422.
+
+Приёмка (пруфы получены): py_compile COMPILE_OK; node --check CHECK_OK;
+raw-verify всех трёх SHA Архитектором PASS; \d clients — новые колонки есть,
+PK/FK целы; POST без id -> автоген C6, 200; health='purple' -> 422 (не 500);
+PATCH C6 health -> red, 200; GET -> 6 записей, dealsCount C1..C3=2, C4/C5=1, C6=0;
+UI «Клиенты · 6», индикатор шапки API (не Demo), health-точки и dealsCount верны;
+регресс deals/sources/team/goals = 200.
+Тестовый C6 удалён после приёмки: guard deals WHERE client_id='C6' = 0,
+DELETE 1, итог cnt=5 (C1-C5).
+
+Не тронуты: deals, sources, RBAC, seed_prod.sql, колонка deals_count, FK,
+js/app.objects.js (он уже маппил {id,name,industry,region,need,health,dealsCount}).
+
+СЛЕДУЮЩЕЕ (не начато):
+- A-6.1 импорт базы Bitrix24: файл contacts_bitrix24.csv, 1491 строка, 938 с компанией
+  (916 уникальных), формы КФХ 435 / ООО 281 / ИП 41 / АО 21 / СПК 19; region и industry
+  в выгрузке ОТСУТСТВУЮТ; 454 записи — недозвон/отказ/не ЦА; телефон у 1423, email у 157.
+  Требует отдельный контракт §13.2: +phone/+email/+contact_person/+owner/+ext_id,
+  префикс id, дедуп по названию, фильтр мусора, пагинация UI, решение «клиент vs лид».
+- Далее по §7 Блок A: deals -> content -> monitoring -> goals/context/strategy.
