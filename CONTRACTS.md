@@ -680,3 +680,64 @@ handle (опц.), keywords (list), status ∈ VALID_STATUS.
 НЕ трогаем: vMonitoring §12.11, блок сигналов, кнопки scan/toggle, backend.
 Приёмка: источник сохраняется (POST 200), виден, ОСТАЁТСЯ после Ctrl+Shift+R; пустой url ->
 toast без падения; node --check pass; консоль чистая.
+
+## 13.1 A-6 «Входящие клиенты» — /v1/clients (API поверх существующей таблицы)
+
+ФАКТ (проверено 2026-07-26): таблица public.clients УЖЕ существует, 5 записей C1-C5,
+создана вне backend/migrations (ранний seed_prod.sql). На неё завязан живой FK:
+deals.client_id -> clients(id), 8 сделок ссылаются. Пересоздание ЗАПРЕЩЕНО.
+Фактическая схема: id varchar(16) PK NOT NULL, name varchar(255) NOT NULL,
+industry varchar(100), region varchar(100), need text[], health varchar(20),
+deals_count integer.
+Проблема: нет API-слоя. js/api.js loadClients() деривит клиентов из /v1/deals?limit=200,
+игнорируя реальную таблицу. DoD Блока A п.2 требует /v1/clients.
+
+Решение: роутер поверх СУЩЕСТВУЮЩЕЙ таблицы + идемпотентный ALTER (только ADD COLUMN).
+CREATE TABLE / DROP / изменение типов и FK — ЗАПРЕЩЕНЫ.
+
+Миграция 013_clients_api.sql (идемпотентная, только добавление):
+  ALTER TABLE clients ADD COLUMN IF NOT EXISTS source     varchar(32);
+  ALTER TABLE clients ADD COLUMN IF NOT EXISTS status     varchar(16) DEFAULT 'active';
+  ALTER TABLE clients ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+  UPDATE clients SET status='active'  WHERE status IS NULL;
+  UPDATE clients SET source='manual'  WHERE source IS NULL;
+  UPDATE clients SET health='green'   WHERE health IS NULL;
+  -- deals_count НЕ трогаем: колонка остаётся (её пишет seed), но API её НЕ читает.
+
+Backend (паттерн backend/packages; локальный Base, без ORM-ForeignKey, to_dict(),
+импорты backend.common.deps / backend.common.errors):
+  backend/clients/{__init__.py,models.py,routes.py}
+  models.py: Client, __tablename__="clients", need = mapped_column(ARRAY(Text)),
+             id String(16), name String(255), industry/region String(100),
+             health String(20), source String(32), status String(16), created_at TIMESTAMPTZ.
+             to_dict() отдаёт need или [], БЕЗ deals_count.
+  routes.py: clients_router = APIRouter(prefix="/clients", tags=["clients"])
+  Регистрация в backend/main.py: app.include_router(clients_router, prefix="/agropilot/api/v1")
+
+Эндпоинты, контракт {"ok":true,"data":...}:
+  GET   /clients        ?status=&health=&limit=100 -> order by created_at desc nulls last, id
+                        каждый элемент + dealsCount (SELECT count(*) FROM deals по client_id,
+                        одним агрегирующим запросом, НЕ из колонки deals_count)
+  GET   /clients/{id}   -> карточка + dealsCount; нет -> NotFoundError
+  POST  /clients        body: id(опц., иначе генерим C<N>), name(обяз.), region, industry,
+                        need[], health, source, status
+  PATCH /clients/{id}   частичное обновление
+  VALID_HEALTH={green,yellow,red}; VALID_STATUS={active,inactive,archived};
+  VALID_SOURCE={manual,signal,smm,petrushka}; невалидное -> 422, не 500.
+
+Frontend (js/api.js): loadClients() БЫЛО дерив из /v1/deals?limit=200 ->
+  СТАЛО safeLoad('/v1/clients?limit=100'); комментарий "(derived from deals)" ->
+  "(implemented)". js/app.objects.js НЕ трогаем — он уже маппит
+  {id,name,industry,region,need,health,dealsCount}.
+
+Флаг: CLIENTS_READY = true (после restart + curl 200).
+НЕ трогаем: deals, sources, RBAC, seed_prod.sql, колонку deals_count, FK.
+
+Приёмка:
+  [ ] \d clients: появились source/status/created_at; id/PK/FK не изменились
+  [ ] SELECT count(*) FROM clients = 5 (данные целы)
+  [ ] curl /v1/clients = {ok,data}, 5 клиентов, dealsCount из deals (C1..C5 суммарно 8)
+  [ ] POST нового клиента -> 200, виден в GET
+  [ ] невалидный health -> 422
+  [ ] UI «Входящие клиенты» рендерит 5 клиентов после Ctrl+Shift+R, консоль чистая
+  [ ] py_compile pass; node --check js/api.js pass
