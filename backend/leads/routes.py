@@ -60,6 +60,8 @@ async def list_leads(
     q:      Optional[str] = Query(None),
     limit:  int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    sort:   str = Query("name", pattern="^(name|status|owner)$"),
+    order:  str = Query("asc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):
@@ -84,9 +86,11 @@ async def list_leads(
         total_stmt = total_stmt.where(c)
         items_stmt = items_stmt.where(c)
 
+    sort_col = {"name": Lead.name, "status": Lead.status, "owner": Lead.owner}[sort]
     total = (await db.execute(total_stmt)).scalar() or 0
     rows = (await db.execute(
-        items_stmt.order_by(Lead.name).limit(limit).offset(offset)
+        items_stmt.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
+                  .limit(limit).offset(offset)
     )).scalars().all()
 
     return _ok({
@@ -95,6 +99,26 @@ async def list_leads(
         "limit":  limit,
         "offset": offset,
     })
+
+
+@leads_router.get("/stats")
+async def leads_stats(
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    rows = (await db.execute(
+        select(Lead.status, func.count()).group_by(Lead.status)
+    )).all()
+    data = {k: 0 for k in sorted(VALID_STATUS)}
+    total = 0
+    for status_value, cnt in rows:
+        total += int(cnt)
+        if status_value in data:
+            data[status_value] = int(cnt)
+        else:
+            data[status_value] = int(cnt)
+    data["total"] = total
+    return _ok(data)
 
 
 @leads_router.get("/{lead_id}")
