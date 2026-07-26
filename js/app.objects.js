@@ -386,6 +386,7 @@ await this._loadAiLayer();
       return ({
         myday: 'Мой день',
         clients: 'Клиенты',
+  leads: 'Лиды',
         deals: 'Сделки · Проекты',
         tasks: 'Задачи',
         packages: 'Упаковки',
@@ -461,6 +462,7 @@ await this._loadAiLayer();
         else if (this.route === 'project') html = this.vProjectCard(this.routeArg);
         else if (this.route === 'kanban') html = this.vKanban();
         else if (this.route === 'clients') html = this.vClients();
+    else if (this.route === 'leads') html = this.vLeads();
         else if (this.route === 'deals') html = this.vDeals();
         else if (this.route === 'tasks') html = this.vTasks();
         else if (this.route === 'task') html = this.vTaskCard(this.routeArg);
@@ -1340,7 +1342,68 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     },
 
     // ======== ЧАНК 1.6: СПИСКИ ОБЪЕКТОВ ========
-    vClients() {
+    leadsState: { items: [], total: 0, limit: 50, offset: 0, status: '', q: '', loading: false },
+
+  async leadsLoad() {
+    const st = this.leadsState;
+    st.loading = true;
+    const d = await window.AGL.loadLeads({ limit: st.limit, offset: st.offset, status: st.status, q: st.q });
+    st.items = d.items || []; st.total = d.total || 0; st.loading = false;
+    this.render();
+  },
+
+  leadsPage(delta) {
+    const st = this.leadsState;
+    const next = st.offset + delta * st.limit;
+    if (next < 0 || next >= st.total) return;
+    st.offset = next; this.leadsLoad();
+  },
+
+  leadsFilter(status) {
+    this.leadsState.status = status; this.leadsState.offset = 0; this.leadsLoad();
+  },
+
+  leadsSearch(q) {
+    this.leadsState.q = q; this.leadsState.offset = 0; this.leadsLoad();
+  },
+
+  vLeads() {
+    const st = this.leadsState;
+    if (!st.items.length && !st.total && !st.loading) { this.leadsLoad(); }
+    const page = Math.floor(st.offset / st.limit) + 1;
+    const pages = Math.max(1, Math.ceil(st.total / st.limit));
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const chip = (val, label) =>
+      `<button class="btn btn-sm ${st.status === val ? 'btn-primary' : ''}" data-lead-status="${val}">${label}</button>`;
+    const rows = st.items.map(l => `
+      <tr>
+        <td>${esc(l.id)}</td>
+        <td>${esc(l.name)}</td>
+        <td>${esc(l.status)}</td>
+        <td>${esc(l.contact_person)}</td>
+        <td>${esc(l.phone)}</td>
+        <td>${esc(l.owner)}</td>
+        <td>${esc(l.converted_client_id)}</td>
+      </tr>`).join('');
+    return `
+      <div class="label">Лиды · ${st.total}${st.status ? ' · ' + esc(st.status) : ''}</div>
+      <div class="mb-2">
+        ${chip('', 'Все')} ${chip('new', 'Новые')} ${chip('active', 'Активные')}
+        ${chip('inactive', 'Неактивные')} ${chip('converted', 'Конвертированные')}
+        <input id="leadSearch" class="input" placeholder="Поиск: название, контакт, телефон"
+               value="${esc(st.q)}" >
+      </div>
+      <table class="table"><thead><tr>
+        <th>ID</th><th>Название</th><th>Статус</th><th>Контакт</th><th>Телефон</th><th>Ответственный</th><th>Клиент</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      <div class="mt-2">
+        <button class="btn btn-sm" data-lead-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
+        <span class="px-2">Стр. ${page} из ${pages}</span>
+        <button class="btn btn-sm" data-lead-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
+      </div>`;
+  },
+
+  vClients() {
       // И1: поиск + сортировка
       const q = this.cliQuery.trim().toLowerCase();
       const healthRank = { red: 0, yellow: 1, green: 2 };
@@ -3850,6 +3913,14 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       // чанк 2.5: сделки
       el.querySelectorAll('[data-deal-add]').forEach(n => n.onclick = () => this.dealAddModal(n.getAttribute('data-deal-add') || null));
       // чанк 3.1: поиск + сортировка клиентов
+      el.querySelectorAll('[data-lead-status]').forEach(b => {
+        b.onclick = () => this.leadsFilter(b.getAttribute('data-lead-status'));
+      });
+      el.querySelectorAll('[data-lead-page]').forEach(b => {
+        b.onclick = () => this.leadsPage(parseInt(b.getAttribute('data-lead-page'), 10));
+      });
+      const ls = el.querySelector('#leadSearch');
+      if (ls) ls.onchange = (e) => this.leadsSearch(e.target.value);
       const cs = el.querySelector('#cliSearch');
       if (cs) {
         cs.oninput = (e) => { this.cliQuery = e.target.value; const pos = e.target.selectionStart; this.render(); this.$nextTick(() => { const f = document.getElementById('cliSearch'); if (f) { f.focus(); try { f.setSelectionRange(pos, pos); } catch (_) { } } }); };

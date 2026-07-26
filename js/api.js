@@ -128,6 +128,20 @@ const AGL = {
   },
 
   // ─── Clients (implemented) ───
+  // -- Leads (A-6.1, CONTRACTS.md 14) --
+  async loadLeads(params = {}) {
+    const qs = new URLSearchParams();
+    qs.set('limit',  params.limit  ?? 50);
+    qs.set('offset', params.offset ?? 0);
+    if (params.status) qs.set('status', params.status);
+    if (params.owner)  qs.set('owner',  params.owner);
+    if (params.q)      qs.set('q',      params.q);
+    return safeLoad('/v1/leads?' + qs.toString(), { items: [], total: 0, limit: 50, offset: 0 });
+  },
+  async loadLead(id) { return apiFetch('/v1/leads/' + id); },
+  async updateLead(id, data) { return apiFetch('/v1/leads/' + id, { method: 'PATCH', data }); },
+  async convertLead(id) { return apiFetch('/v1/leads/' + id + '/convert', { method: 'POST' }); },
+
   async loadClients() {
     return safeLoad('/v1/clients?limit=100');
   },
@@ -313,6 +327,7 @@ const AGL = {
   STRATEGY_TASKS_READY:  true,
   STRATEGY_VIEW_READY:   true,
   SOURCES_READY:         true,
+  LEADS_READY:           true,   // GET/PATCH /v1/leads, POST /v1/leads/{id}/convert
   TEAM_RBAC_READY:      true,   // PATCH /v1/team/{id}
 
   // —— Calendar (M7) ——

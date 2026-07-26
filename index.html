@@ -117,6 +117,7 @@
       <!-- ── БЛОК 2: Работа с клиентом ── -->
       <div class="label px-2 mt-3 mb-1">Блок 2 · Клиент</div>
       <div class="nav-item" :class="route==='clients'&&'active'"  @click="go('clients')">🏢 <span>Клиенты</span></div>
+      <div class="nav-item" :class="route==='leads'&&'active'"  @click="go('leads')">🌱 <span>Лиды</span></div>
       <div class="nav-item" :class="route==='deals'&&'active'"    @click="go('deals')">🤝 <span>Сделки</span></div>
       <div class="nav-item" :class="route==='kanban'&&'active'"   @click="go('kanban')">🗂 <span>Канбан</span></div>
       <div class="nav-item flex items-center" :class="route==='tasks'&&'active'" @click="go('tasks')">✅ <span class="flex-1">Задачи</span><span x-show="cntOverdue()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntOverdue()"></span></div>
