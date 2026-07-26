@@ -127,26 +127,9 @@ const AGL = {
     return h;
   },
 
-  // ─── Clients (derived from deals) ───
+  // ─── Clients (implemented) ───
   async loadClients() {
-    const deals = await apiFetch('/v1/deals?limit=200');
-    const seen = new Set();
-    const clients = [];
-    for (const d of deals || []) {
-      if (d.client_id && !seen.has(d.client_id)) {
-        seen.add(d.client_id);
-        clients.push({
-          id: d.client_id,
-          name: d.client_name || d.client_id,
-          region: d.region || '',
-          industry: d.industry || '',
-          need: d.need_type ? [d.need_type] : [],
-          health: 'green',
-          dealsCount: (deals || []).filter(x => x.client_id === d.client_id).length,
-        });
-      }
-    }
-    return clients;
+    return safeLoad('/v1/clients?limit=100');
   },
 
   // ─── Deals (implemented — hard fail on error) ───
