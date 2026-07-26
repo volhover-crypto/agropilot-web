@@ -443,3 +443,51 @@ js/app.objects.js (он уже маппил {id,name,industry,region,need,health
   Требует отдельный контракт §13.2: +phone/+email/+contact_person/+owner/+ext_id,
   префикс id, дедуп по названию, фильтр мусора, пагинация UI, решение «клиент vs лид».
 - Далее по §7 Блок A: deals -> content -> monitoring -> goals/context/strategy.
+
+## A-6.1 «Лиды» + импорт Bitrix24 — DONE (2026-07-26)
+
+Контракт: CONTRACTS.md §14. Флаг: LEADS_READY = true.
+
+Цепочка коммитов:
+- 9a418b4a1d179b056ca19642c104463d57f1ec04 — docs(contract): 14 leads + bitrix24 import
+- 8d874c8cb8719f33262d341509504e8e8455a75f — chore(seed): bitrix24 leads import fragments (916 rows)
+- 800eb307f8c14934d61bec789a758dbde009f514 — docs(contract): fix 14 phone counts to actual
+- 288e97155ca38eaa95917b190810460adbf8097c — feat(backend): leads router + 014 migration
+- 424ccc84d6fc0ece551e1950f03a84875aefac3b — feat(frontend): leads section with pagination
+
+Факты БД (после импорта):
+- leads = 916; active 223 / inactive 693; phone IS NOT NULL = 909
+- phone_extra у 246 записей, 357 доп. номеров; 909 + 357 = 1266 — сходится с §14
+- source = 'bitrix24' у всех 916; clients = 5, не изменялись
+- FK leads_converted_client_id_fkey -> clients(id) ON DELETE SET NULL;
+  индексы leads_status_idx, leads_ext_id_idx
+- Миграция 014_leads.sql идемпотентна (CREATE TABLE/INDEX IF NOT EXISTS);
+  seed идемпотентен (ON CONFLICT (id) DO NOTHING)
+
+API (curl 127.0.0.1:5555):
+- GET /v1/leads -> {ok,data:{items,total,limit,offset}}, total 916, limit le=200
+- ?status=active -> 223; ?status=bogus -> 422 VALIDATION_ERROR (не 500)
+- ?q= ILIKE по name/contact_person/phone; кириллица работает (q=вино -> 29)
+- offset=915 -> B916; GET /leads/{id} -> 404 на отсутствующий
+- PATCH /leads/{id} и POST /leads/{id}/convert реализованы (convert из UI пока недоступен)
+- Регресс: /clients, /deals, /sources = 200
+
+Frontend: раздел «Лиды» (index.html стр. 120, Блок 2), vLeads() с пагинацией,
+фильтром по статусу и поиском; обработчики через data-lead-status /
+data-lead-page / #leadSearch в bindView(). UI проверен Оркестратором (Ctrl+Shift+R).
+
+Уроки процесса:
+- Пересказ исполнителя != пруф: дважды подвёл (эмодзи навигации — реально 🏢, не 👥;
+  «артефакт ввода» вместо диагностики поиска). Принимать только вывод команд.
+- Python-патчи по якорям обязаны содержать assert: ветка else без изменения строки
+  дала ложноположительный «patched» при нетронутом файле.
+- Признак деградации сессии Кодера: два и более ответа «сейчас выполню» без вывода
+  команд, самовольные тестовые плейсхолдеры. Лечится новой сессией, не переспросом.
+- Канал чтения GitHub из песочницы Архитектора недоступен (TLS unexpected eof,
+  проверено ~12 раз разными транспортами). Raw-verify выполнялся через
+  `git show origin/main:<path>` силами Кодера.
+
+Следующее: CONTRACTS.md §15 (A-6.1 UX v2), SHA 377a90275945f700503d6592e51d189802a95c3b,
+прочитан и принят Архитектором. Дефект §15.1: пример ответа /leads/stats записан без
+обёртки data и с лишней скобкой — реализуем по §15.5 ({ok,data:{...}}), текст §15.1
+поправить отдельным docs-коммитом.
