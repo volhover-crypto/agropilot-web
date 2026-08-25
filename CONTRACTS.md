@@ -1153,11 +1153,11 @@ F. ГРАНИЦЫ. Здесь только словарь и отказ на н�
    стадии, канбан-перетаскивание, изменение набора стадий, приведение
    дублирующихся карт `REV` во фронте (js/app.objects.js:1781 и :1795).
 
-DoD 16:
-  [ ] PATCH /deals/{id} со stage=bogus -> 422, без 500
-  [ ] PATCH со всеми 8 кодами словаря -> 200
-  [ ] GET /deals?stage=bogus -> 422; ?stage=lead -> только сделки этой стадии
-  [ ] существующие 9 сделок не изменились
-  [ ] convert target=client_deal по-прежнему создаёт сделку со стадией lead
-  [ ] регресс: leads/clients/deals/sources/strategy = 200, разделы рендерят
-  [ ] py_compile pass
+DoD 16: ВЫПОЛНЕН 2026-08-25 (реализация 5984198).
+  [x] PATCH /deals/{id} со stage=bogus -> 422, без 500
+  [x] PATCH со всеми 8 кодами словаря -> 200
+  [x] GET /deals?stage=bogus -> 422; ?stage=lead -> только сделки этой стадии
+  [x] существующие 9 сделок не изменились
+  [x] convert target=client_deal по-прежнему создаёт сделку со стадией lead
+  [x] регресс: leads/clients/deals/sources/strategy = 200, разделы рендерят
+  [x] py_compile pass
