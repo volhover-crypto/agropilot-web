@@ -33,6 +33,8 @@ class Lead(Base):
     converted_client_id: Mapped[Optional[str]]      = mapped_column(String(16), nullable=True)
     created_at:          Mapped[Optional[date]]     = mapped_column(Date, nullable=True)
     imported_at:         Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    next_action:         Mapped[Optional[str]]      = mapped_column(Text, nullable=True)
+    next_action_at:      Mapped[Optional[date]]     = mapped_column(Date, nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -52,4 +54,6 @@ class Lead(Base):
             "converted_client_id": self.converted_client_id,
             "created_at":          self.created_at.isoformat() if self.created_at else None,
             "imported_at":         self.imported_at.isoformat() if self.imported_at else None,
+            "next_action":         self.next_action,
+            "next_action_at":      self.next_action_at.isoformat() if self.next_action_at else None,
         }
