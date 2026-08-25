@@ -86,6 +86,24 @@
     #owlSplitter.owl-active #owlSplitterHandle{ background:var(--accent)!important; width:4px; }
     body.owl-resizing{ cursor:col-resize!important; user-select:none!important; }
     body.owl-resizing *{ cursor:col-resize!important; user-select:none!important; pointer-events:none!important; }
+
+    /* §15.1a — читаемость таблицы «Лиды». Всё скоупится под #leadsTable,
+       чтобы таблицы других разделов не задеть (граница контракта). */
+    #leadsTable{ max-height:70vh; overflow:auto; }
+    #leadsTable table{ table-layout:fixed; width:max-content; min-width:100%;
+                       border-collapse:separate; border-spacing:0; }
+    #leadsTable thead th{ position:sticky; top:0; z-index:2; background:var(--surface);
+                          border-bottom:1px solid var(--border);
+                          border-right:1px solid var(--border); }
+    #leadsTable tbody td{ border-bottom:1px solid var(--border);
+                          border-right:1px solid var(--border); }
+    #leadsTable thead th:last-child, #leadsTable tbody td:last-child{ border-right:0; }
+    #leadsTable tbody tr:hover td{ background:var(--surface-2); }
+    /* зона захвата для ресайза — 5px у правого края заголовка */
+    #leadsTable th{ position:relative; }
+    #leadsTable .agl-grip{ position:absolute; top:0; right:0; width:5px; height:100%;
+                           cursor:col-resize; user-select:none; }
+    #leadsTable .agl-grip:hover{ background:var(--accent); opacity:.55; }
   </style>
 </head>
 <body x-data="appObjects()" x-init="init()">

@@ -1349,6 +1349,66 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     loading: false, loaded: false,
   },
 
+  // §15.1a — колонки таблицы «Лиды»: ключ + ширина по умолчанию (px).
+  // Порядок совпадает с порядком <col> и <th>.
+  LEADS_COLS: [
+    { key: 'name',           w: 260 },
+    { key: 'contact',        w: 180 },
+    { key: 'phone',          w: 150 },
+    { key: 'status',         w: 110 },
+    { key: 'owner',          w: 160 },
+    { key: 'comment',        w: 220 },
+    { key: 'next_action_at', w: 120 },
+    { key: 'actions',        w: 200 },
+  ],
+  LEADS_COLW_KEY: 'agl_leads_colw',
+
+  leadsColW() {
+    try { return JSON.parse(localStorage.getItem(this.LEADS_COLW_KEY) || '{}') || {}; }
+    catch (_) { return {}; }
+  },
+  leadsColWSave(map) {
+    try { localStorage.setItem(this.LEADS_COLW_KEY, JSON.stringify(map)); } catch (_) { }
+  },
+  _leadsCol(key) {
+    return document.querySelector('#leadsTable col[data-col="' + key + '"]');
+  },
+
+  // Перетаскивание: ширину меняем прямо на <col>, без ре-рендера таблицы.
+  leadsColResizeStart(ev, key) {
+    ev.preventDefault(); ev.stopPropagation();
+    const col = this._leadsCol(key);
+    if (!col) return;
+    const startX = ev.clientX;
+    const startW = parseInt(col.style.width, 10) || 120;
+    const prevSel = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+    const move = (e) => {
+      const w = Math.min(600, Math.max(60, startW + (e.clientX - startX)));
+      col.style.width = w + 'px';
+    };
+    const up = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', up);
+      document.body.style.userSelect = prevSel;
+      const m = this.leadsColW();
+      m[key] = parseInt(col.style.width, 10);
+      this.leadsColWSave(m);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', up);
+  },
+
+  // Двойной клик по зоне захвата — сброс к ширине по умолчанию.
+  leadsColReset(key) {
+    const m = this.leadsColW();
+    delete m[key];
+    this.leadsColWSave(m);
+    const def = (this.LEADS_COLS.find(c => c.key === key) || {}).w;
+    const col = this._leadsCol(key);
+    if (col && def) col.style.width = def + 'px';
+  },
+
   LEAD_STATUS_UI: {
     new:       { label: 'Новый',    col: 'var(--warn)'      },
     active:    { label: 'В работе', col: 'var(--ok)'        },
@@ -1537,8 +1597,14 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
 
     const tab = (val, label, n) =>
       `<button class="btn text-[12px] ${st.status === val ? 'btn-accent' : ''}" data-lead-status="${val}">${label} ${n}</button>`;
+    // §15.1a: у каждого заголовка своя зона захвата; клик по ней не сортирует.
+    const grip = (key) => `<span class="agl-grip" data-col-grip="${key}"></span>`;
     const th = (col, label) =>
-      `<th class="cursor-pointer" data-lead-sort="${col}">${label}${st.sort === col ? (st.order === 'asc' ? ' ↑' : ' ↓') : ''}</th>`;
+      `<th class="cursor-pointer" data-lead-sort="${col}">${label}${st.sort === col ? (st.order === 'asc' ? ' ↑' : ' ↓') : ''}${grip(col)}</th>`;
+    const thp = (key, label) => `<th>${label}${grip(key)}</th>`;
+    const stored = this.leadsColW();
+    const colgroup = '<colgroup>' + this.LEADS_COLS.map(c =>
+      `<col data-col="${c.key}" style="width:${stored[c.key] || c.w}px" />`).join('') + '</colgroup>';
 
     const rows = st.items.map(l => {
       const ui = S[l.status] || { label: l.status, col: 'var(--text-mute)' };
@@ -1554,7 +1620,7 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
         (canConvert ? `<button class="btn text-[11px]" data-lead-reject="${e(l.id)}" data-lead-name="${e(l.name)}">Некачественный</button> ` : '') +
         (canConvert ? `<button class="btn text-[11px]" data-lead-task="${e(l.id)}" data-lead-name="${e(l.name)}">Дело</button> ` : '') +
         `<button class="btn text-[11px]" data-lead-open="${e(l.id)}">Открыть</button>`;
-      const cell = (v) => `<td class="truncate max-w-[180px]" title="${e(v)}">${e(v)}</td>`;
+      const cell = (v) => `<td class="truncate" title="${e(v)}">${e(v)}</td>`;
       // §15.6 п.4: срок ближайшего дела; просроченное подсвечивается.
       const overdue = !!l.next_action_at && l.next_action_at < today
                       && l.status !== 'converted' && l.status !== 'inactive';
@@ -1583,9 +1649,9 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
         ${tab('', 'Все', S2.total)}${tab('new', 'Новые', S2.new)}${tab('active', 'В работе', S2.active)}${tab('inactive', 'Отклонённые', S2.inactive)}${tab('converted', 'Клиенты', S2.converted)}
         <input id="leadSearch" class="input flex-1 min-w-[180px] text-[13px]" placeholder="Поиск: название, контакт, телефон…" value="${e(st.q)}" />
       </div>
-      <div class="card p-0 overflow-hidden">
-        <table class="table w-full text-[13px]"><thead><tr>
-          ${th('name', 'Название')}<th>Контакт</th><th>Телефон</th>${th('status', 'Статус')}${th('owner', 'Ответственный')}<th>Комментарий</th>${th('next_action_at', 'Дело до')}<th>Действия</th>
+      <div id="leadsTable" class="card p-0">
+        <table class="table w-full text-[13px]">${colgroup}<thead><tr>
+          ${th('name', 'Название')}${thp('contact', 'Контакт')}${thp('phone', 'Телефон')}${th('status', 'Статус')}${th('owner', 'Ответственный')}${thp('comment', 'Комментарий')}${th('next_action_at', 'Дело до')}${thp('actions', 'Действия')}
         </tr></thead><tbody>${rows || '<tr><td colspan="8" class="p-4 text-center">Нет данных</td></tr>'}</tbody></table>
       </div>
       <div class="flex items-center gap-2 mt-2 text-[12px]">
@@ -4126,6 +4192,13 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-lead-task]').forEach(b => {
         b.onclick = () => this.leadsTaskModal(b.getAttribute('data-lead-task'), b.getAttribute('data-lead-name'));
+      });
+      // §15.1a: ресайз колонок. stopPropagation, иначе клик уйдёт в сортировку.
+      el.querySelectorAll('[data-col-grip]').forEach(g => {
+        const key = g.getAttribute('data-col-grip');
+        g.onclick = (ev) => ev.stopPropagation();
+        g.onmousedown = (ev) => this.leadsColResizeStart(ev, key);
+        g.ondblclick = (ev) => { ev.stopPropagation(); this.leadsColReset(key); };
       });
       const la = el.querySelector('[data-lead-add]');
       if (la) la.onclick = () => this.leadsCreateModal();
