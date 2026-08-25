@@ -1093,12 +1093,12 @@ C. ГРАНИЦЫ (подтверждают §15.6 п.4 и §15.3, ничего 
    напоминания и уведомления, несколько дел на одном лиде. Здесь ровно одно
    ближайшее дело на лид, хранимое в двух колонках.
 
-DoD 15.8:
-  [ ] PATCH с next_action + next_action_at -> 200, поля в ответе
-  [ ] PATCH с next_action_at='2026-13-45' -> 422, без 500
-  [ ] PATCH с null очищает оба поля
-  [ ] PATCH в inactive по-прежнему требует comment (§15.7 C не сломан)
-  [ ] sort=next_action_at раскладывает лиды по сроку
-  [ ] просроченный срок подсвечен в таблице, будущий — нет
-  [ ] регресс: clients/deals/sources/strategy = 200, разделы рендерят
-  [ ] py_compile pass; node --check pass
+DoD 15.8: ВЫПОЛНЕН 2026-08-25 (реализация fa814c3).
+  [x] PATCH с next_action + next_action_at -> 200, поля в ответе
+  [x] PATCH с next_action_at='2026-13-45' -> 422, без 500
+  [x] PATCH с null очищает оба поля
+  [x] PATCH в inactive по-прежнему требует comment (§15.7 C не сломан)
+  [x] sort=next_action_at раскладывает лиды по сроку
+  [x] просроченный срок подсвечен в таблице, будущий — нет
+  [x] регресс: clients/deals/sources/strategy = 200, разделы рендерят
+  [x] py_compile pass; node --check pass
