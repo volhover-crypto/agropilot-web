@@ -16,10 +16,16 @@ from backend.common.deps import get_db, get_current_user
 from backend.common.errors import NotFoundError, ConflictError, ValidationError
 from backend.leads.models import Lead
 from backend.clients.models import Client
+from backend.deals.models import Deal
 
 leads_router = APIRouter(prefix="/leads", tags=["leads"])
 
 VALID_STATUS = {"new", "active", "inactive", "converted"}
+
+# §15.7 B требует «первый в существующем VALID_STATUS deals». Такого набора в
+# backend/deals нет (поле называется stage, валидации значений нет), поэтому
+# берём default из модели Deal — stage="lead". Решение согласовано 2026-08-25.
+DEAL_INITIAL_STAGE = "lead"
 
 
 def _ok(data):
@@ -33,12 +39,35 @@ def _validate_status(status: Optional[str]) -> None:
         )
 
 
-async def _next_client_id(db: AsyncSession) -> str:
+async def _next_seq_id(db: AsyncSession, table: str, prefix: str) -> str:
+    """Следующий id вида <prefix><N>. table/prefix — только константы модуля."""
     res = await db.execute(
-        text("SELECT COALESCE(MAX(CAST(SUBSTRING(id FROM 2) AS INTEGER)), 0) "
-             "FROM clients WHERE id ~ '^C[0-9]+$'")
+        text(f"SELECT COALESCE(MAX(CAST(SUBSTRING(id FROM 2) AS INTEGER)), 0) "
+             f"FROM {table} WHERE id ~ '^{prefix}[0-9]+$'")
     )
-    return f"C{int(res.scalar() or 0) + 1}"
+    return f"{prefix}{int(res.scalar() or 0) + 1}"
+
+
+async def _next_client_id(db: AsyncSession) -> str:
+    return await _next_seq_id(db, "clients", "C")
+
+
+async def _next_lead_id(db: AsyncSession) -> str:
+    return await _next_seq_id(db, "leads", "B")
+
+
+async def _next_deal_id(db: AsyncSession) -> str:
+    return await _next_seq_id(db, "deals", "D")
+
+
+class LeadCreate(BaseModel):
+    name:           str
+    contact_person: Optional[str] = None
+    phone:          Optional[str] = None
+    owner:          Optional[str] = None
+    source:         Optional[str] = None
+    comment:        Optional[str] = None
+    status:         Optional[str] = None
 
 
 class LeadPatch(BaseModel):
@@ -60,7 +89,7 @@ async def list_leads(
     q:      Optional[str] = Query(None),
     limit:  int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    sort:   str = Query("name", pattern="^(name|status|owner)$"),
+    sort:   str = Query("name", pattern="^(name|status|owner|next_action_at)$"),
     order:  str = Query("asc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
@@ -86,7 +115,12 @@ async def list_leads(
         total_stmt = total_stmt.where(c)
         items_stmt = items_stmt.where(c)
 
-    sort_col = {"name": Lead.name, "status": Lead.status, "owner": Lead.owner}[sort]
+    sort_col = {
+        "name":           Lead.name,
+        "status":         Lead.status,
+        "owner":          Lead.owner,
+        "next_action_at": Lead.next_action_at,
+    }[sort]
     total = (await db.execute(total_stmt)).scalar() or 0
     rows = (await db.execute(
         items_stmt.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
@@ -99,6 +133,35 @@ async def list_leads(
         "limit":  limit,
         "offset": offset,
     })
+
+
+@leads_router.post("")
+async def create_lead(
+    payload: LeadCreate,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """§15.7 A — создание лида вручную. id по схеме B<N>."""
+    name = (payload.name or "").strip()
+    if not name:
+        raise ValidationError("Field 'name' is required and must be non-empty")
+
+    _validate_status(payload.status)
+
+    fields = payload.model_dump(exclude_none=True)
+    fields.pop("name", None)
+    fields.pop("status", None)
+
+    lead = Lead(
+        id=await _next_lead_id(db),
+        name=name,
+        status=payload.status or "new",
+        **fields,
+    )
+    db.add(lead)
+    await db.commit()
+    await db.refresh(lead)
+    return _ok(lead.to_dict())
 
 
 @leads_router.get("/stats")
@@ -146,6 +209,13 @@ async def patch_lead(
 
     data = payload.model_dump(exclude_unset=True)
     _validate_status(data.get("status"))
+
+    # §15.7 C: перевод в inactive («Некачественный») требует причины.
+    if data.get("status") == "inactive" and not (data.get("comment") or "").strip():
+        raise ValidationError(
+            "Field 'comment' is required and must be non-empty "
+            "when moving a lead to status 'inactive'"
+        )
     for field, value in data.items():
         setattr(lead, field, value)
 
@@ -157,6 +227,7 @@ async def patch_lead(
 @leads_router.post("/{lead_id}/convert")
 async def convert_lead(
     lead_id: str,
+    target: str = Query("client", pattern="^(client|client_deal)$"),
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):
@@ -184,7 +255,28 @@ async def convert_lead(
     lead.status = "converted"
     lead.converted_client_id = client.id
 
+    # §15.7 B: target=client_deal дополнительно создаёт сделку.
+    # Явно перекрывает §14 «не трогаем deals». Схема deals НЕ меняется.
+    deal = None
+    if target == "client_deal":
+        deal = Deal(
+            id=await _next_deal_id(db),
+            name=f"Сделка по лиду {lead.name}",
+            stage=DEAL_INITIAL_STAGE,
+            client_id=client.id,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(deal)
+        await db.flush()
+
     await db.commit()
     await db.refresh(lead)
     await db.refresh(client)
-    return _ok({"lead": lead.to_dict(), "client": client.to_dict()})
+    if deal is not None:
+        await db.refresh(deal)
+
+    return _ok({
+        "lead":   lead.to_dict(),
+        "client": client.to_dict(),
+        "deal":   deal.to_dict() if deal is not None else None,
+    })
