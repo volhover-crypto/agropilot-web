@@ -145,7 +145,12 @@ const AGL = {
   },
   async loadLead(id) { return apiFetch('/v1/leads/' + id); },
   async updateLead(id, data) { return apiFetch('/v1/leads/' + id, { method: 'PATCH', data }); },
-  async convertLead(id) { return apiFetch('/v1/leads/' + id + '/convert', { method: 'POST' }); },
+  async createLead(data) { return apiFetch('/v1/leads', { method: 'POST', data }); },
+  // §15.7 B: target = 'client' (дефолт) | 'client_deal'
+  async convertLead(id, target) {
+    const qs = target ? ('?target=' + encodeURIComponent(target)) : '';
+    return apiFetch('/v1/leads/' + id + '/convert' + qs, { method: 'POST' });
+  },
 
   async loadClients() {
     return safeLoad('/v1/clients?limit=100');

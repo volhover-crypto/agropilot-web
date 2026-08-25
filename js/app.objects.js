@@ -1390,18 +1390,95 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     st.limit = parseInt(n, 10) || 50; st.offset = 0; this.leadsLoad();
   },
 
-  async leadsConvert(id, name) {
-    if (!confirm('Создать клиента из лида ' + (name || id) + '?')) return;
+  // §15.7 A — создание лида вручную.
+  leadsCreateModal() {
+    const row = (id, label, ph) =>
+      `<label class="label">${label}</label>`
+      + `<input id="${id}" class="input w-full mb-2" placeholder="${ph || ''}" />`;
+    this.openModal('Новый лид',
+      row('ml_name', 'Название *', 'напр. ТОО «АгроСтарт»') +
+      row('ml_contact', 'Контактное лицо') +
+      row('ml_phone', 'Телефон', '+7…') +
+      row('ml_owner', 'Ответственный') +
+      row('ml_source', 'Источник', 'напр. bitrix24') +
+      row('ml_comment', 'Комментарий'),
+      () => {
+        const val = (id) => ((document.getElementById(id) || {}).value || '').trim();
+        const name = val('ml_name');
+        if (!name) { this.toast('Укажите название', 'err'); return false; }
+        const data = { name };
+        const opt = { contact_person: 'ml_contact', phone: 'ml_phone',
+                      owner: 'ml_owner', source: 'ml_source', comment: 'ml_comment' };
+        Object.keys(opt).forEach(k => { const v = val(opt[k]); if (v) data[k] = v; });
+        this.leadsCreate(data);
+        return true;
+      });
+  },
+
+  async leadsCreate(data) {
     try {
-      const res = await window.AGL.convertLead(id);
+      const lead = await window.AGL.createLead(data);
+      await this.leadsLoad();
+      this.toast('Лид ' + ((lead && lead.id) || '') + ' создан', 'ok');
+    } catch (err) {
+      this.toast('Ошибка: ' + String((err && err.message) || err), 'err');
+    }
+  },
+
+  // §15.6 п.3 — «Некачественный»: причина обязательна (бэкенд вернёт 422 без неё).
+  leadsRejectModal(id, name) {
+    this.openModal('Некачественный лид · ' + (name || id),
+      '<div class="text-[12px] mb-2" style="color:var(--text-dim)">'
+      + 'Укажите причину — она сохранится в комментарии лида. Поле обязательное.</div>'
+      + '<textarea id="ml_reason" class="input w-full" rows="3" placeholder="напр. не наш профиль"></textarea>',
+      () => {
+        const reason = ((document.getElementById('ml_reason') || {}).value || '').trim();
+        if (!reason) { this.toast('Укажите причину', 'err'); return false; }
+        this.leadsReject(id, reason);
+        return true;
+      });
+  },
+
+  async leadsReject(id, comment) {
+    try {
+      const lead = await window.AGL.updateLead(id, { status: 'inactive', comment });
+      const st = this.leadsState;
+      const i = st.items.findIndex(l => l.id === id);
+      if (i >= 0 && lead) st.items[i] = lead;
+      st.stats = await window.AGL.loadLeadsStats();
+      this.render();
+      this.toast('Лид отклонён', 'ok');
+    } catch (err) {
+      this.toast('Ошибка: ' + String((err && err.message) || err), 'err');
+    }
+  },
+
+  // §15.7 B — выбор создаваемого элемента: только клиент либо клиент + сделка.
+  leadsConvertModal(id, name) {
+    this.openModal('Конвертация лида · ' + (name || id),
+      '<div class="text-[12px] mb-2" style="color:var(--text-dim)">'
+      + 'Из лида будет создан клиент. Дополнительно можно сразу создать сделку.</div>'
+      + '<label class="flex items-center gap-2 text-[13px]">'
+      + '<input type="checkbox" id="ml_deal" /> создать также сделку</label>',
+      () => {
+        const withDeal = !!(document.getElementById('ml_deal') || {}).checked;
+        this.leadsConvert(id, name, withDeal ? 'client_deal' : 'client');
+        return true;
+      });
+  },
+
+  async leadsConvert(id, name, target) {
+    try {
+      const res = await window.AGL.convertLead(id, target);
       const st = this.leadsState;
       const i = st.items.findIndex(l => l.id === id);
       if (i >= 0 && res && res.lead) st.items[i] = res.lead;
       st.stats = await window.AGL.loadLeadsStats();
       this.render();
-      this.toast
-        ? this.toast('Клиент ' + ((res && res.client && res.client.id) || '') + ' создан')
-        : null;
+      const cid = (res && res.client && res.client.id) || '';
+      const did = (res && res.deal && res.deal.id) || '';
+      const msg = 'Клиент ' + cid + ' создан' + (did ? ', сделка ' + did : '');
+      this.toast ? this.toast(msg) : null;
     } catch (err) {
       const msg = String((err && err.message) || err);
       const dup = msg.indexOf('already converted') >= 0 || msg.indexOf('409') >= 0;
@@ -1426,6 +1503,7 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     const S = this.LEAD_STATUS_UI;
     const from = st.total ? st.offset + 1 : 0;
     const to = Math.min(st.offset + st.limit, st.total);
+    const today = new Date().toISOString().slice(0, 10);
 
     const tab = (val, label, n) =>
       `<button class="btn text-[12px] ${st.status === val ? 'btn-accent' : ''}" data-lead-status="${val}">${label} ${n}</button>`;
@@ -1443,8 +1521,15 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
       const acts =
         (l.phone ? `<a class="btn text-[11px]" href="tel:${e(l.phone)}">Позвонить</a> ` : '') +
         (canConvert ? `<button class="btn text-[11px]" data-lead-convert="${e(l.id)}" data-lead-name="${e(l.name)}">В клиенты</button> ` : '') +
+        (canConvert ? `<button class="btn text-[11px]" data-lead-reject="${e(l.id)}" data-lead-name="${e(l.name)}">Некачественный</button> ` : '') +
         `<button class="btn text-[11px]" data-lead-open="${e(l.id)}">Открыть</button>`;
       const cell = (v) => `<td class="truncate max-w-[180px]" title="${e(v)}">${e(v)}</td>`;
+      // §15.6 п.4: срок ближайшего дела; просроченное подсвечивается.
+      const overdue = !!l.next_action_at && l.next_action_at < today
+                      && l.status !== 'converted' && l.status !== 'inactive';
+      const actCell = l.next_action_at
+        ? `<td class="whitespace-nowrap" style="${overdue ? 'color:var(--err)' : ''}" title="${e(l.next_action)}">${e(l.next_action_at)}${overdue ? ' !' : ''}</td>`
+        : '<td></td>';
       return `<tr>
         ${cell(l.name)}
         ${cell(l.contact_person)}
@@ -1452,21 +1537,25 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
         <td><span class="pill text-[11px] whitespace-nowrap" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span></td>
         ${cell(l.owner)}
         ${cell(l.comment)}
+        ${actCell}
         <td class="whitespace-nowrap">${acts}</td>
       </tr>`;
     }).join('');
 
     const S2 = st.stats;
     return `
-      <div class="label">Лиды</div>
+      <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div class="label">Лиды</div>
+        <button class="btn btn-accent text-[13px]" data-lead-add>+ Создать лид</button>
+      </div>
       <div class="flex flex-wrap gap-1 items-center mb-2">
         ${tab('', 'Все', S2.total)}${tab('new', 'Новые', S2.new)}${tab('active', 'В работе', S2.active)}${tab('inactive', 'Отклонённые', S2.inactive)}${tab('converted', 'Клиенты', S2.converted)}
         <input id="leadSearch" class="input flex-1 min-w-[180px] text-[13px]" placeholder="Поиск: название, контакт, телефон…" value="${e(st.q)}" />
       </div>
       <div class="card p-0 overflow-hidden">
         <table class="table w-full text-[13px]"><thead><tr>
-          ${th('name', 'Название')}<th>Контакт</th><th>Телефон</th>${th('status', 'Статус')}${th('owner', 'Ответственный')}<th>Комментарий</th><th>Действия</th>
-        </tr></thead><tbody>${rows || '<tr><td colspan="7" class="p-4 text-center">Нет данных</td></tr>'}</tbody></table>
+          ${th('name', 'Название')}<th>Контакт</th><th>Телефон</th>${th('status', 'Статус')}${th('owner', 'Ответственный')}<th>Комментарий</th>${th('next_action_at', 'Дело до')}<th>Действия</th>
+        </tr></thead><tbody>${rows || '<tr><td colspan="8" class="p-4 text-center">Нет данных</td></tr>'}</tbody></table>
       </div>
       <div class="flex items-center gap-2 mt-2 text-[12px]">
         <span>${from}-${to} из ${st.total}</span>
@@ -3999,8 +4088,13 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         b.onclick = () => this.leadsSort(b.getAttribute('data-lead-sort'));
       });
       el.querySelectorAll('[data-lead-convert]').forEach(b => {
-        b.onclick = () => this.leadsConvert(b.getAttribute('data-lead-convert'), b.getAttribute('data-lead-name'));
+        b.onclick = () => this.leadsConvertModal(b.getAttribute('data-lead-convert'), b.getAttribute('data-lead-name'));
       });
+      el.querySelectorAll('[data-lead-reject]').forEach(b => {
+        b.onclick = () => this.leadsRejectModal(b.getAttribute('data-lead-reject'), b.getAttribute('data-lead-name'));
+      });
+      const la = el.querySelector('[data-lead-add]');
+      if (la) la.onclick = () => this.leadsCreateModal();
       const ll = el.querySelector('#leadLimit');
       if (ll) ll.onchange = (ev) => this.leadsSetLimit(ev.target.value);
       const ls = el.querySelector('#leadSearch');
