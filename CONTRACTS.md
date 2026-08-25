@@ -1013,15 +1013,15 @@ C. PATCH /v1/leads/{id} — при переводе в status='inactive' пол�
 D. GET /v1/leads — добавляются sort=name|status|owner|next_action_at и
    order=asc|desc (дефолт name asc), плюс фильтр owner=<строка>.
 
-Definition of Done для 15.6/15.7:
-  [ ] POST /leads: создан B917, виден в списке; пустой name -> 422
-  [ ] convert target=client -> как раньше; target=client_deal -> client + deal созданы
-  [ ] повторный convert -> 409, без 500
-  [ ] PATCH в inactive без comment -> 422; с comment -> 200
-  [ ] \d leads: next_action, next_action_at добавлены, без FK (P1)
-  [ ] sort/order/owner работают, дефолт не изменился
-  [ ] регресс: clients/deals/sources/strategy = 200, разделы рендерят
-  [ ] py_compile pass; node --check pass
+Definition of Done для 15.6/15.7: ВЫПОЛНЕН 2026-08-25 (реализация b80b2a4).
+  [x] POST /leads: создан B917, виден в списке; пустой name -> 422
+  [x] convert target=client -> как раньше; target=client_deal -> client + deal созданы
+  [x] повторный convert -> 409, без 500
+  [x] PATCH в inactive без comment -> 422; с comment -> 200
+  [x] \d leads: next_action, next_action_at добавлены, без FK (P1)
+  [x] sort/order/owner работают, дефолт не изменился
+  [x] регресс: clients/deals/sources/strategy = 200, разделы рендерят
+  [x] py_compile pass; node --check pass
 ### 15.1a P0 — читаемость таблицы «Лиды» (уточнение по итогам UI-приёмки 2026-07-26)
 
 Обрезка текста в одну строку СОХРАНЯЕТСЯ (§15.1, DoD «строки одной высоты»).
