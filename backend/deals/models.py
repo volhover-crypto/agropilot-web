@@ -15,6 +15,21 @@ class Base(DeclarativeBase):
     pass
 
 
+# §16: словарь стадий сделки. Источник — STAGE_MAP в js/app.objects.js:121.
+# Порядок значим: первый элемент — стартовая стадия (используется §15.7 B).
+# CHECK-констрейнта в БД намеренно нет: в ту же базу пишут внешние процессы.
+VALID_STAGES = (
+    "lead",      # Зацепка
+    "assess",    # Оценка
+    "proposal",  # Договор
+    "deal",      # Проектирование
+    "won",       # Реализация
+    "lost",      # Проиграна
+    "service",   # Сервис
+    "cancelled", # Отменена
+)
+
+
 class Deal(Base):
     __tablename__ = "deals"
 

@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.deals.models import Deal
-from backend.common.errors import NotFoundError
+from backend.deals.models import Deal, VALID_STAGES
+from backend.common.errors import NotFoundError, ValidationError
 from backend.common.deps import get_db, get_current_user
 
 deals_router = APIRouter(prefix="/deals", tags=["deals"])
@@ -37,6 +37,14 @@ def _ok(data):
     return {"ok": True, "data": data}
 
 
+def _validate_stage(stage):
+    """§16: стадия вне словаря -> 422, а не молчаливая запись/пустой список."""
+    if stage is not None and stage not in VALID_STAGES:
+        raise ValidationError(
+            f"Invalid stage '{stage}'. Allowed: {', '.join(VALID_STAGES)}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # GET /deals
 # ---------------------------------------------------------------------------
@@ -49,6 +57,7 @@ async def list_deals(
     user                  = Depends(get_current_user),
 ):
     """Все сделки команды. Опциональный фильтр по stage."""
+    _validate_stage(stage)
     q = select(Deal).order_by(Deal.score.desc())
     if stage:
         q = q.where(Deal.stage == stage)
@@ -87,6 +96,7 @@ async def patch_deal(
     deal = await db.get(Deal, deal_id)
     if not deal:
         raise NotFoundError("Deal not found")
+    _validate_stage(body.stage)
     for field, val in body.model_dump(exclude_none=True).items():
         setattr(deal, field, val)
     deal.updated_at = datetime.now(timezone.utc)

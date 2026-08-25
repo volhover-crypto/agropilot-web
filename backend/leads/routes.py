@@ -16,16 +16,15 @@ from backend.common.deps import get_db, get_current_user
 from backend.common.errors import NotFoundError, ConflictError, ValidationError
 from backend.leads.models import Lead
 from backend.clients.models import Client
-from backend.deals.models import Deal
+from backend.deals.models import Deal, VALID_STAGES
 
 leads_router = APIRouter(prefix="/leads", tags=["leads"])
 
 VALID_STATUS = {"new", "active", "inactive", "converted"}
 
-# §15.7 B требует «первый в существующем VALID_STATUS deals». Такого набора в
-# backend/deals нет (поле называется stage, валидации значений нет), поэтому
-# берём default из модели Deal — stage="lead". Решение согласовано 2026-08-25.
-DEAL_INITIAL_STAGE = "lead"
+# §15.7 B: «первый в существующем наборе стадий deals». Набор заведён в §16
+# (backend/deals/models.py), первый элемент — стартовая стадия «Зацепка».
+DEAL_INITIAL_STAGE = VALID_STAGES[0]
 
 
 def _ok(data):
