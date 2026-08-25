@@ -5,7 +5,7 @@
 # Пагинация обязательна: data = {items, total, limit, offset}
 
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -80,6 +80,9 @@ class LeadPatch(BaseModel):
     region:         Optional[str] = None
     industry:       Optional[str] = None
     comment:        Optional[str] = None
+    # §15.8: ближайшее «дело» по лиду. Неразбираемая дата -> 422 схемой.
+    next_action:    Optional[str]  = None
+    next_action_at: Optional[date] = None
 
 
 @leads_router.get("")

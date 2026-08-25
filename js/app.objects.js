@@ -1453,6 +1453,36 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     }
   },
 
+  // §15.8 B — ближайшее дело по лиду: текст + крайний срок.
+  leadsTaskModal(id, name) {
+    const cur = (this.leadsState.items || []).find(l => l.id === id) || {};
+    const e = (v) => this.esc(v == null ? '' : String(v));
+    this.openModal('Дело по лиду · ' + (name || id),
+      '<label class="label">Что за дело</label>'
+      + `<input id="ml_act" class="input w-full mb-2" placeholder="напр. позвонить по КП" value="${e(cur.next_action)}" />`
+      + '<label class="label">Крайний срок</label>'
+      + `<input id="ml_at" type="date" class="input w-full" value="${e(cur.next_action_at)}" />`
+      + '<div class="text-[12px] mt-2" style="color:var(--text-dim)">Пустые поля очищают дело.</div>',
+      () => {
+        const val = (x) => ((document.getElementById(x) || {}).value || '').trim();
+        this.leadsSetTask(id, val('ml_act') || null, val('ml_at') || null);
+        return true;
+      });
+  },
+
+  async leadsSetTask(id, next_action, next_action_at) {
+    try {
+      const lead = await window.AGL.updateLead(id, { next_action, next_action_at });
+      const st = this.leadsState;
+      const i = st.items.findIndex(l => l.id === id);
+      if (i >= 0 && lead) st.items[i] = lead;
+      this.render();
+      this.toast(next_action || next_action_at ? 'Дело сохранено' : 'Дело очищено', 'ok');
+    } catch (err) {
+      this.toast('Ошибка: ' + String((err && err.message) || err), 'err');
+    }
+  },
+
   // §15.7 B — выбор создаваемого элемента: только клиент либо клиент + сделка.
   leadsConvertModal(id, name) {
     this.openModal('Конвертация лида · ' + (name || id),
@@ -1522,6 +1552,7 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
         (l.phone ? `<a class="btn text-[11px]" href="tel:${e(l.phone)}">Позвонить</a> ` : '') +
         (canConvert ? `<button class="btn text-[11px]" data-lead-convert="${e(l.id)}" data-lead-name="${e(l.name)}">В клиенты</button> ` : '') +
         (canConvert ? `<button class="btn text-[11px]" data-lead-reject="${e(l.id)}" data-lead-name="${e(l.name)}">Некачественный</button> ` : '') +
+        (canConvert ? `<button class="btn text-[11px]" data-lead-task="${e(l.id)}" data-lead-name="${e(l.name)}">Дело</button> ` : '') +
         `<button class="btn text-[11px]" data-lead-open="${e(l.id)}">Открыть</button>`;
       const cell = (v) => `<td class="truncate max-w-[180px]" title="${e(v)}">${e(v)}</td>`;
       // §15.6 п.4: срок ближайшего дела; просроченное подсвечивается.
@@ -4092,6 +4123,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-lead-reject]').forEach(b => {
         b.onclick = () => this.leadsRejectModal(b.getAttribute('data-lead-reject'), b.getAttribute('data-lead-name'));
+      });
+      el.querySelectorAll('[data-lead-task]').forEach(b => {
+        b.onclick = () => this.leadsTaskModal(b.getAttribute('data-lead-task'), b.getAttribute('data-lead-name'));
       });
       const la = el.querySelector('[data-lead-add]');
       if (la) la.onclick = () => this.leadsCreateModal();
