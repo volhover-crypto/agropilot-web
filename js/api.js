@@ -217,6 +217,24 @@ const AGL = {
     return apiFetch('/v1/team/' + id, { method: 'PATCH', data });
   },
 
+  // ─── Catalog (Блок B, §18) — read-model дерево, только чтение ───
+  async loadCatalogTree(node, params = {}) {
+    const qs = new URLSearchParams();
+    if (node) qs.set('node', node);
+    if (params.limit  !== undefined) qs.set('limit',  params.limit);
+    if (params.offset !== undefined) qs.set('offset', params.offset);
+    const suffix = qs.toString();
+    return safeLoad('/v1/catalog/tree' + (suffix ? '?' + suffix : ''),
+                    { items: [], total: 0, limit: 100, offset: 0 });
+  },
+  async loadCatalogSearch(q, type) {
+    const qs = new URLSearchParams();
+    qs.set('q', q);
+    if (type) qs.set('type', type);
+    return safeLoad('/v1/catalog/search?' + qs.toString(),
+                    { items: [], total: 0, limit: 50, offset: 0 });
+  },
+
   // ─── Monitoring (A-3, §17) — лента наблюдений, только чтение ───
   async loadMonitoring(params = {}) {
     const qs = new URLSearchParams();
@@ -366,6 +384,7 @@ const AGL = {
   MONITORING_READY:     true,   // GET /v1/monitoring, /v1/monitoring/stats (§17)
   CLIENTS_READY:        true,   // GET /v1/clients — роутер есть с §13.1, флаг забыли
   CONTENT_READY:        true,   // GET/POST/PATCH/DELETE /v1/content — роутер есть с M10-3
+  CATALOG_READY:        true,   // GET /v1/catalog/tree, /v1/catalog/search (§18)
 
   // —— Calendar (M7) ——
   async loadCalendar(from, to) {
