@@ -217,6 +217,25 @@ const AGL = {
     return apiFetch('/v1/team/' + id, { method: 'PATCH', data });
   },
 
+  // ─── Monitoring (A-3, §17) — лента наблюдений, только чтение ───
+  async loadMonitoring(params = {}) {
+    const qs = new URLSearchParams();
+    qs.set('limit',  params.limit  ?? 50);
+    qs.set('offset', params.offset ?? 0);
+    if (params.level)    qs.set('level',    params.level);
+    if (params.category) qs.set('category', params.category);
+    if (params.source)   qs.set('source',   params.source);
+    if (params.q)        qs.set('q',        params.q);
+    if (params.since)    qs.set('since',    params.since);
+    if (params.focus)    qs.set('focus',    'true');
+    return safeLoad('/v1/monitoring?' + qs.toString(),
+                    { items: [], total: 0, limit: 50, offset: 0 });
+  },
+  async loadMonitoringStats() {
+    return safeLoad('/v1/monitoring/stats',
+                    { total: 0, by_level: {}, by_category: {}, latest_at: null });
+  },
+
   // ─── Sources (safeLoad) ───
   async loadSources() {
     return safeLoad('/v1/sources?limit=100');
@@ -339,6 +358,7 @@ const AGL = {
   SOURCES_READY:         true,
   LEADS_READY:           true,   // GET/PATCH /v1/leads, POST /v1/leads/{id}/convert
   TEAM_RBAC_READY:      true,   // PATCH /v1/team/{id}
+  MONITORING_READY:     true,   // GET /v1/monitoring, /v1/monitoring/stats (§17)
 
   // —— Calendar (M7) ——
   async loadCalendar(from, to) {

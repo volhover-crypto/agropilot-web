@@ -3872,6 +3872,52 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return `<div class="card p-4"><div class="label mb-3">Связи объекта</div><div class="flex flex-col gap-2 overflow-x-auto">${rows}</div></div>`;
     },
     // ======== ЧАНК 2.3: МОНИТОРИНГ РЫНКА ========
+    // §17 — состояние живой ленты наблюдений (A-3).
+    monState: {
+      items: [], total: 0, limit: 50, offset: 0,
+      level: '', loading: false, loaded: false,
+      stats: { total: 0, by_level: {}, by_category: {}, latest_at: null },
+    },
+
+    MON_LEVEL_UI: {
+      critical: { label: 'Критично', col: 'var(--err)'       },
+      warning:  { label: 'Внимание', col: 'var(--warn)'      },
+      info:     { label: 'Инфо',     col: 'var(--info)'      },
+      ok:       { label: 'Норма',    col: 'var(--ok)'        },
+    },
+
+    async monLoad() {
+      const st = this.monState;
+      st.loading = true; st.loaded = true;
+      const [d, stats] = await Promise.all([
+        window.AGL.loadMonitoring({ limit: st.limit, offset: st.offset, level: st.level }),
+        window.AGL.loadMonitoringStats(),
+      ]);
+      st.items = (d && d.items) || []; st.total = (d && d.total) || 0;
+      st.stats = stats || st.stats;
+      st.loading = false;
+      this.render();
+    },
+
+    monFilter(level) {
+      const st = this.monState;
+      st.level = level; st.offset = 0; this.monLoad();
+    },
+
+    monPage(delta) {
+      const st = this.monState;
+      const next = st.offset + delta * st.limit;
+      if (next < 0 || next >= st.total) return;
+      st.offset = next; this.monLoad();
+    },
+
+    // §17.6: сколько дней прошло с последнего наблюдения (null — данных нет)
+    monStaleDays() {
+      const at = this.monState.stats && this.monState.stats.latest_at;
+      if (!at) return null;
+      return Math.floor((Date.now() - new Date(at).getTime()) / 86400000);
+    },
+
     vMonitoring() {
       const rows = (this.M.sources || []).map(s => `<div class="card-2 p-3 flex items-center gap-3">
         <span style="color:${s.active ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
@@ -3880,17 +3926,57 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <button class="btn text-[12px]" data-src-scan="${s.id}">Проверить</button>
         <button class="btn text-[12px]" data-src-toggle="${s.id}">${s.active ? 'Пауза' : 'Вкл'}</button>
       </div>`).join('');
-      const sigRows = this.M.signals.map(s => { const d = this.dealById(s.dealId); return `<div class="card-2 p-3 flex items-start gap-3"><span class="shrink-0" style="color:${this.sevColor(s.sev)}">●</span><div class="flex-1 min-w-0"><div class="text-sm">${this.esc(s.text)}</div><a class="text-[12px] underline cursor-pointer" style="color:var(--text-dim)" data-go="deal:${d ? d.id : ''}">${this.esc(s.objectTitle)}</a></div><div class="flex flex-col items-end gap-1 shrink-0"><span class="pill whitespace-nowrap" style="color:${this.sevColor(s.sev)};border-color:${this.sevColor(s.sev)}">${s.sev}</span><button class="btn btn-accent text-[12px] whitespace-nowrap" data-signal-act="${s.id}">Действие</button></div></div>`; }).join('') || this.empty();
+      // §17.6 — живая лента наблюдений вместо мок-сигналов.
+      const mst = this.monState;
+      if (!mst.loaded) { this.monLoad(); }
+      const L = this.MON_LEVEL_UI;
+      const fmtVal = (o) => (o.value === null || o.value === undefined)
+        ? '' : `${o.value}${o.unit ? ' ' + this.esc(o.unit) : ''}`;
+      const obsRows = mst.items.map(o => {
+        const ui = L[o.level] || { label: o.level || '—', col: 'var(--text-mute)' };
+        const focus = (o.matched_focus || [])
+          .map(f => `<span class="pill text-[10px]">${this.esc(f)}</span>`).join('');
+        const val = fmtVal(o);
+        return `<div class="card-2 p-3 flex items-start gap-3">
+          <span class="shrink-0" style="color:${ui.col}">●</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm">${this.esc(o.message || o.parameter || '')}</div>
+            <div class="text-[12px]" style="color:var(--text-dim)">${this.esc(o.source || '')}${o.parameter ? ' · ' + this.esc(o.parameter) : ''}${val ? ' · ' + val : ''} · ${(o.created_at || '').slice(0, 10)} ${focus}</div>
+          </div>
+          <span class="pill whitespace-nowrap shrink-0" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span>
+        </div>`;
+      }).join('') || this.empty();
+
+      const S = mst.stats.by_level || {};
+      const lvlTab = (val, label, n) =>
+        `<button class="btn text-[12px] ${mst.level === val ? 'btn-accent' : ''}" data-mon-level="${val}">${label}${n === undefined ? '' : ' ' + n}</button>`;
+      const stale = this.monStaleDays();
+      const staleBanner = (stale !== null && stale > 7)
+        ? `<div class="card-2 p-2 text-[12px]" style="color:var(--warn)">Данные устарели: последнее наблюдение ${(mst.stats.latest_at || '').slice(0, 10)} (${stale} дн. назад). Поставщик наблюдений вне ERP.</div>`
+        : (stale === null ? `<div class="card-2 p-2 text-[12px]" style="color:var(--text-mute)">Наблюдений пока нет.</div>` : '');
+      const from = mst.total ? mst.offset + 1 : 0;
+      const to = Math.min(mst.offset + mst.limit, mst.total);
       return `<div class="flex flex-col gap-4">
         <div class="card p-4">
-          <div class="flex items-center justify-between mb-3"><div class="label">Сигналы · ${this.M.signals.length}</div></div>
-          <div class="flex flex-col gap-2">${sigRows}</div>
+          <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            <div class="label">Наблюдения · ${mst.total}</div>
+            <div class="flex flex-wrap gap-1">
+              ${lvlTab('', 'Все', mst.stats.total)}${lvlTab('critical', 'Критично', S.critical)}${lvlTab('warning', 'Внимание', S.warning)}${lvlTab('info', 'Инфо', S.info)}${lvlTab('ok', 'Норма', S.ok)}
+            </div>
+          </div>
+          ${staleBanner}
+          <div class="flex flex-col gap-2 mt-2">${obsRows}</div>
+          <div class="flex items-center gap-2 mt-2 text-[12px]">
+            <span>${from}-${to} из ${mst.total}</span>
+            <button class="btn text-[12px]" data-mon-page="-1" ${mst.offset === 0 ? 'disabled' : ''}>← Назад</button>
+            <button class="btn text-[12px]" data-mon-page="1" ${mst.offset + mst.limit >= mst.total ? 'disabled' : ''}>Вперёд →</button>
+          </div>
         </div>
         <div class="card p-4">
           <div class="flex items-center justify-between mb-3"><div class="label">Источники · ${this.M.sources.length}</div><button class="btn btn-accent text-[13px]" data-src-add>+ Источник</button></div>
           <div class="flex flex-col gap-2">${rows}</div>
         </div>
-        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">На сигнале нажмите «Действие» — ПЕТРУШКА предложит создать сделку или задачу. При находке источник создаёт новый Сигнал (кнопка «Проверить»).</div>
+        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Наблюдения приходят от внешних поставщиков (погода, NDVI, новости, цены) и доступны только на чтение. Пометки — совпадения с monitoring_focus задач стратегии. Кнопка «Проверить» у источника — задел под живой скан, пока не активна.</div>
       </div>`;
     },
     // демо: скан источника → новый сигнал + подсказка ПЕТРУШКА
@@ -4194,6 +4280,13 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         b.onclick = () => this.leadsTaskModal(b.getAttribute('data-lead-task'), b.getAttribute('data-lead-name'));
       });
       // §15.1a: ресайз колонок. stopPropagation, иначе клик уйдёт в сортировку.
+      // §17.6: фильтр по уровню и пагинация ленты наблюдений
+      el.querySelectorAll('[data-mon-level]').forEach(b => {
+        b.onclick = () => this.monFilter(b.getAttribute('data-mon-level'));
+      });
+      el.querySelectorAll('[data-mon-page]').forEach(b => {
+        b.onclick = () => this.monPage(parseInt(b.getAttribute('data-mon-page'), 10));
+      });
       el.querySelectorAll('[data-col-grip]').forEach(g => {
         const key = g.getAttribute('data-col-grip');
         g.onclick = (ev) => ev.stopPropagation();
