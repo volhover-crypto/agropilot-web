@@ -1285,16 +1285,18 @@ Agromonitoring, NewsAPI, PriceAPI. В репозитории ERP таблица 
 - действие «Действие» по сигналу (`signalAction`) — остаётся на мок-модели;
 - привязку наблюдений к реестру `sources` и схлопывание категорий (17.2 п.3, п.5).
 
-DoD 17:
-  [ ] GET /v1/monitoring -> {ok,data:{items,total,limit,offset}}, 38 элементов
-  [ ] level=critical фильтрует и ловит запись в верхнем регистре (CRITICAL)
-  [ ] level=bogus -> 422, без 500
-  [ ] category/source/q/since фильтруют; since с битой датой -> 422
-  [ ] порядок created_at DESC: первый элемент — самый свежий
-  [ ] matched_focus присутствует у каждого элемента; при пустой strategy_tasks
+DoD 17: ВЫПОЛНЕН 2026-08-28 (реализация a84b8d7 + dc36307).
+  [x] GET /v1/monitoring -> {ok,data:{items,total,limit,offset}}, 38 элементов
+  [x] level=critical фильтрует и ловит запись в верхнем регистре (CRITICAL)
+  [x] level=bogus -> 422, без 500
+  [x] category/source/q/since фильтруют; since с битой датой -> 422
+  [x] порядок created_at DESC: первый элемент — самый свежий
+  [x] matched_focus присутствует у каждого элемента; при пустой strategy_tasks
       лента отдаётся полностью, focus=true возвращает 0 без ошибки
-  [ ] GET /v1/monitoring/stats: total, by_level нормализован, latest_at = 2026-07-12
-  [ ] раздел «Мониторинг» рендерит живую ленту, плашка устаревания видна
-  [ ] field_alerts не изменена: 38 строк до и после
-  [ ] регресс: leads/clients/deals/sources/strategy = 200
-  [ ] py_compile pass; node --check pass
+  [x] GET /v1/monitoring/stats: total, by_level нормализован,
+      latest_at = 2026-07-11T23:08+00:00 (в серверной зоне +05 это 12.07 —
+      psql показывает локально, API отдаёт UTC; расхождения нет)
+  [x] раздел «Мониторинг» рендерит живую ленту, плашка устаревания видна
+  [x] field_alerts не изменена: 38 строк до и после
+  [x] регресс: leads/clients/deals/sources/strategy = 200
+  [x] py_compile pass; node --check pass
