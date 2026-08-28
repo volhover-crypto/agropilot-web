@@ -1406,19 +1406,19 @@ ILIKE по заголовку каждой ветки (`title`/`name`/`url`) + �
 - Не трогаем палитру Ctrl+K, разделы-источники этих данных и их API.
 - RAG/векторизация «Справочника» — v2, вне объёма (ТЗ, Приложение A).
 
-DoD 18:
-  [ ] GET /v1/catalog/tree без параметров -> 8 веток с корректными count
+DoD 18: ВЫПОЛНЕН 2026-08-28 (реализация c8b2271 + e04720b).
+  [x] GET /v1/catalog/tree без параметров -> 8 веток с корректными count
       (artifacts 21, content 0, deals 10, clients 7, goals 3, strategy_tasks 0,
       sources 1, team 5)
-  [ ] ?node=artifacts -> 21 лист, конверт {items,total,limit,offset}
-  [ ] ?node=sources -> подветки по типам; ?node=sources:news -> листья
-  [ ] ?node=team -> подветки по ролям; ?node=team:<role> -> листья
-  [ ] ?node=bogus -> 404, без 500
-  [ ] пустые ветки content и strategy_tasks видны с count 0
-  [ ] у каждого листа есть link.route из перечня 18.3
-  [ ] search?q=<2+ символов> находит по разным веткам; q короче 2 -> 422
-  [ ] раздел «Справочник» рендерит дерево, lazy-load работает, «Открыть» ведёт
+  [x] ?node=artifacts -> 21 лист, конверт {items,total,limit,offset}
+  [x] ?node=sources -> подветки по типам; ?node=sources:news -> листья
+  [x] ?node=team -> подветки по ролям; ?node=team:<role> -> листья
+  [x] ?node=bogus -> 404, без 500
+  [x] пустые ветки content и strategy_tasks видны с count 0
+  [x] у каждого листа есть link.route из перечня 18.3
+  [x] search?q=<2+ символов> находит по разным веткам; q короче 2 -> 422
+  [x] раздел «Справочник» рендерит дерево, lazy-load работает, «Открыть» ведёт
       по link
-  [ ] БД не изменена: миграций нет, количество строк во всех 8 таблицах прежнее
-  [ ] регресс: leads/clients/deals/sources/strategy/monitoring = 200
-  [ ] py_compile pass; node --check pass
+  [x] БД не изменена: миграций нет, количество строк во всех 8 таблицах прежнее
+  [x] регресс: leads/clients/deals/sources/strategy/monitoring = 200
+  [x] py_compile pass; node --check pass
