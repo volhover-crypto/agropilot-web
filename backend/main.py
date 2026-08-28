@@ -23,6 +23,7 @@ from backend.strategy_tasks.routes import strategy_tasks_router
 from backend.clients.routes import clients_router
 from backend.leads.routes import leads_router
 from backend.monitoring.routes import monitoring_router
+from backend.catalog.routes import catalog_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -79,5 +80,6 @@ app.include_router(clients_router, prefix="/agropilot/api/v1")
 # A-6.1 -- Leads (Bitrix24 import)
 app.include_router(leads_router, prefix="/agropilot/api/v1")
 app.include_router(monitoring_router, prefix="/agropilot/api/v1")
+app.include_router(catalog_router, prefix="/agropilot/api/v1")
 
-# Future: auth_router, catalog_router (Блок B) ...
+# Future: auth_router ...
