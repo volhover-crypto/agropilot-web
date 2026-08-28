@@ -347,6 +347,11 @@ const AGL = {
   },
 
   // —— Feature flags ——
+  // ВНИМАНИЕ: это ДОСКА СТАТУСОВ, а не переключатели поведения. Ни один флаг
+  // нигде не читается (проверено 2026-08-28: 0 упоминаний в app.objects.js,
+  // index.html, mock.objects.js и в самом api.js вне этого блока). Флаг = отметка
+  // «backend по разделу поднят». Менять его нужно вместе с реальным роутером,
+  // иначе доска снова разойдётся с кодом, как было с CLIENTS_READY.
   CALENDAR_READY:  true,
   VERSIONS_READY:  false,
   SKILLS_READY:    true,
@@ -359,6 +364,8 @@ const AGL = {
   LEADS_READY:           true,   // GET/PATCH /v1/leads, POST /v1/leads/{id}/convert
   TEAM_RBAC_READY:      true,   // PATCH /v1/team/{id}
   MONITORING_READY:     true,   // GET /v1/monitoring, /v1/monitoring/stats (§17)
+  CLIENTS_READY:        true,   // GET /v1/clients — роутер есть с §13.1, флаг забыли
+  CONTENT_READY:        true,   // GET/POST/PATCH/DELETE /v1/content — роутер есть с M10-3
 
   // —— Calendar (M7) ——
   async loadCalendar(from, to) {
