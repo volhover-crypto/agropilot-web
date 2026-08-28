@@ -18,12 +18,12 @@
 
 ## Система
 
-**AgroPILOT** — агро-B2B рабочий стол для малой команды. Стек: Alpine.js (без сборки), ванильный JS, innerHTML-рендер, hash-роутинг, FastAPI/uvicorn `127.0.0.1:5555`, PostgreSQL `agropilot@localhost:5432`, nginx.
+**AgroPILOT** — агро-B2B рабочий стол для малой команды. Стек: Alpine.js (без сборки), ванильный JS, innerHTML-рендер, hash-роутинг, FastAPI/uvicorn `127.0.0.1:5560`, PostgreSQL `agropilot@localhost:5432`, nginx.
 
 | Компонент | Путь на сервере |
 |---|---|
 | Frontend (static) | `/opt/agropilot-web/` |
-| Backend (FastAPI) | `127.0.0.1:5555`, запуск: `uvicorn backend.main:app --host 127.0.0.1 --port 5555` |
+| Backend (FastAPI) | `127.0.0.1:5560`, запуск: `uvicorn backend.main:app --host 127.0.0.1 --port 5560` |
 | Database | `psql -U postgres -d agropilot` |
 | Прод URL | https://mdked.hlab.kz/agropilot/ |
 | Репозиторий | https://github.com/volhover-crypto/agropilot-web |

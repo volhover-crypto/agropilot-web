@@ -12,11 +12,11 @@
 Браузер ──HTTPS──> nginx (:443, mdked.hlab.kz)
                       │
                       ├─ /agropilot/        → статика /opt/agropilot-web/ (SPA: index.html + JS)
-                      ├─ /agropilot/api/    → proxy_pass http://127.0.0.1:5555/agropilot/api/
+                      ├─ /agropilot/api/    → proxy_pass http://127.0.0.1:5560/agropilot/api/
                       ├─ /agropilot/files/  → статика /opt/agropilot-data/artifacts/ (артефакты)
                       └─ /                  → 302 redirect на /agropilot/
 
-FastAPI BFF (:5555, localhost only) ──SQLAlchemy async──> PostgreSQL localhost:5432/db agropilot
+FastAPI BFF (:5560, localhost only) ──SQLAlchemy async──> PostgreSQL localhost:5432/db agropilot
 Telegram Ingest (отдельный процесс) ──> тот же backend/API
 Mock Server (dev)   ──> мок-данные для UI без БД
 ```
@@ -25,7 +25,7 @@ Mock Server (dev)   ──> мок-данные для UI без БД
 
 | Компонент | systemd unit | Что делает | Где код |
 |---|---|---|---|
-| Backend (BFF) | `agropilot-backend.service` | FastAPI + Uvicorn, `backend.main:app`, 127.0.0.1:5555 | `/opt/agropilot-web/backend/` |
+| Backend (BFF) | `agropilot-backend.service` | FastAPI + Uvicorn, `backend.main:app`, 127.0.0.1:**5560** | `/opt/agropilot-web/backend/` |
 | Telegram ingest | `agropilot-tg.service` | Приём данных из Telegram | `/root/agropilot_bff_new/tg_ingest.py` |
 | Mock server | `agropilot-mock.service` | Dev-мок API | `/root/.openclaw/workspace/projects/agropilot/mock_server.py` |
 | Nginx | `nginx.service` | Роутинг + TLS | `/etc/nginx/sites-enabled/agropilot-web` |
@@ -37,7 +37,8 @@ Mock Server (dev)   ──> мок-данные для UI без БД
 
 - **GitHub:** `https://github.com/volhover-crypto/agropilot-web`
 - **Локальная копия (прод):** `/opt/agropilot-web/`
-- Ветка: master. Стиль коммитов: conventional (`feat(backend): ...`, `docs(contract): ...`)
+- Ветка: **main**. `master` удалена 2026-07-12 (тег `legacy/master` сохранён).
+  Стиль коммитов: conventional (`feat(backend): ...`, `docs(contract): ...`)
 - Python-окружение: `/opt/agropilot-web/venv` (fastapi 0.139, uvicorn, sqlalchemy[asyncio] 2.0, asyncpg, pydantic 2.x — полный список в `requirements.txt`)
 
 ### Структура /opt/agropilot-web/
@@ -58,7 +59,8 @@ backend/
   <domain>/           — доменные модули, каждый: routes.py + models.py:
       team, clients, deals, leads, packages, tasks,
       strategy_tasks, goals, calendar, content,
-      artifacts, sources
+      artifacts, sources, strategy, versions,
+      monitoring (§17, read-only), catalog (§18, read-model без своих таблиц)
   migrations/         — миграции схемы
 docs/                 — эта папка
 CODER_BRIEF.md        — краткий бриф для кодера (читать первым!)
@@ -105,7 +107,7 @@ venv/                 — не редактировать, пересоздаё�
    ```bash
    cd /opt/agropilot-web
    venv/bin/python -c "from backend.main import app"   # импорт без ошибок
-   curl -s http://127.0.0.1:5555/agropilot/api/<endpoint>
+   curl -s http://127.0.0.1:5560/agropilot/api/<endpoint>
    ```
 
 ### Деплой (выполняет оператор)
@@ -113,7 +115,7 @@ venv/                 — не редактировать, пересоздаё�
 cd /opt/agropilot-web && git pull
 sudo systemctl restart agropilot-backend
 journalctl -u agropilot-backend -n 20 --no-pager
-curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5555/docs   # 200 = OK
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5560/docs   # 200 = OK
 curl -s -o /dev/null -w "%{http_code}" https://mdked.hlab.kz/agropilot/  # 200 = OK
 ```
 

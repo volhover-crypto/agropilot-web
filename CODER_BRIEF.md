@@ -133,7 +133,7 @@ After=network.target postgresql.service
 Type=simple
 User=www-data
 WorkingDirectory=/opt/agropilot-web
-ExecStart=<PATH_FROM_WHICH> backend.main:app --host 127.0.0.1 --port 5555
+ExecStart=<PATH_FROM_WHICH> backend.main:app --host 127.0.0.1 --port 5560
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
@@ -176,7 +176,7 @@ https://mdked.hlab.kz/agropilot/api/v1/strategy
 |---|---|
 | Сервер | `mdked.hlab.kz` |
 | Фронтенд | `/opt/agropilot-web/` |
-| Backend | `uvicorn backend.main:app --host 127.0.0.1 --port 5555` |
+| Backend | `uvicorn backend.main:app --host 127.0.0.1 --port 5560` |
 | PostgreSQL | `agropilot@localhost:5432`, user `postgres` |
 | Прод URL | https://mdked.hlab.kz/agropilot/ |
 | issue | https://github.com/volhover-crypto/agropilot-web/issues/1 |

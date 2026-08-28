@@ -15,7 +15,7 @@
     echo "===== BACKEND MODULES ====="; ls backend/
     echo "===== ENDPOINTS ====="; for p in health clients sources content packages artifacts reports team goals; do \
       printf "%-10s -> " $p; curl -s -o /dev/null -w "%{http_code}\n" \
-      http://127.0.0.1:5555/agropilot/api/v1/$p; done
+      http://127.0.0.1:5560/agropilot/api/v1/$p; done
     echo "===== SERVICE ====="; systemctl is-active agropilot-backend.service
 
 ЖДИ мой вывод. Ничего не пиши/не кодь, пока не получишь его.

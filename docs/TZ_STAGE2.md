@@ -186,7 +186,7 @@
 3. Агент фиксирует состояние по факту → предлагает контракт в `CONTRACTS.md` → СТОП, ждёт «ок, поехали».
 4. Роутер + модель по паттерну `backend/deals` → регистрация в `backend/main.py`.
 5. DIFF → «ОК» → Commit & Push → verify raw по full SHA (grep-маркер).
-6. `restart agropilot-backend.service` → `curl 127.0.0.1:5555/agropilot/api/v1/<ep>` = `{ok,data}`.
+6. `restart agropilot-backend.service` → `curl 127.0.0.1:5560/agropilot/api/v1/<ep>` = `{ok,data}`.
 7. Запись в `HANDOVER.md` (шаг, SHA, что закрыто) → закрыть тред.
 
 ## 8. Открытые вопросы (уточнить при реализации)

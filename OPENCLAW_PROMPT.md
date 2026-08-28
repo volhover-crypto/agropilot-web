@@ -10,7 +10,7 @@
 
 **Источник правды:** репозиторий `github.com/volhover-crypto/agropilot-web`, ветка `main`, файл `HANDOVER.md`.
 **Продовая среда:** `https://mdked.hlab.kz/agropilot/`
-**Стек:** Alpine.js (без сборки), ванильный JS, строковый innerHTML-рендер, hash-роутинг, FastAPI/uvicorn на `127.0.0.1:5555`, PostgreSQL `agropilot@localhost:5432`.
+**Стек:** Alpine.js (без сборки), ванильный JS, строковый innerHTML-рендер, hash-роутинг, FastAPI/uvicorn на `127.0.0.1:5560`, PostgreSQL `agropilot@localhost:5432`.
 
 ---
 

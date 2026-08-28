@@ -47,7 +47,7 @@
 1. **Contract-first** — до кода фиксируем контракт эндпоинта (метод, путь, поля). Код обязан ему соответствовать.
 2. **Проверка после push** — `curl -s raw.githubusercontent.com/volhover-crypto/agropilot-web/main/<файл> | grep <маркер>`. Нет маркера → push не долетел.
 3. **Синтаксис до коммита** — `python3 -m py_compile <f>` / `node --check <f>`. FAIL → не коммитим.
-4. **Runtime-verify** — `curl -s http://127.0.0.1:5555/agropilot/api/v1/<ep> | head -c 200` = `{"ok":true,"data":...}`. 404/500 → не закрыто.
+4. **Runtime-verify** — `curl -s http://127.0.0.1:5560/agropilot/api/v1/<ep> | head -c 200` = `{"ok":true,"data":...}`. 404/500 → не закрыто.
 5. **Diff-gate** — `git diff` перед коммитом; оператор глазами сверяет.
 6. **Цитирование факта** — любое утверждение о состоянии сопровождается командой-пруфом. Нет пруфа = предположение.
 
@@ -65,7 +65,7 @@
 Шаг 4. Правка main.py (регистрация) → git diff → [СТОП — "коммить"]
 Шаг 5. git add+commit+push → curl raw...main.py | grep sources_router. PASS/FAIL
 Шаг 6. systemctl restart agropilot-backend.service
-Шаг 7. curl 127.0.0.1:5555/.../sources → {"ok":true,"data":[]}. PASS/FAIL
+Шаг 7. curl 127.0.0.1:5560/.../sources → {"ok":true,"data":[]}. PASS/FAIL
 Шаг 8. Фронт (loadSources уже есть) → hard-reload → раздел рендерит.
 Шаг 9. Чек-лист приёмки → HANDOVER.
 ```
