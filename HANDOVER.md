@@ -58,6 +58,14 @@
 >   релевантность keyword-MVP). Первый скан: 7 записей из ExactFarmingNews,
 >   дедуп подтверждён. n8n-шаблон A1 готов к импорту (docs/n8n), активировать
 >   после заведения сервисного refresh-токена u7 в n8n env.
+> - **n8n поднят и A1 АКТИВИРОВАН 14.09**: контейнер n8n был в crash-loop
+>   («permission denied for schema public» — PG15+ отобрал CREATE у
+>   n8n_user; лечится ALTER SCHEMA public OWNER TO n8n_user, база n8n).
+>   Воркфлоу «AgroPILOT A1 — медиа-мониторинг» импортирован и active=true,
+>   env контейнера дополнен AGROPILOT_SERVICE_REFRESH (u7; ВАЖНО: живёт
+>   14 дней — до 28.09 перевыпустить: login u7 -> refresh -> обновить
+>   /root/n8n/docker-compose.yml -> docker compose up -d --force-recreate n8n).
+>   n8n web: https://mdked.hlab.kz/n8n (basic auth admin).
 
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
 - Ветка по умолчанию: main ✅ (переименовано 2026-07-12, M8: создана ветка main на HEAD d950a860, default branch обновить в настройках GitHub Settings → Branches).
