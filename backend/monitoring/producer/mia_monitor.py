@@ -37,41 +37,23 @@ log = logging.getLogger("mia_monitor")
 
 VALID_LEVELS = ("info", "ok", "warning", "critical")
 
-# Пороги срабатывания: endpoint -> (категория, параметр, единица, правила)
-# Правило: ключ поля в ответе мока -> (мин, уровень_ниже, макс, уровень_выше)
-THRESHOLDS = {
-    "/weather": {
-        "category": "weather",
-        "rules": {
-            "temperature": {"min": 5.0, "below": "warning", "max": 35.0, "above": "critical"},
-            "wind_speed":  {"min": None, "below": None,     "max": 15.0, "above": "warning"},
-            "humidity":    {"min": 25.0, "below": "warning", "max": None, "above": None},
-        },
-    },
-    "/weather/frost": {
-        "category": "frost",
-        "rules": {
-            "temperature": {"min": 0.0, "below": "critical", "max": None, "above": None},
-        },
-    },
-    "/ndvi": {
-        "category": "ndvi",
-        "rules": {
-            "ndvi": {"min": 0.3, "below": "warning", "max": None, "above": None},
-        },
-    },
-    "/prices": {
-        "category": "prices",
-        "rules": {
-            "price": {"min": None, "below": None, "max": None, "above": None, "any": "info"},
-        },
-    },
-    "/news": {
-        "category": "news",
-        "rules": {
-            "title": {"any": "info"},
-        },
-    },
+# Мок-сервис отдаёт готовый контракт наблюдения:
+#   {source, category, parameter, value, unit, threshold_warning,
+#    threshold_critical, norm, timestamp}
+# Правило уровня:
+#   - категории weather/frost: знаковые пороги (понижение температуры),
+#     value <= threshold_critical -> critical; <= threshold_warning -> warning;
+#   - остальные (ndvi/price/news): пороги по модулю отклонения,
+#     |value| >= threshold_critical -> critical; >= threshold_warning -> warning.
+SIGNED_CATEGORIES = {"weather", "frost"}
+
+# Эндпоинты мока -> категория (для контроля; категорию берём из самого ответа)
+ENDPOINTS = {
+    "/weather":      "weather",
+    "/weather/frost": "frost",
+    "/ndvi":         "ndvi",
+    "/prices":       "price",
+    "/news":         "news",
 }
 
 
@@ -88,56 +70,64 @@ def _num(v):
         return None
 
 
-def analyze(endpoint: str, payload: dict) -> list[dict]:
-    """Превращает ответ мока в список наблюдений по правилам THRESHOLDS."""
-    spec = THRESHOLDS[endpoint]
-    category = spec["category"]
-    out = []
-    mode = os.environ.get("MIA_MODE", "info").strip().lower()
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
+
+def _level_for(item: dict, value: float) -> str:
+    tw = _num(item.get("threshold_warning"))
+    tc = _num(item.get("threshold_critical"))
+    signed = str(item.get("category", "")).lower() in SIGNED_CATEGORIES
+    if signed:
+        if tc is not None and value <= tc:
+            return "critical"
+        if tw is not None and value <= tw:
+            return "warning"
+        return "ok"
+    mag = abs(value)
+    if tc is not None and mag >= tc:
+        return "critical"
+    if tw is not None and mag >= tw:
+        return "warning"
+    return "ok"
+
+
+def analyze(endpoint: str, payload) -> list[dict]:
+    """Мок-контракт -> наблюдения field_alerts (схема §17).
+
+    Один элемент ответа = одно наблюдение. level по threshold_warning/
+    threshold_critical из самого ответа (знаково для weather/frost,
+    по модулю для ndvi/price/news).
+    """
+    mode = os.environ.get("MIA_MODE", "info").strip().lower()
+    out = []
     items = payload if isinstance(payload, list) else [payload]
     for item in items:
         if not isinstance(item, dict):
             continue
-        for field, rule in spec["rules"].items():
-            if field not in item:
-                continue
-            raw = item.get(field)
-            value = _num(raw)
-            level, message = None, None
-            unit = item.get("unit") or ""
-
-            if rule.get("any"):
-                level = rule["any"]
-                message = f"{category}/{field}: {raw}"
-            elif value is not None:
-                if rule.get("min") is not None and value < rule["min"]:
-                    level = rule["below"]
-                    message = f"{field}={value} ниже порога {rule['min']}"
-                elif rule.get("max") is not None and value > rule["max"]:
-                    level = rule["above"]
-                    message = f"{field}={value} выше порога {rule['max']}"
-                else:
-                    level = "ok"
-                    message = f"{field}={value} в норме"
-            else:
-                continue
-
-            if mode == "critical" and level in ("info", "ok"):
-                continue
-            if level not in VALID_LEVELS:
-                continue
-
-            out.append({
-                "source": "mia_monitor",
-                "category": category,
-                "parameter": str(item.get("title") or item.get("parameter") or field)[:128],
-                "value": value,
-                "unit": str(unit)[:16],
-                "level": level,
-                "message": message,
-                "dedup_key": f"{category}:{item.get('id', field)}:{field}",
-            })
+        value = _num(item.get("value"))
+        if value is None:
+            continue
+        category = str(item.get("category") or ENDPOINTS.get(endpoint, "system")).lower()
+        level = _level_for(item, value)
+        if mode == "critical" and level in ("info", "ok"):
+            continue
+        if level not in VALID_LEVELS:
+            continue
+        parameter = str(item.get("parameter") or category)[:128]
+        out.append({
+            "source": str(item.get("source") or "mia_monitor")[:64],
+            "category": category[:32],
+            "parameter": parameter,
+            "value": value,
+            "unit": str(item.get("unit") or "")[:16],
+            "level": level,
+            "message": f"{parameter} = {value} {item.get('unit', '')} (норма: {item.get('norm', '—')})",
+            "dedup_key": f"{category}:{parameter}:{level}",
+        })
     return out
 
 
@@ -178,14 +168,14 @@ async def main() -> int:
 
     observations: list[dict] = []
     errors = 0
-    for endpoint in THRESHOLDS:
+    for endpoint in ENDPOINTS:
         try:
             payload = fetch_json(base_url, endpoint)
             observations.extend(analyze(endpoint, payload))
         except Exception as e:
             errors += 1
             log.error("Не удалось получить %s%s: %s", base_url, endpoint, e)
-    if errors == len(THRESHOLDS):
+    if errors == len(ENDPOINTS):
         log.error("Все источники недоступны -- запись в БД не выполнялась")
         return 1
 
