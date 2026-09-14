@@ -8,19 +8,40 @@
 from typing import Optional
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.content.models import Content
-from backend.common.errors import NotFoundError
+from backend.content.models import Content, ContentVersion
+from backend.common.errors import NotFoundError, ValidationError
 from backend.common.deps import get_db, get_current_user
+from backend.team.models import TeamMember
 
 content_router = APIRouter(prefix="/content", tags=["content"])
 
 VALID_PLATFORMS = {"telegram", "instagram", "vk", "linkedin", "other"}
-VALID_STATUSES  = {"draft", "published", "archived"}
+# §21.1: цепочка конвейера + переходы; legacy draft/published/archived совместимы
+VALID_STATUSES  = {"draft", "in_review", "approved", "scheduled", "published", "rejected", "archived"}
+STATUS_TRANSITIONS = {
+    "draft":     {"in_review", "rejected", "archived"},
+    "in_review": {"draft", "approved", "rejected"},
+    "approved":  {"scheduled", "published", "rejected"},
+    "scheduled": {"published", "draft"},
+    "published": {"archived"},
+    "rejected":  {"draft", "archived"},
+    "archived":  {"draft"},
+}
+EDITOR_ONLY_STATUSES = {"approved", "rejected"}
+
+
+async def _can_approve(db: AsyncSession, user) -> bool:
+    member = await db.get(TeamMember, user.id)
+    if member is None:
+        return False
+    if member.role_key in ("manager", "admin"):
+        return True
+    return any(p in (member.permissions or []) for p in ("content:approve", "*:*"))
 
 def _ok(data):
     return {"ok": True, "data": data}
@@ -33,6 +54,15 @@ class ContentCreate(BaseModel):
     status:       Optional[str]      = "draft"
     author_id:    Optional[str]      = None
     published_at: Optional[datetime] = None
+    news_item_id: Optional[int]      = None
+    tags:         Optional[list]     = None
+    channel_ids:  Optional[list]     = None
+    scheduled_at: Optional[datetime] = None
+
+
+class FromNewsBody(BaseModel):
+    news_id: int
+    platform: str = "telegram"
 
 
 class ContentPatch(BaseModel):
@@ -42,6 +72,10 @@ class ContentPatch(BaseModel):
     status:       Optional[str]      = None
     author_id:    Optional[str]      = None
     published_at: Optional[datetime] = None
+    scheduled_at: Optional[datetime] = None
+    tags:         Optional[list]     = None
+    channel_ids:  Optional[list]     = None
+    comment:      Optional[str]      = None
 
 
 @content_router.get("")
@@ -72,19 +106,85 @@ async def create_content(
         raise HTTPException(status_code=422, detail=f"platform must be one of {sorted(VALID_PLATFORMS)}")
     if payload.status and payload.status not in VALID_STATUSES:
         raise HTTPException(status_code=422, detail=f"status must be one of {sorted(VALID_STATUSES)}")
+    if payload.status in EDITOR_ONLY_STATUSES and not await _can_approve(db, user):
+        raise ValidationError("создавать сразу в approved/rejected может только редактор")
+    now = datetime.now(timezone.utc)
     item = Content(
         title        = payload.title,
         body         = payload.body,
         platform     = payload.platform,
         status       = payload.status or "draft",
-        author_id    = payload.author_id,
+        author_id    = payload.author_id or user.id,
         published_at = payload.published_at,
-        created_at   = datetime.now(timezone.utc),
+        created_at   = now,
+        news_item_id = payload.news_item_id,
+        scheduled_at = payload.scheduled_at,
+        tags         = payload.tags or [],
+        channel_ids  = payload.channel_ids or [],
+        updated_at   = now,
     )
     db.add(item)
+    await db.flush()
+    db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
+                          author_id=user.id, comment="создание", created_at=now))
     await db.commit()
     await db.refresh(item)
     return _ok(item.to_dict())
+
+
+@content_router.post("/from_news")
+async def create_from_news(
+    payload: FromNewsBody,
+    db:      AsyncSession = Depends(get_db),
+    user                  = Depends(get_current_user),
+):
+    # A2-MVP: черновик поста из NewsItem (LLM-генерация подключается позже
+    # без смены контракта). NewsItem помечается used.
+    from backend.news.models import NewsItem
+
+    if payload.platform not in VALID_PLATFORMS:
+        raise ValidationError(f"platform must be one of {sorted(VALID_PLATFORMS)}")
+    news = await db.get(NewsItem, payload.news_id)
+    if not news:
+        raise NotFoundError(f"news_item {payload.news_id} не найден")
+    now = datetime.now(timezone.utc)
+    item = Content(
+        title        = (news.title or "Черновик поста")[:300],
+        body         = news.summary or news.title or "",
+        platform     = payload.platform,
+        status       = "draft",
+        author_id    = user.id,
+        created_at   = now,
+        news_item_id = news.id,
+        tags         = [],
+        channel_ids  = [],
+        updated_at   = now,
+    )
+    db.add(item)
+    await db.flush()
+    db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
+                          author_id=user.id, comment=f"черновик из news_item {news.id}",
+                          created_at=now))
+    news.status = "used"
+    await db.commit()
+    await db.refresh(item)
+    return _ok(item.to_dict())
+
+
+@content_router.get("/{content_id}/versions")
+async def list_versions(
+    content_id: int,
+    db:         AsyncSession = Depends(get_db),
+    user                      = Depends(get_current_user),
+):
+    item = await db.get(Content, content_id)
+    if not item:
+        raise NotFoundError("Content not found")
+    rows = (await db.execute(
+        select(ContentVersion).where(ContentVersion.content_id == content_id)
+        .order_by(ContentVersion.created_at.desc())
+    )).scalars().all()
+    return _ok([r.to_dict() for r in rows])
 
 
 @content_router.patch("/{content_id}")
@@ -99,13 +199,33 @@ async def patch_content(
         raise NotFoundError("Content not found")
     data = payload.model_dump(exclude_unset=True)
     if "platform" in data and data["platform"] not in VALID_PLATFORMS:
-        raise HTTPException(status_code=422, detail=f"platform must be one of {sorted(VALID_PLATFORMS)}")
+        raise ValidationError(f"platform must be one of {sorted(VALID_PLATFORMS)}")
     if "status" in data and data["status"] not in VALID_STATUSES:
-        raise HTTPException(status_code=422, detail=f"status must be one of {sorted(VALID_STATUSES)}")
-    for field, val in data.items():
-        setattr(item, field, val)
+        raise ValidationError(f"status must be one of {sorted(VALID_STATUSES)}")
+    if "status" in data and data["status"] != item.status:
+        new_status = data["status"]
+        allowed = STATUS_TRANSITIONS.get(item.status, set())
+        if new_status not in allowed:
+            raise ValidationError(
+                f"переход {item.status} -> {new_status} не разрешён (допустимо: {sorted(allowed)})")
+        if new_status in EDITOR_ONLY_STATUSES and not await _can_approve(db, user):
+            raise ValidationError("утверждение/отклонение требует права content:approve")
+        if new_status == "approved":
+            item.editor_id = user.id
+
+    old_title, old_body = item.title, item.body
+    for field in ("title", "body", "platform", "status", "author_id",
+                  "published_at", "scheduled_at", "tags", "channel_ids"):
+        if field in data:
+            setattr(item, field, data[field])
+    item.updated_at = datetime.now(timezone.utc)
     if data.get("status") == "published" and not data.get("published_at"):
-        item.published_at = datetime.now(timezone.utc)
+        item.published_at = item.updated_at
+    if old_title != item.title or old_body != item.body:
+        db.add(ContentVersion(content_id=item.id, title=old_title, body=old_body,
+                              author_id=user.id,
+                              comment=data.get("comment") or "версия до правки",
+                              created_at=item.updated_at))
     await db.commit()
     await db.refresh(item)
     return _ok(item.to_dict())

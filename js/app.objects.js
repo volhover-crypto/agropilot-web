@@ -226,6 +226,20 @@ source: 'ai',
             status: c.status || 'draft',
             channel: c.channel || '',
           }));
+          // §21: живой конвейер — API-посты замещают mock-очередь
+          if ((content || []).length) {
+            const RU = { draft: 'черновик', in_review: 'согласование', approved: 'одобрен',
+                         scheduled: 'запланирован', published: 'опубликован',
+                         rejected: 'отклонён', archived: 'архив' };
+            this.M.posts = content.map(c => ({
+              id: c.id, title: c.title, body: c.body || '',
+              status: RU[c.status] || c.status, apiStatus: c.status,
+              kind: 'пост · ' + (c.platform || ''), icon: '📝',
+              hashtags: '', channel: c.channel_ids && c.channel_ids.length ? String(c.channel_ids[0]) : '',
+              slot: (c.scheduled_at || '').slice(0, 16).replace('T', ' '),
+              media: '', api: true,
+            }));
+          }
 
           this.M.reports = (reports || []).map(r => ({
             id: r.id,
@@ -2173,11 +2187,25 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return s === 'одобрен' ? 'var(--ok)' : s === 'согласование' ? 'var(--err)' : s === 'отклонён' ? 'var(--text-mute)' : 'var(--warn)';
     },
     postSelect(id) { this.postSel = id; this.render(); },
-    postAct(id, act) {
+    async postAct(id, act) {
       const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
-      if (act === 'approve') { p.status = 'одобрен'; this.toast('Пост «' + p.title + '» одобрен в публикацию', 'ok'); }
-      else if (act === 'rework') { p.status = 'на переработку'; this.toast('Возвращён на переработку', 'info'); }
-      else if (act === 'reject') { p.status = 'отклонён'; this.toast('Пост отклонён', 'info'); }
+      if (!p.api) {  // mock-режим
+        if (act === 'approve') { p.status = 'одобрен'; this.toast('Пост одобрен в публикацию', 'ok'); }
+        else if (act === 'rework') { p.status = 'на переработку'; this.toast('Возвращён на переработку', 'info'); }
+        else if (act === 'reject') { p.status = 'отклонён'; this.toast('Пост отклонён', 'info'); }
+        this.render(); return;
+      }
+      // §21: живой конвейер — переходы через PATCH /v1/content/{id}
+      const map = { review: 'in_review', approve: 'approved', rework: 'draft', reject: 'rejected' };
+      const to = map[act]; if (!to) return;
+      try {
+        const upd = await window.AGL.patchContent(p.id, { status: to, body: p.body, title: p.title });
+        const RU = { draft: 'черновик', in_review: 'согласование', approved: 'одобрен',
+                     scheduled: 'запланирован', published: 'опубликован',
+                     rejected: 'отклонён', archived: 'архив' };
+        p.apiStatus = upd.status; p.status = RU[upd.status] || upd.status;
+        this.toast(act === 'approve' ? 'Пост одобрен в публикацию' : 'Статус: ' + p.status, 'ok');
+      } catch (e) { this.toast(e.message || 'Не удалось сменить статус', 'err'); }
       this.render();
     },
     postField(id, field, val) { const p = (this.M.posts || []).find(x => x.id === id); if (p) p[field] = val; },
@@ -2203,6 +2231,13 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         editor = `<div class="text-[13px] p-6 text-center" style="color:var(--text-mute)">Выберите черновик слева</div>`;
       } else {
         const canAct = sel.status !== 'одобрен';
+        const apiBtns = sel.api ? `<div class="flex gap-2 flex-wrap">
+          ${sel.apiStatus === 'draft' ? `<button class="btn text-[13px]" data-post-act="review" data-post-id="${sel.id}">→ На проверку</button>` : ''}
+          ${sel.apiStatus === 'in_review' ? `<button class="btn btn-accent text-[13px]" data-post-act="approve" data-post-id="${sel.id}">✓ Одобрить в публикацию</button>
+            <button class="btn text-[13px]" data-post-act="rework" data-post-id="${sel.id}">↺ Вернуть на правку</button>` : ''}
+          ${['draft','in_review','approved'].includes(sel.apiStatus) ? `<button class="btn text-[13px]" data-post-act="reject" data-post-id="${sel.id}" style="color:var(--err)">✕ Отклонить</button>` : ''}
+          <span class="pill text-[11px]" style="color:var(--text-mute)">версии правок — в content_versions</span>
+        </div>` : '';
         editor = `
           <div class="flex items-center gap-2 mb-3"><span class="text-lg">${sel.icon}</span><div class="text-sm font-semibold flex-1">${this.esc(sel.title)}</div><span class="pill text-[11px]" style="color:${this.postStatusColor(sel.status)};border-color:${this.postStatusColor(sel.status)}">${sel.status}</span></div>
           <div class="label mb-1">Текст поста</div>
@@ -2216,9 +2251,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="label mb-1">Описание медиа</div>
           <input class="input w-full mb-4" data-post-field="media" data-post-id="${sel.id}" value="${this.esc(sel.media)}" />
           <div class="flex gap-2 flex-wrap">
-            ${canAct ? `<button class="btn btn-accent text-[13px]" data-post-act="approve" data-post-id="${sel.id}">✓ Одобрить в публикацию</button>
+            ${sel.api ? apiBtns : (canAct ? `<button class="btn btn-accent text-[13px]" data-post-act="approve" data-post-id="${sel.id}">✓ Одобрить в публикацию</button>
             <button class="btn text-[13px]" data-post-act="rework" data-post-id="${sel.id}">↺ На переработку</button>
-            <button class="btn text-[13px]" data-post-act="reject" data-post-id="${sel.id}" style="color:var(--err)">✕ Отклонить</button>` : `<span class="pill text-[12px]" style="color:var(--ok);border-color:var(--ok)">✓ Одобрен — в очереди на публикацию</span>`}
+            <button class="btn text-[13px]" data-post-act="reject" data-post-id="${sel.id}" style="color:var(--err)">✕ Отклонить</button>` : `<span class="pill text-[12px]" style="color:var(--ok);border-color:var(--ok)">✓ Одобрен — в очереди на публикацию</span>`)}
           </div>`;
       }
       return `<div class="flex flex-col gap-3">
@@ -3974,6 +4009,17 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.newsLoad();
     },
 
+    async newsToPost(id) {
+      try {
+        const c = await window.AGL.newsToPost(id);
+        this.toast('Черновик поста создан — очередь контента', 'ok');
+        this.newsLoad();
+        this.go('content');
+      } catch (e) {
+        this.toast(e.message || 'Не удалось создать пост', 'err');
+      }
+    },
+
     async newsSetStatus(id, status) {
       try {
         await window.AGL.patchNews(id, status);
@@ -4189,6 +4235,8 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           ${n.status === 'new' ? `
           <button class="btn text-[11px] whitespace-nowrap shrink-0" data-news-status="selected" data-news-id="${n.id}">В работу</button>
           <button class="btn text-[11px] whitespace-nowrap shrink-0" data-news-status="rejected" data-news-id="${n.id}">Отклонить</button>` : ''}
+          ${n.status === 'selected' ? `
+          <button class="btn btn-accent text-[11px] whitespace-nowrap shrink-0" data-news-topost="${n.id}">В пост</button>` : ''}
         </div>`;
       }).join('') || this.empty();
       const tab = (val, label) =>
@@ -4543,6 +4591,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-news-status]').forEach(b => {
         b.onclick = () => this.newsSetStatus(parseInt(b.getAttribute('data-news-id'), 10), b.getAttribute('data-news-status'));
+      });
+      el.querySelectorAll('[data-news-topost]').forEach(b => {
+        b.onclick = () => this.newsToPost(parseInt(b.getAttribute('data-news-topost'), 10));
       });
       const nsBtn = el.querySelector('[data-news-scan]');
       if (nsBtn) nsBtn.onclick = () => this.newsScan();

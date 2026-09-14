@@ -263,6 +263,12 @@ const AGL = {
   async scanNews() {
     return apiFetch('/v1/news/scan', { method: 'POST' });
   },
+  async newsToPost(newsId, platform = 'telegram') {
+    return apiFetch('/v1/content/from_news', { method: 'POST', data: { news_id: newsId, platform } });
+  },
+  async patchContent(id, data) {
+    return apiFetch('/v1/content/' + id, { method: 'PATCH', data });
+  },
 
   async loadMonitoringStats() {
     return safeLoad('/v1/monitoring/stats',
