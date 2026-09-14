@@ -50,6 +50,14 @@
 >   20260914.sql на сервере): лиды 918->914, сделки 10->8, клиенты 7->5.
 >   Регресс: u2-логин + team/leads/clients/deals/monitoring/catalog = 200.
 >   Ждёт владельца: перевыпуск Telegram-токена (блокер Этапа 2, A3/A6).
+> - **Telegram-токен перевыпущен 14.09** (бот JARVIS_MONITOR @monitor92_bot):
+>   внесён в /opt/agropilot-web/.env (TELEGRAM_BOT_TOKEN), проверен getMe,
+>   подхвачен agropilot-mia (TELEGRAM_CHAT_ID появится после /start боту).
+> - **§20.2 реализован 14.09**: backend/news (GET /v1/news, PATCH /{id},
+>   POST /v1/news/scan; сборщики: t.me/s веб-версия, RSS/Atom, site-title;
+>   релевантность keyword-MVP). Первый скан: 7 записей из ExactFarmingNews,
+>   дедуп подтверждён. n8n-шаблон A1 готов к импорту (docs/n8n), активировать
+>   после заведения сервисного refresh-токена u7 в n8n env.
 
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
 - Ветка по умолчанию: main ✅ (переименовано 2026-07-12, M8: создана ветка main на HEAD d950a860, default branch обновить в настройках GitHub Settings → Branches).
