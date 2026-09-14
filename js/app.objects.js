@@ -4013,8 +4013,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       try {
         const c = await window.AGL.newsToPost(id);
         this.toast('Черновик поста создан — очередь контента', 'ok');
-        this.newsLoad();
+        await this.loadFromAPI();
         this.go('content');
+        this.render();
       } catch (e) {
         this.toast(e.message || 'Не удалось создать пост', 'err');
       }
