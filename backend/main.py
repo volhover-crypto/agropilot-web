@@ -7,6 +7,7 @@
 from fastapi import FastAPI
 
 from backend.common.errors import register_error_handlers
+from backend.auth.routes import auth_router
 from backend.calendar.routes import router as calendar_router
 from backend.versions.deals_versions_router import deals_versions_router
 from backend.versions.skills_router import skills_router
@@ -82,4 +83,5 @@ app.include_router(leads_router, prefix="/agropilot/api/v1")
 app.include_router(monitoring_router, prefix="/agropilot/api/v1")
 app.include_router(catalog_router, prefix="/agropilot/api/v1")
 
-# Future: auth_router ...
+# §19 — Auth (JWT login/refresh/logout)
+app.include_router(auth_router, prefix="/agropilot/api/v1")

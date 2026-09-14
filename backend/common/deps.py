@@ -1,25 +1,28 @@
 # backend/common/deps.py -- AgroPILOT FastAPI dependency injection
 #
 # Provides:
-#   get_db          — async SQLAlchemy session (AsyncSession)
-#   get_current_user — stub user for pre-auth development stage
+#   get_db           — async SQLAlchemy session (AsyncSession)
+#   get_current_user — JWT-валидация Bearer-токена (контракт §19)
 #
 # Usage in routers:
 #   from backend.common.deps import get_db, get_current_user
 #   db:   AsyncSession = Depends(get_db)
 #   user: CurrentUser  = Depends(get_current_user)
-#
-# NOTE: get_current_user is a stub returning a fixed dev user.
-# Replace with real JWT/token validation before production.
 
 import os
 from typing import AsyncGenerator
 
+import jwt
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+
+from backend.auth.security import decode_token
+from backend.common.errors import UnauthorizedError
 
 # ---------------------------------------------------------------------------
 # Database engine
@@ -65,9 +68,27 @@ class CurrentUser:
         self.name = name
 
 
-async def get_current_user() -> CurrentUser:
+# auto_error=False: без заголовка Authorization отдаём свой 401 по контракту §0,
+# а не дефолтный 403 от HTTPBearer.
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> CurrentUser:
+    """Валидирует access-JWT из заголовка Authorization: Bearer <token>.
+
+    401 (UnauthorizedError) при отсутствии/просрочке/подделке токена,
+    а также если это refresh-токен.
     """
-    STUB — returns a fixed dev user.
-    Replace with real JWT validation before production deployment.
-    """
-    return CurrentUser(id="U1", name="Екатерина")
+    if credentials is None:
+        raise UnauthorizedError("Требуется заголовок Authorization: Bearer <token>")
+    try:
+        payload = decode_token(credentials.credentials, expected_type="access")
+    except jwt.PyJWTError as e:
+        raise UnauthorizedError(f"Недействительный токен: {e}")
+    user_id = payload.get("sub")
+    name = payload.get("name")
+    if not user_id or not name:
+        raise UnauthorizedError("Токен не содержит данных пользователя")
+    return CurrentUser(id=str(user_id), name=str(name))

@@ -16,9 +16,24 @@
 > - Ветка `main`, план ТЗ §7 пройден целиком (D-1, E, C, D, A1..A7, B).
 > - Реализованные контракты: §14, §15.1, §15.1a, §15.6, §15.7, §15.8,
 >   §16, §17, §18. Разделов без backend-роутера нет.
-> - Открыто: починка поставщика наблюдений
->   (`docs/MONITORING_PRODUCER_AUDIT.md`), зачистка тестовых артефактов
+> - Открыто: зачистка тестовых артефактов
 >   (B917, B918, C6, C7, D9, D10, дела на B2/B3).
+>
+> **Обновление 2026-09-14 (сессия: предусловия нового ТЗ):**
+> - §19 Auth: JWT вместо STUB `get_current_user` — миграция 016
+>   (`team.login`/`team.password_hash`, bcrypt), `backend/auth/`
+>   (login/refresh/logout, совместимо с js/api.js), Bearer-валидация в
+>   `deps.py` (fail closed без SECRET_KEY). Новый деплой: применить 016,
+>   задать SECRET_KEY в окружении сервиса, `pip install -r requirements.txt`
+>   (pyjwt, bcrypt), задать пароль `python -m backend.auth.set_password u1`,
+>   перезапустить `agropilot-backend.service`.
+> - §17.1a Поставщик наблюдений (вариант A): новый
+>   `backend/monitoring/producer/mia_monitor.py` пишет в
+>   `agropilot.public.field_alerts` (дефекты D1–D9 закрыты; дедупликация,
+>   TELEGRAM_*, MIA_MODE, секреты в окружении, ненулевой exit при полном
+>   отказе источников). Деплой: cron/systemd timer раз в час, env:
+>   DATABASE_URL (agropilot), MOCK_BASE_URL (http://127.0.0.1:3001).
+>   Старый gbrain-скрипт более не используется.
 
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
 - Ветка по умолчанию: main ✅ (переименовано 2026-07-12, M8: создана ветка main на HEAD d950a860, default branch обновить в настройках GitHub Settings → Branches).

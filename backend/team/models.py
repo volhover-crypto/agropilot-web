@@ -28,6 +28,9 @@ class TeamMember(Base):
     permissions:  Mapped[list]           = mapped_column(JSONB, nullable=False, default=list)
     status:       Mapped[str]            = mapped_column(String(16), nullable=False, default="active")
     role_key:     Mapped[Optional[str]]  = mapped_column(String(32), nullable=True)
+    # Контракт §19: учётные данные для JWT (миграция 016)
+    login:         Mapped[Optional[str]] = mapped_column(String(64), nullable=True, unique=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     def to_dict(self) -> dict:
         return {

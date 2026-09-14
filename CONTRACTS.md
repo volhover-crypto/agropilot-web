@@ -1422,3 +1422,56 @@ DoD 18: ВЫПОЛНЕН 2026-08-28 (реализация c8b2271 + e04720b).
   [x] БД не изменена: миграций нет, количество строк во всех 8 таблицах прежнее
   [x] регресс: leads/clients/deals/sources/strategy/monitoring = 200
   [x] py_compile pass; node --check pass
+
+---
+
+## §19. Auth — JWT-аутентификация (заменяет STUB get_current_user)
+
+Статус: реализовано 2026-09-14 (предусловие Stage-3 / нового ТЗ от 14.09).
+
+### 19.1 Сущности
+
+- Миграция `016_auth_login.sql`: таблица `team` + колонки `login VARCHAR(64)`
+  (уникальный индекс, генерируется как `lower(id)`), `password_hash TEXT` (bcrypt).
+- Пароли задаёт оператор: `venv/bin/python -m backend.auth.set_password <login>`
+  (интерактивный скрытый ввод, минимум 8 символов).
+- Токены: access-JWT (60 мин, `ACCESS_TOKEN_EXPIRE_MINUTES`) и refresh-JWT
+  (14 дней, `REFRESH_TOKEN_EXPIRE_DAYS`), HS256, подпись `SECRET_KEY` из окружения.
+  Поля payload: `sub` (user id), `name`, `type` (access|refresh), `exp`, `iat`.
+  SECRET_KEY не задана или равна заглушке .env.example -> все запросы 401 (fail closed).
+- Зависимости: `pyjwt`, `bcrypt` (passlib не используется: конфликт с bcrypt>=4.1).
+
+### 19.2 Эндпоинты (совместимы с js/api.js)
+
+- `POST /v1/auth/login` `{login, password}` ->
+  `{access_token, refresh_token, user:{id,name,role,role_key}}`;
+  401 UNAUTHORIZED «Неверный логин или пароль» (единая ошибка — не раскрываем существование логина).
+- `POST /v1/auth/refresh` `{refresh_token}` -> тот же конвер; 401 при
+  просрочке/подделке/неверном типе токена.
+- `POST /v1/auth/logout` -> `{detail:"logged out"}` (токены stateless, клиент
+  чистит localStorage; серверного отзыва нет).
+
+### 19.3 get_current_user (backend/common/deps.py)
+
+Bearer access-JWT обязателен на всех роутерах с `Depends(get_current_user)`.
+401 при: отсутствии заголовка, просрочке, плохой подписи, refresh-токене
+вместо access. Возвращает `CurrentUser(id, name)`.
+
+### 19.4 Границы
+
+- RBAC-права по `permissions[]` не меняются — только аутентификация.
+- Хранилища отзыва токенов (revocation list) нет — вне объёма.
+- Фронт не меняется (login/refresh/logout уже реализованы в js/api.js).
+
+## §17.1a. Поставщик наблюдений — вариант A
+
+Статус: реализовано 2026-09-14. `backend/monitoring/producer/mia_monitor.py`
+(замена gbrain-скрипта, закрыты дефекты D1–D9 аудита
+docs/MONITORING_PRODUCER_AUDIT.md). Пишет только в
+`agropilot.public.field_alerts` (source/category/parameter/value/unit/level/
+message/created_at — ровно схема, которую читает §17). Дедупликация по
+(source, category, parameter, level) за окно `MIA_DEDUP_MINUTES` (60).
+`MIA_MODE=info|critical`. Telegram опционален (`TELEGRAM_BOT_TOKEN` +
+`TELEGRAM_CHAT_ID`), сбой TG не роняет запись. Секреты только в окружении.
+Ошибки источников логируются; ненулевой код возврата при полном отказе.
+Запуск: cron/systemd timer, `python -m backend.monitoring.producer.mia_monitor`.
