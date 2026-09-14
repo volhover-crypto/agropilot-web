@@ -34,6 +34,11 @@
 >   отказе источников). Деплой: cron/systemd timer раз в час, env:
 >   DATABASE_URL (agropilot), MOCK_BASE_URL (http://127.0.0.1:3001).
 >   Старый gbrain-скрипт более не используется.
+> - РАЗВЁРНУТО НА ПРОДЕ 14.09 (коммиты 241990d + fix producer): миграция 016
+>   применена (u1..u5), SECRET_KEY в /opt/agropilot-web/.env, пароль u1 задан,
+>   сервис перезапущен. Проверено live: 401 без токена, 200 с Bearer,
+>   401 на неверный пароль. Поставщик: agropilot-mia.timer (раз в час),
+>   первый прогон записал 5 наблюдений, monitoring/stats latest_at свежий.
 
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
 - Ветка по умолчанию: main ✅ (переименовано 2026-07-12, M8: создана ветка main на HEAD d950a860, default branch обновить в настройках GitHub Settings → Branches).
