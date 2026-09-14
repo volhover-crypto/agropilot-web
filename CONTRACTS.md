@@ -1475,3 +1475,112 @@ message/created_at — ровно схема, которую читает §17).
 `TELEGRAM_CHAT_ID`), сбой TG не роняет запись. Секреты только в окружении.
 Ошибки источников логируются; ненулевой код возврата при полном отказе.
 Запуск: cron/systemd timer, `python -m backend.monitoring.producer.mia_monitor`.
+
+---
+
+## §20. Медиа-мониторинг A1 (ТЗ v1.1 п. 8.1, Этап 2)
+
+Статус: контракт утверждён 2026-09-14 (Этап 1), реализация — Этап 2.
+
+### 20.1 Сущности
+
+- `sources` РАСШИРЯЕТСЯ (миграция 017): `type` varchar(32) ∈ {news, telegram,
+  site, rss} (CHECK), новый `check_period_min int DEFAULT 1440` (периодичность
+  сканирования, минуты; 1–3 дня = 1440–4320). Существующая механика
+  proposed → approve/reject (§13) сохраняется без изменений.
+- Новая таблица `news_items` (миграция 017):
+  id serial PK; source_id int FK→sources(id); title text NOT NULL;
+  summary text; url varchar(1000); published_at timestamptz; fetched_at
+  timestamptz NOT NULL DEFAULT now(); status varchar(16) DEFAULT 'new' CHECK
+  ∈ {new, selected, rejected, used}; relevance numeric(4,2) NULL (0..1,
+  оценка A1); relevance_reason text; agent_run_id varchar(64).
+  UNIQUE(source_id, url) — дедупликация на уровне БД. Индексы: status,
+  fetched_at DESC.
+
+### 20.2 Эндпоинты (реализация Этап 2)
+
+- GET /v1/news?source_id=&status=&relevance_min=&limit=&offset= — лента,
+  пагинация, дефолт limit 50.
+- PATCH /v1/news/{id} {status} — «в работу»/«отклонить»/«использовано»
+  (права: content:approve у редактора/руководителя).
+- POST /v1/news/scan — запуск сканирования (n8n по расписанию; сервисный
+  JWT). Внутри: сбор по активным sources с учётом check_period_min,
+  дедуп по UNIQUE, оценка релевантности промтом A1.
+- Роль A1: n8n-воркфлоу, расписанием по п. 8.1 ТЗ; промт — реестр промтов §23.
+
+### 20.3 Границы
+
+- Никакого пересечения с полевым мониторингом §17 (field_alerts) — он вне
+  скоупа ТЗ v1.1 (домен техкоманды).
+- Фильтрация по стратегии — через фиксированный промт-конф
+  (chat-strategy-fallback), подключаемый без переделки при появлении блока
+  «Стратегии».
+
+## §21. Каналы публикаций и контент (ТЗ v1.1 п. 8.2, Этап 2)
+
+Статус: контракт утверждён 2026-09-14, реализация — Этап 2.
+
+### 21.1 Сущности
+
+- Новая таблица `channels` (миграция 018): id serial PK; type varchar(16)
+  CHECK ∈ {telegram, instagram, site}; name text NOT NULL; connection jsonb
+  NOT NULL DEFAULT '{}' (chat_id / bot ref и т.п.; секреты — ТОЛЬКО в .env,
+  в connection лежит ссылка на имя переменной); adapt_prompt text (промт
+  адаптации под канал); active bool DEFAULT true; stats jsonb DEFAULT '{}'.
+- `content` (существующая, сейчас пустая) ДОСНАБЖАЕТСЯ в Этапе 2:
+  статус-цепочка draft → in_review → approved → scheduled → published,
+  versions jsonb (история правок с автором/датой), news_item_id FK
+  NULL, channel_ids jsonb, scheduled_at timestamptz, published_url
+  varchar(1000). Контракт допишется отдельной ревизией §21 перед Этапом 2.
+
+### 21.2 Границы
+
+- Публикация (A3) — только после явного подтверждения человеком (п. 6.6
+  ТЗ); в БД фиксируются время и ссылка.
+- Instagram-коннектор — вне объёма (риск-п. 14 ТЗ); schema type допускает.
+
+## §22. Входящие обращения + A4 (ТЗ v1.1 п. 8.3, Этап 3)
+
+Статус: контракт утверждён 2026-09-14, реализация — Этап 3.
+
+- Новая таблица `inbounds` (миграция 019): id serial PK; channel varchar(16)
+  CHECK ∈ {telegram, email, site, social, call}; contact varchar(200);
+  subject varchar(500); body text; received_at timestamptz NOT NULL
+  DEFAULT now(); status varchar(16) DEFAULT 'new' CHECK ∈ {new,
+  in_progress, converted, spam}; assigned_to varchar(16) FK→team(id) NULL;
+  client_id int NULL; lead_id int NULL; dedup_key varchar(200) (уникально
+  где не NULL — дедуп по контакту+тексту); a4_class jsonb (тема/срочность/
+  похожий клиент — черновик классификации A4).
+- Эндпоинты (Этап 3): GET /v1/inbound (очередь, фильтры), POST /v1/inbound
+  (ручное добавление звонка), PATCH /v1/inbound/{id} (статус,
+  ответственный), POST /v1/inbound/{id}/convert → лид (переиспользует
+  §15.6 POST /v1/leads, не дублирует).
+- Привязка к известному клиенту — по контакту из карточки (client_id),
+  отображение в истории карточки.
+
+## §23. Роли и пермиссии (ТЗ v1.1 п. 4/5)
+
+Статус: применено 2026-09-14 (Этап 1).
+
+### 23.1 Карта ролей → team
+
+| Роль ТЗ | team | role_key | perms-профиль |
+|---|---|---|---|
+| Руководитель Р. | U6 (создать, admin) | admin | все |
+| Разработчик П. | U7 (создать, admin) | admin | все + agents:manage |
+| Редактор (Оксана) | U2 Оксана | manager + content:approve, sources:approve | конвейер контента |
+| Оператор (Катя) | U1 Екатерина | manager (текущий) | inbound:*, clients:*, leads:* |
+| SMM-поддержка | U4 Марина | smm | content:edit |
+| Инженеры | U3 Дмитрий, U5 Сергей | engineer | без изменений |
+
+Пользователи U6/U7 созданы с именами-плейсхолдерами «Р.» и «П.» —
+переименовать при первом входе. Пароли — set_password (отчёт Этапа 1).
+
+### 23.2 Конвенция пермиссий
+
+`permissions[]` в team: строки вида `block:action` (content:approve,
+sources:approve, agents:manage, inbound:convert...). Роутеры проверяют
+через _is_manager-паттерн (§11) или явную пермиссию; полный RBAC-маппинг
+наращивается по мере появления блоков. Сервисные вызовы агентов (n8n) —
+JWT служебной учётки U7, лимит: только whitelist эндпоинтов
+(POST /v1/news/scan и т.п.), при расширении — ревизия контракта.
