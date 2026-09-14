@@ -272,6 +272,9 @@ const AGL = {
   async publishContent(id) {
     return apiFetch('/v1/content/' + id + '/publish', { method: 'POST', data: {} });
   },
+  async adaptContent(id, prompt) {
+    return apiFetch('/v1/content/' + id + '/adapt', { method: 'POST', data: { prompt } });
+  },
 
   async loadMonitoringStats() {
     return safeLoad('/v1/monitoring/stats',

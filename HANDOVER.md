@@ -80,6 +80,11 @@
 > - **Календарь публикаций 14.09**: вкладка в «Контенте» — месяц-сетка,
 >   посты по scheduled_at, назначение слота кликом (approved→scheduled).
 >   Проверено live. Этап 2 практически закрыт (кроме LLM-шлюза).
+> - **§24 LLM-шлюз 14.09**: backend/common/llm.py (OpenRouter, ключ в .env,
+>   LLM_MODEL=openai/gpt-4o-mini). A2 генерирует черновики LLM (fallback —
+>   копия), A3 адаптирует текст под канал (POST /content/{id}/adapt, кнопка
+>   «✨ Адаптировать» в редакторе). Live-генерация и адаптация проверены.
+>   ЭТАП 2 ЗАКРЫТ (осталось: channels-CRUD в UI — косметика).
 
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
 - Ветка по умолчанию: main ✅ (переименовано 2026-07-12, M8: создана ветка main на HEAD d950a860, default branch обновить в настройках GitHub Settings → Branches).
