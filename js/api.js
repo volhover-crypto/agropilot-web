@@ -249,6 +249,21 @@ const AGL = {
     return safeLoad('/v1/monitoring?' + qs.toString(),
                     { items: [], total: 0, limit: 50, offset: 0 });
   },
+  // ─── Медиа-мониторинг A1 (§20) ───
+  async loadNews(params = {}) {
+    const qs = new URLSearchParams();
+    ['source_id','status','relevance_min','limit','offset'].forEach(k => {
+      if (params[k] !== undefined && params[k] !== '') qs.append(k, params[k]);
+    });
+    return safeLoad('/v1/news?' + qs.toString(), { items: [], total: 0, limit: 0, offset: 0 });
+  },
+  async patchNews(id, status) {
+    return apiFetch('/v1/news/' + id, { method: 'PATCH', data: { status } });
+  },
+  async scanNews() {
+    return apiFetch('/v1/news/scan', { method: 'POST' });
+  },
+
   async loadMonitoringStats() {
     return safeLoad('/v1/monitoring/stats',
                     { total: 0, by_level: {}, by_category: {}, latest_at: null });
@@ -381,7 +396,8 @@ const AGL = {
   SOURCES_READY:         true,
   LEADS_READY:           true,   // GET/PATCH /v1/leads, POST /v1/leads/{id}/convert
   TEAM_RBAC_READY:      true,   // PATCH /v1/team/{id}
-  MONITORING_READY:     true,   // GET /v1/monitoring, /v1/monitoring/stats (§17)
+  MONITORING_READY:     true,
+  NEWS_READY:           true,   // GET /v1/news, PATCH /v1/news/:id, POST /v1/news/scan (§20)   // GET /v1/monitoring, /v1/monitoring/stats (§17)
   CLIENTS_READY:        true,   // GET /v1/clients — роутер есть с §13.1, флаг забыли
   CONTENT_READY:        true,   // GET/POST/PATCH/DELETE /v1/content — роутер есть с M10-3
   CATALOG_READY:        true,   // GET /v1/catalog/tree, /v1/catalog/search (§18)

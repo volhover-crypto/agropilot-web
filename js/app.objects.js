@@ -394,6 +394,7 @@ await this._loadAiLayer();
         graph: 'Граф объектов',
         skills: 'Навыки команды',
         monitoring: 'Мониторинг рынка',
+        medianews: 'Медиа-мониторинг',
         catalog: 'Справочник',
         client: 'Карточка клиента',
         deal: 'Карточка сделки',
@@ -470,6 +471,7 @@ await this._loadAiLayer();
         else if (this.route === 'packages') html = this.vPackages();
         else if (this.route === 'artifacts') html = this.vArtifacts();
         else if (this.route === 'monitoring') html = this.vMonitoring();
+        else if (this.route === 'medianews') html = this.vMedianews();
         else if (this.route === 'catalog') html = this.vCatalog();
         else if (this.route === 'content') html = this.vContent();
         else if (this.route === 'team') html = this.vTeam();
@@ -3920,6 +3922,70 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return Math.floor((Date.now() - new Date(at).getTime()) / 86400000);
     },
 
+    // ======== §20: МЕДИА-МОНИТОРИНГ (A1) ========
+    newsState: {
+      items: [], total: 0, limit: 30, offset: 0,
+      status: '', loading: false, loaded: false, scanning: false,
+    },
+
+    NEWS_STATUS_UI: {
+      new:      { label: 'Новое',     col: 'var(--info)' },
+      selected: { label: 'В работу',  col: 'var(--ok)'   },
+      rejected: { label: 'Отклонено', col: 'var(--text-mute)' },
+      used:     { label: 'Использовано', col: 'var(--warn)' },
+    },
+
+    async newsLoad() {
+      const st = this.newsState;
+      st.loading = true; st.loaded = true;
+      const d = await window.AGL.loadNews({
+        limit: st.limit, offset: st.offset,
+        status: st.status,
+      });
+      st.items = (d && d.items) || []; st.total = (d && d.total) || 0;
+      st.loading = false;
+      this.render();
+    },
+
+    newsFilter(status) {
+      const st = this.newsState;
+      st.status = (st.status === status) ? '' : (status || '');
+      st.offset = 0; this.newsLoad();
+    },
+
+    newsPage(delta) {
+      const st = this.newsState;
+      const next = st.offset + delta * st.limit;
+      if (next < 0 || next >= st.total) return;
+      st.offset = next; this.newsLoad();
+    },
+
+    async newsScan() {
+      const st = this.newsState;
+      st.scanning = true; this.render();
+      try {
+        const r = await window.AGL.scanNews();
+        this.toast(`Скан: собрано ${r.collected}, новых ${r.inserted}` +
+          (r.errors && r.errors.length ? `, ошибок ${r.errors.length}` : ''), 'ok');
+      } catch (e) {
+        this.toast('Скан не удался: ' + e.message, 'err');
+      }
+      st.scanning = false;
+      this.newsLoad();
+    },
+
+    async newsSetStatus(id, status) {
+      try {
+        await window.AGL.patchNews(id, status);
+        const it = this.newsState.items.find(x => x.id === id);
+        if (it) it.status = status;
+        this.toast('Статус обновлён', 'ok');
+        this.render();
+      } catch (e) {
+        this.toast(e.message || 'нет прав на смену статуса', 'err');
+      }
+    },
+
     // §18 — «Справочник» (Блок B): read-only дерево поверх реестров.
     catState: {
       roots: [], children: {}, open: {}, sel: null,
@@ -4103,6 +4169,52 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Наблюдения приходят от внешних поставщиков (погода, NDVI, новости, цены) и доступны только на чтение. Пометки — совпадения с monitoring_focus задач стратегии. Кнопка «Проверить» у источника — задел под живой скан, пока не активна.</div>
       </div>`;
     },
+    // §20.6 — экран «Медиа-мониторинг»: лента NewsItem + ручной скан
+    vMedianews() {
+      const st = this.newsState;
+      if (!st.loaded) { this.newsLoad(); }
+      const SU = this.NEWS_STATUS_UI;
+      const rows = st.items.map(n => {
+        const ui = SU[n.status] || { label: n.status, col: 'var(--text-mute)' };
+        const rel = (n.relevance === null || n.relevance === undefined)
+          ? '' : `релевантность ${Math.round(n.relevance * 100)}%`;
+        const reason = n.relevance_reason ? this.esc(n.relevance_reason) : '';
+        return `<div class="card-2 p-3 flex items-start gap-3">
+          <span class="shrink-0" style="color:${ui.col}">●</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm">${n.url ? `<a href="${this.esc(n.url)}" target="_blank" rel="noopener" class="underline">${this.esc(n.title)}</a>` : this.esc(n.title)}</div>
+            <div class="text-[12px]" style="color:var(--text-dim)">${(n.fetched_at || '').slice(0, 16).replace('T', ' ')}${rel ? ' · ' + rel : ''}${reason ? ' · ' + reason : ''}</div>
+          </div>
+          <span class="pill whitespace-nowrap shrink-0" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span>
+          ${n.status === 'new' ? `
+          <button class="btn text-[11px] whitespace-nowrap shrink-0" data-news-status="selected" data-news-id="${n.id}">В работу</button>
+          <button class="btn text-[11px] whitespace-nowrap shrink-0" data-news-status="rejected" data-news-id="${n.id}">Отклонить</button>` : ''}
+        </div>`;
+      }).join('') || this.empty();
+      const tab = (val, label) =>
+        `<button class="btn text-[12px] ${st.status === val ? 'btn-accent' : ''}" data-news-filter="${val}">${label}</button>`;
+      const from = st.total ? st.offset + 1 : 0;
+      const to = Math.min(st.offset + st.limit, st.total);
+      return `<div class="flex flex-col gap-4">
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            <div class="label">Материалы · ${st.total}</div>
+            <div class="flex flex-wrap gap-1">
+              ${tab('new', 'Новые')}${tab('selected', 'В работе')}${tab('used', 'Использованные')}${tab('rejected', 'Отклонённые')}
+              <button class="btn btn-accent text-[12px]" data-news-scan ${st.scanning ? 'disabled' : ''}>${st.scanning ? 'Сканирую…' : 'Сканировать сейчас'}</button>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2 mt-2">${rows}</div>
+          <div class="flex items-center gap-2 mt-2 text-[12px]">
+            <span>${from}-${to} из ${st.total}</span>
+            <button class="btn text-[12px]" data-news-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
+            <button class="btn text-[12px]" data-news-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
+          </div>
+        </div>
+        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Материалы собирает агент A1 из подключённых источников (телеграм-каналы, RSS, сайты) раз в час и оценивает релевантность по ключевым словам источника. «В работу» — материал попадает в очередь конвейера контента (A2).</div>
+      </div>`;
+    },
+
     // демо: скан источника → новый сигнал + подсказка ПЕТРУШКА
     srcScan(id) {
       const s = this.M.sources.find(x => x.id === id); if (!s) return;
@@ -4422,6 +4534,18 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-mon-page]').forEach(b => {
         b.onclick = () => this.monPage(parseInt(b.getAttribute('data-mon-page'), 10));
       });
+      // §20.6: медиа-мониторинг — фильтры, пагинация, статусы, скан
+      el.querySelectorAll('[data-news-filter]').forEach(b => {
+        b.onclick = () => this.newsFilter(b.getAttribute('data-news-filter'));
+      });
+      el.querySelectorAll('[data-news-page]').forEach(b => {
+        b.onclick = () => this.newsPage(parseInt(b.getAttribute('data-news-page'), 10));
+      });
+      el.querySelectorAll('[data-news-status]').forEach(b => {
+        b.onclick = () => this.newsSetStatus(parseInt(b.getAttribute('data-news-id'), 10), b.getAttribute('data-news-status'));
+      });
+      const nsBtn = el.querySelector('[data-news-scan]');
+      if (nsBtn) nsBtn.onclick = () => this.newsScan();
       el.querySelectorAll('[data-col-grip]').forEach(g => {
         const key = g.getAttribute('data-col-grip');
         g.onclick = (ev) => ev.stopPropagation();

@@ -129,6 +129,7 @@
       <!-- ── БЛОК 1: Маркетинг и мониторинг ── -->
       <div class="label px-2 mt-3 mb-1">Блок 1 · Маркетинг</div>
       <div class="nav-item flex items-center" :class="route==='monitoring'&&'active'" @click="go('monitoring')">📡 <span class="flex-1">Мониторинг</span><span x-show="cntSignals()>0" class="pill text-[11px]" style="background:var(--info);color:#fff;border:0" x-text="cntSignals()"></span></div>
+      <div class="nav-item flex items-center" :class="route==='medianews'&&'active'" @click="go('medianews')">📰 <span class="flex-1">Медиа-мониторинг</span></div>
       <div class="nav-item flex items-center" :class="route==='content'&&'active'" @click="go('content')">✍️ <span class="flex-1">Контент и соцсети</span><span x-show="cntDrafts()>0" class="pill text-[11px]" style="background:var(--warn);color:#fff;border:0" x-text="cntDrafts()"></span></div>
       <div class="nav-item flex items-center" :class="route==='inbox'&&'active'" @click="go('inbox')">📥 <span class="flex-1">Входящие</span><span x-show="cntInbox()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntInbox()"></span></div>
 
