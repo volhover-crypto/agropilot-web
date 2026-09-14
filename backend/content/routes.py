@@ -5,6 +5,7 @@
 # Контракт: {"ok": true, "data": ...} M10-3
 # PATCH published_at: авто-set now() при status=published если не передан явно.
 
+import asyncio
 import json as _json
 import os
 import urllib.request
@@ -20,6 +21,7 @@ from backend.content.models import Content, ContentVersion
 from backend.common.errors import NotFoundError, ValidationError
 from backend.common.deps import get_db, get_current_user
 from backend.team.models import TeamMember
+from backend.common.llm import llm_chat, llm_configured, LLMError, A2_SYSTEM, A3_SYSTEM
 
 content_router = APIRouter(prefix="/content", tags=["content"])
 
@@ -155,9 +157,25 @@ async def create_from_news(
     if not news:
         raise NotFoundError(f"news_item {payload.news_id} не найден")
     now = datetime.now(timezone.utc)
+    # A2: LLM-генерация черновика из материала; при сбое/отсутствии ключа — копия
+    title = (news.title or "Черновик поста")[:300]
+    body = news.summary or news.title or ""
+    gen_note = "копия материала (LLM недоступна)"
+    if llm_configured():
+        try:
+            prompt = (
+                f"Напиши пост для Telegram на основе материала мониторинга.\n\n"
+                f"Материал: {news.title}\n{news.summary or ''}\n\n"
+                f"Ссылка на первоисточник: {news.url or 'нет'}"
+            )
+            body = await asyncio.to_thread(llm_chat, prompt, A2_SYSTEM, None, 1000)
+            title = (body.splitlines()[0][:200] if body else title)
+            gen_note = f"сгенерировано LLM из news_item {news.id}"
+        except LLMError as e:
+            gen_note = f"копия материала (LLM сбой: {str(e)[:100]})"
     item = Content(
-        title        = (news.title or "Черновик поста")[:300],
-        body         = news.summary or news.title or "",
+        title        = title,
+        body         = body,
         platform     = payload.platform,
         status       = "draft",
         author_id    = user.id,
@@ -170,8 +188,7 @@ async def create_from_news(
     db.add(item)
     await db.flush()
     db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
-                          author_id=user.id, comment=f"черновик из news_item {news.id}",
-                          created_at=now))
+                          author_id=user.id, comment=gen_note, created_at=now))
     news.status = "used"
     await db.commit()
     await db.refresh(item)
@@ -246,6 +263,47 @@ async def publish_content(
     db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
                           author_id=user.id, comment=f"опубликовано (msg {msg.get('message_id')})",
                           created_at=item.published_at))
+    await db.commit()
+    await db.refresh(item)
+    return _ok(item.to_dict())
+
+
+class AdaptBody(BaseModel):
+    prompt: Optional[str] = None   # указания канала; иначе общий промт A3
+
+
+@content_router.post("/{content_id}/adapt")
+async def adapt_content(
+    content_id: int,
+    payload:    AdaptBody,
+    db:         AsyncSession = Depends(get_db),
+    user                     = Depends(get_current_user),
+):
+    """A3: LLM-адаптация текста под канал. Старый текст сохраняется версией."""
+    if not llm_configured():
+        raise ValidationError("LLM-шлюз не настроен (OPENROUTER_API_KEY)")
+    item = await db.get(Content, content_id)
+    if not item:
+        raise NotFoundError("Content not found")
+    if item.status == "published":
+        raise ValidationError("адаптировать опубликованный пост нельзя")
+    channel_hint = payload.prompt or f"канал {item.platform}"
+    prompt = (
+        f"Адаптируй пост под {channel_hint}. Оригинал:\n\n"
+        f"Заголовок: {item.title}\nТекст: {item.body}"
+    )
+    try:
+        new_body = await asyncio.to_thread(llm_chat, prompt, A3_SYSTEM, None, 1000)
+    except LLMError as e:
+        raise ValidationError(f"LLM сбой: {str(e)[:150]}")
+    if not new_body:
+        raise ValidationError("LLM вернула пустой текст")
+    db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
+                          author_id=user.id, comment=f"версия до адаптации ({channel_hint})",
+                          created_at=datetime.now(timezone.utc)))
+    item.body = new_body
+    item.title = new_body.splitlines()[0][:200] or item.title
+    item.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(item)
     return _ok(item.to_dict())
