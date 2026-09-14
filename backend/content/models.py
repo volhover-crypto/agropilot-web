@@ -25,6 +25,7 @@ class Content(Base):
     author_id:    Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     published_at: Mapped[Optional[datetime]]  = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     created_at:   Mapped[datetime]      = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    published_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     # §21 — конвейер
     news_item_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     editor_id:    Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
@@ -42,6 +43,7 @@ class Content(Base):
             "status":       self.status,
             "author_id":    self.author_id,
             "published_at": self.published_at.isoformat() if self.published_at else None,
+            "published_url": self.published_url,
             "created_at":   self.created_at.isoformat() if self.created_at else None,
             "news_item_id": self.news_item_id,
             "editor_id":    self.editor_id,

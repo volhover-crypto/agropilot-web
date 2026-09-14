@@ -2187,6 +2187,18 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return s === 'одобрен' ? 'var(--ok)' : s === 'согласование' ? 'var(--err)' : s === 'отклонён' ? 'var(--text-mute)' : 'var(--warn)';
     },
     postSelect(id) { this.postSel = id; this.render(); },
+    async postPublish(id) {
+      const p = (this.M.posts || []).find(x => x.id === id); if (!p || !p.api) return;
+      // §21/6.6: публикация — только явное подтверждение человека
+      if (!confirm('Опубликовать пост в Telegram?\n\n' + (p.title || '').slice(0, 120))) return;
+      try {
+        const upd = await window.AGL.publishContent(p.id);
+        p.apiStatus = upd.status; p.status = 'опубликован';
+        this.toast('Пост опубликован в Telegram', 'ok');
+      } catch (e) { this.toast(e.message || 'Публикация не удалась', 'err'); }
+      this.render();
+    },
+
     async postAct(id, act) {
       const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
       if (!p.api) {  // mock-режим
@@ -2233,6 +2245,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         const canAct = sel.status !== 'одобрен';
         const apiBtns = sel.api ? `<div class="flex gap-2 flex-wrap">
           ${sel.apiStatus === 'draft' ? `<button class="btn text-[13px]" data-post-act="review" data-post-id="${sel.id}">→ На проверку</button>` : ''}
+          ${['approved','scheduled'].includes(sel.apiStatus) ? `<button class="btn btn-accent text-[13px]" data-post-publish="${sel.id}">🚀 Опубликовать в Telegram</button>` : ''}
           ${sel.apiStatus === 'in_review' ? `<button class="btn btn-accent text-[13px]" data-post-act="approve" data-post-id="${sel.id}">✓ Одобрить в публикацию</button>
             <button class="btn text-[13px]" data-post-act="rework" data-post-id="${sel.id}">↺ Вернуть на правку</button>` : ''}
           ${['draft','in_review','approved'].includes(sel.apiStatus) ? `<button class="btn text-[13px]" data-post-act="reject" data-post-id="${sel.id}" style="color:var(--err)">✕ Отклонить</button>` : ''}
@@ -4592,6 +4605,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-news-status]').forEach(b => {
         b.onclick = () => this.newsSetStatus(parseInt(b.getAttribute('data-news-id'), 10), b.getAttribute('data-news-status'));
+      });
+      el.querySelectorAll('[data-post-publish]').forEach(b => {
+        b.onclick = () => this.postPublish(parseInt(b.getAttribute('data-post-publish'), 10));
       });
       el.querySelectorAll('[data-news-topost]').forEach(b => {
         b.onclick = () => this.newsToPost(parseInt(b.getAttribute('data-news-topost'), 10));

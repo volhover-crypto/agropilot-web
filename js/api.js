@@ -269,6 +269,9 @@ const AGL = {
   async patchContent(id, data) {
     return apiFetch('/v1/content/' + id, { method: 'PATCH', data });
   },
+  async publishContent(id) {
+    return apiFetch('/v1/content/' + id + '/publish', { method: 'POST', data: {} });
+  },
 
   async loadMonitoringStats() {
     return safeLoad('/v1/monitoring/stats',

@@ -5,6 +5,9 @@
 # Контракт: {"ok": true, "data": ...} M10-3
 # PATCH published_at: авто-set now() при status=published если не передан явно.
 
+import json as _json
+import os
+import urllib.request
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -63,6 +66,10 @@ class ContentCreate(BaseModel):
 class FromNewsBody(BaseModel):
     news_id: int
     platform: str = "telegram"
+
+
+class PublishBody(BaseModel):
+    chat_id: Optional[str] = None  # целевой чат/канал; по умолчанию TELEGRAM_CHAT_ID
 
 
 class ContentPatch(BaseModel):
@@ -185,6 +192,63 @@ async def list_versions(
         .order_by(ContentVersion.created_at.desc())
     )).scalars().all()
     return _ok([r.to_dict() for r in rows])
+
+
+@content_router.post("/{content_id}/publish")
+async def publish_content(
+    content_id: int,
+    payload:    PublishBody,
+    db:         AsyncSession = Depends(get_db),
+    user                     = Depends(get_current_user),
+):
+    """A3: публикация approved/scheduled поста в Telegram.
+
+    Human-in-the-loop (п. 6.6 ТЗ): эндпоинт вызывается только явным действием
+    человека с правом content:approve. Отправка через Bot API бота
+    JARVIS_MONITOR (TELEGRAM_BOT_TOKEN). При успехе status=published,
+    фиксируются время и ссылка/идентификатор сообщения.
+    """
+    item = await db.get(Content, content_id)
+    if not item:
+        raise NotFoundError("Content not found")
+    if item.status not in ("approved", "scheduled"):
+        raise ValidationError(
+            f"публиковать можно только approved/scheduled (сейчас: {item.status})")
+    if not await _can_approve(db, user):
+        raise ValidationError("публикация требует права content:approve")
+
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = (payload.chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+    if not token or not chat_id:
+        raise ValidationError("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не настроены")
+
+    text = (item.title + "\n\n" + (item.body or "")).strip()[:4000]
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=_json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = _json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        raise ValidationError(f"Telegram отклонил отправку: {str(e)[:200]}")
+    if not resp.get("ok"):
+        raise ValidationError(f"Telegram error: {str(resp.get('description'))[:200]}")
+
+    msg = resp.get("result") or {}
+    item.status = "published"
+    item.published_at = datetime.now(timezone.utc)
+    item.updated_at = item.published_at
+    item.editor_id = user.id
+    item.published_url = (msg.get("link") or
+                          f"tg://message?chat={chat_id}&message={msg.get('message_id')}")
+    db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
+                          author_id=user.id, comment=f"опубликовано (msg {msg.get('message_id')})",
+                          created_at=item.published_at))
+    await db.commit()
+    await db.refresh(item)
+    return _ok(item.to_dict())
 
 
 @content_router.patch("/{content_id}")
