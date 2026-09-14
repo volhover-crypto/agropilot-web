@@ -2187,6 +2187,23 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return s === 'одобрен' ? 'var(--ok)' : s === 'согласование' ? 'var(--err)' : s === 'отклонён' ? 'var(--text-mute)' : 'var(--warn)';
     },
     postSelect(id) { this.postSel = id; this.render(); },
+    contentTab: 'queue',   // §21: 'queue' | 'calendar'
+    calSelPost: null,      // id поста, выбранного для назначения слота
+    contentSwitchTab(t) { this.contentTab = t; this.render(); },
+    calSelectPost(id) { this.calSelPost = id; this.toast('Выберите день в календаре', 'info'); this.render(); },
+    async calAssign(day) {
+      // §21: назначение слота публикации выбранным постом (MVP: клик вместо DnD)
+      const p = (this.M.posts || []).find(x => x.id === this.calSelPost); if (!p || !p.api) return;
+      const when = day + 'T10:00';
+      try {
+        const upd = await window.AGL.patchContent(p.id, { scheduled_at: when });
+        p.slot = (upd.scheduled_at || '').slice(0, 16).replace('T', ' ');
+        if (p.apiStatus === 'approved') { p.apiStatus = upd.status; p.status = 'запланирован'; }
+        this.calSelPost = null;
+        this.toast('Слот публикации назначен: ' + p.slot, 'ok');
+      } catch (e) { this.toast(e.message || 'Не удалось назначить слот', 'err'); }
+      this.render();
+    },
     async postPublish(id) {
       const p = (this.M.posts || []).find(x => x.id === id); if (!p || !p.api) return;
       // §21/6.6: публикация — только явное подтверждение человека
@@ -2221,6 +2238,55 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.render();
     },
     postField(id, field, val) { const p = (this.M.posts || []).find(x => x.id === id); if (p) p[field] = val; },
+    // §21: календарь публикаций (месяц) — посты по scheduled_at
+    vContentCalendar(posts) {
+      const RU_MON = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+      const now = new Date();
+      const y = now.getFullYear(), m = now.getMonth();
+      const first = new Date(y, m, 1);
+      const shift = (first.getDay() + 6) % 7;  // неделя с понедельника
+      const days = new Date(y, m + 1, 0).getDate();
+      const iso = (d) => y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      const byDay = {};
+      posts.filter(p => p.slot && p.slot.length >= 10).forEach(p => {
+        const d = p.slot.slice(0, 10);
+        (byDay[d] = byDay[d] || []).push(p);
+      });
+      const todayIso = iso(now.getDate());
+      let cells = '';
+      for (let i = 0; i < shift; i++) cells += '<div></div>';
+      for (let d = 1; d <= days; d++) {
+        const key = iso(d);
+        const items = byDay[key] || [];
+        const chips = items.slice(0, 3).map(p =>
+          `<div class="pill text-[10px] ${this.calSelPost === p.id ? 'btn-accent' : ''}" style="cursor:pointer" data-cal-post="${p.id}" title="${this.esc(p.title)}">${this.esc((p.slot + ' ').slice(11, 16))} ${this.esc(p.status)}</div>`).join('');
+        cells += `<div class="card-2 p-1 ${key === todayIso ? 'border-accent' : ''}" style="min-height:64px" data-cal-day="${key}">
+          <div class="text-[11px] mb-1 ${key === todayIso ? 'font-bold' : ''}" style="color:var(--text-dim)">${d}</div>
+          <div class="flex flex-col gap-1">${chips}</div>
+        </div>`;
+      }
+      const unsched = posts.filter(p => ['approved','in_review','draft'].includes(p.apiStatus) && !(p.slot || '').slice(0, 10));
+      const sideList = unsched.map(p => `
+        <div class="card-2 p-2 cursor-pointer" style="${this.calSelPost === p.id ? 'border-color:var(--accent)' : ''}" data-cal-sel="${p.id}">
+          <div class="text-[12px] font-medium leading-snug">${this.esc(p.title.slice(0, 70))}</div>
+          <div class="text-[11px]" style="color:var(--text-dim)">${p.status} · ${this.esc(p.kind || '')}</div>
+        </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Нет постов без слота</div>';
+      return `<div class="grid gap-3" style="grid-template-columns:1fr 260px">
+        <div class="card p-3">
+          <div class="label mb-2">${RU_MON[m]} ${y} · публикации по слотам</div>
+          <div class="grid gap-1" style="grid-template-columns:repeat(7,1fr)">
+            ${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(w => `<div class="text-[11px] text-center" style="color:var(--text-mute)">${w}</div>`).join('')}
+            ${cells}
+          </div>
+        </div>
+        <div class="card p-3">
+          <div class="label mb-2">Без слота · ${unsched.length}</div>
+          <div class="text-[11px] mb-2" style="color:var(--text-mute)">${this.calSelPost ? '→ кликните день в календаре' : 'кликните пост, затем день'}</div>
+          <div class="flex flex-col gap-2">${sideList}</div>
+        </div>
+      </div>`;
+    },
+
     vContent() {
       const M = this.M;
       const posts = M.posts || [];
@@ -2269,15 +2335,21 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <button class="btn text-[13px]" data-post-act="reject" data-post-id="${sel.id}" style="color:var(--err)">✕ Отклонить</button>` : `<span class="pill text-[12px]" style="color:var(--ok);border-color:var(--ok)">✓ Одобрен — в очереди на публикацию</span>`)}
           </div>`;
       }
+      const tabBtn = (t, label) => `<button class="btn text-[12px] ${this.contentTab === t ? 'btn-accent' : ''}" data-ctab="${t}">${label}</button>`;
+      const calHtml = this.vContentCalendar(posts);
       return `<div class="flex flex-col gap-3">
-        <div class="card p-3 text-[13px]" style="color:var(--text-dim)">✍️ ПЕТРУШКА готовит черновики постов — вы проверяете, правите и одобряете перед публикацией. Красный бейдж «согласование» — требует решения.</div>
+        <div class="card p-3 flex items-center justify-between gap-2 flex-wrap text-[13px]" style="color:var(--text-dim)">
+          <span>✍️ Конвейер: черновики A2 → правка редактора → публикация A3. Красный бейдж «согласование» — требует решения.</span>
+          <span class="flex gap-1">${tabBtn('queue', 'Очередь')}${tabBtn('calendar', '📅 Календарь')}</span>
+        </div>
+        ${this.contentTab === 'calendar' ? calHtml : `
         <div class="grid gap-3" style="grid-template-columns:300px 1fr">
           <div class="card p-3">
             <div class="label mb-2">Очередь черновиков · ${posts.length} · 🔴 ${cntAppr}</div>
             <div class="flex flex-col gap-2">${queue}</div>
           </div>
           <div class="card p-4">${editor}</div>
-        </div>
+        </div>`}
       </div>`;
     },
     // ======== ЧАНК 6.9: ВХОДЯЩИЕ (лента Telegram/уведомлений → быстрое создание объекта) ========
@@ -4605,6 +4677,15 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-news-status]').forEach(b => {
         b.onclick = () => this.newsSetStatus(parseInt(b.getAttribute('data-news-id'), 10), b.getAttribute('data-news-status'));
+      });
+      el.querySelectorAll('[data-ctab]').forEach(b => {
+        b.onclick = () => this.contentSwitchTab(b.getAttribute('data-ctab'));
+      });
+      el.querySelectorAll('[data-cal-sel]').forEach(n => {
+        n.onclick = () => this.calSelectPost(parseInt(n.getAttribute('data-cal-sel'), 10));
+      });
+      el.querySelectorAll('[data-cal-day]').forEach(n => {
+        n.onclick = () => { if (this.calSelPost) this.calAssign(n.getAttribute('data-cal-day')); };
       });
       el.querySelectorAll('[data-post-publish]').forEach(b => {
         b.onclick = () => this.postPublish(parseInt(b.getAttribute('data-post-publish'), 10));
