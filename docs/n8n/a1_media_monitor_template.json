@@ -3,13 +3,23 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
       },
       "id": "schedule",
       "name": "Раз в час",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -24,7 +34,10 @@
       "name": "Обновить сервисный JWT",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [220, 0],
+      "position": [
+        220,
+        0
+      ],
       "onError": "continueRegularOutput"
     },
     {
@@ -46,18 +59,27 @@
       "name": "POST /v1/news/scan",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [440, 0],
+      "position": [
+        440,
+        0
+      ],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "version": 2 },
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
           "conditions": [
             {
               "leftValue": "={{ $json.ok }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notEquals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
             }
           ],
           "combinator": "and"
@@ -68,7 +90,10 @@
       "name": "Ошибка сканирования?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [660, 0]
+      "position": [
+        660,
+        0
+      ]
     },
     {
       "parameters": {
@@ -80,19 +105,65 @@
       "name": "Уведомить админа",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [880, -100]
+      "position": [
+        880,
+        -100
+      ]
     }
   ],
   "connections": {
-    "Раз в час": { "main": [[{ "node": "Обновить сервисный JWT", "type": "main", "index": 0 }]] },
-    "Обновить сервисный JWT": { "main": [[{ "node": "POST /v1/news/scan", "type": "main", "index": 0 }]] },
-    "POST /v1/news/scan": { "main": [[{ "node": "Ошибка сканирования?", "type": "main", "index": 0 }]] },
-    "Ошибка сканирования?": { "main": [[{ "node": "Уведомить админа", "type": "main", "index": 0 }]] }
+    "Раз в час": {
+      "main": [
+        [
+          {
+            "node": "Обновить сервисный JWT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Обновить сервисный JWT": {
+      "main": [
+        [
+          {
+            "node": "POST /v1/news/scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /v1/news/scan": {
+      "main": [
+        [
+          {
+            "node": "Ошибка сканирования?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ошибка сканирования?": {
+      "main": [
+        [
+          {
+            "node": "Уведомить админа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "meta": {
     "templateCredsSetupCompleted": false,
     "description": "Каркас A1 (§20). НЕ активировать до реализации POST /v1/news/scan (Этап 2)."
-  }
+  },
+  "id": "AgroPILOTA1MediaMonitor"
 }
