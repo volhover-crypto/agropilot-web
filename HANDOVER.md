@@ -66,6 +66,13 @@
 >   14 дней — до 28.09 перевыпустить: login u7 -> refresh -> обновить
 >   /root/n8n/docker-compose.yml -> docker compose up -d --force-recreate n8n).
 >   n8n web: https://mdked.hlab.kz/n8n (basic auth admin).
+> - **§21 конвейер контента (A2-MVP) 14.09**: миграция 021 (статус-цепочка,
+>   news_item_id, content_versions), POST /v1/content/from_news, PATCH с
+>   валидацией переходов (approved/rejected = content:approve), версии правок,
+>   GET /{id}/versions. Фронт: очередь контента живьём + «В пост» из
+>   медиа-мониторинга. LLM-генерация A2 — при подключении OpenRouter-шлюза.
+>   Осталось из Этапа 2: A3-паблишер (реальная публикация в TG по channels),
+>   календарь публикаций.
 
 - Репозиторий создан и наполнен (подтверждено на github.com и github.dev): assets/, css/, js/, index.html. 1 commit (0434555).
 - Ветка по умолчанию: main ✅ (переименовано 2026-07-12, M8: создана ветка main на HEAD d950a860, default branch обновить в настройках GitHub Settings → Branches).
