@@ -275,6 +275,22 @@ const AGL = {
   async adaptContent(id, prompt) {
     return apiFetch('/v1/content/' + id + '/adapt', { method: 'POST', data: { prompt } });
   },
+  async loadInbound(params = {}) {
+    const qs = new URLSearchParams();
+    ['status','channel','limit','offset'].forEach(k => {
+      if (params[k] !== undefined && params[k] !== '') qs.append(k, params[k]);
+    });
+    return safeLoad('/v1/inbound?' + qs.toString(), { items: [], total: 0, limit: 0, offset: 0 });
+  },
+  async classifyInbound(id) {
+    return apiFetch('/v1/inbound/' + id + '/classify', { method: 'POST', data: {} });
+  },
+  async convertInbound(id) {
+    return apiFetch('/v1/inbound/' + id + '/convert', { method: 'POST', data: {} });
+  },
+  async patchInbound(id, data) {
+    return apiFetch('/v1/inbound/' + id, { method: 'PATCH', data });
+  },
 
   async loadMonitoringStats() {
     return safeLoad('/v1/monitoring/stats',

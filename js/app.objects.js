@@ -2408,7 +2408,42 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.persist();
       if (go) this.go(go[0], go[1]); else this.render();
     },
+    // ======== ЧАНК 6.10 marker guard
+    // ======== §22: ВХОДЯЩИЕ (живая очередь из API + A4) ========
+    inbState: { items: [], total: 0, filter: 'new', loaded: false, loading: false },
+    async inbLoad() {
+      const st = this.inbState;
+      st.loading = true; st.loaded = true;
+      const d = await window.AGL.loadInbound({ status: st.filter || undefined, limit: 100 });
+      st.items = (d && d.items) || []; st.total = (d && d.total) || 0;
+      st.loading = false; this.render();
+    },
+    inbFilter(f) { this.inbState.filter = f; this.inbLoad(); },
+    async inbClassify(id) {
+      try {
+        const upd = await window.AGL.classifyInbound(id);
+        const it = this.inbState.items.find(x => x.id === id);
+        if (it) { it.a4_class = upd.a4_class; if (upd.status !== 'new') it.status = upd.status; }
+        this.toast('A4 классифицировал обращение', 'ok');
+      } catch (e) { this.toast(e.message || 'Классификация не удалась', 'err'); }
+      this.render();
+    },
+    async inbConvert(id) {
+      try {
+        const r = await window.AGL.convertInbound(id);
+        this.toast('Создан лид ' + r.lead.id, 'ok');
+      } catch (e) { this.toast(e.message || 'Конвертация не удалась', 'err'); }
+      this.inbLoad();
+    },
+    async inbSpam(id) {
+      try { await window.AGL.patchInbound(id, { status: 'spam' }); this.toast('Помечено спамом', 'info'); }
+      catch (e) { this.toast(e.message, 'err'); }
+      this.inbLoad();
+    },
+
     vInbox() {
+      if (this.inbState.loaded && (this.inbState.items.length || this.inbState.total)) return this.vInboxApi();
+      if (!this.inbState.loaded && window.AGL && window.AGL.token) { this.inbLoad(); }
       const all = this.M.inbox || [];
       const list = this.inboxFilter === 'new' ? all.filter(i => i.status === 'new') : all.filter(i => i.status !== 'dismissed');
       const fBtn = (f, label) => `<button class="btn text-[12px] ${this.inboxFilter === f ? 'btn-accent' : ''}" data-inbox-filter="${f}">${label}</button>`;
@@ -2434,6 +2469,44 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return `<div class="flex flex-col gap-3">
         <div class="card p-3 text-[13px]" style="color:var(--text-dim)">📥 Лента из Telegram, почты и мониторинга. ПЕТРУШКА распознаёт событие и предлагает создать объект (сделку, задачу, клиента) одним кликом — с предзаполненными полями.</div>
         <div class="flex items-center gap-2">${fBtn('new', 'Новые · ' + cntNew)}${fBtn('all', 'Все')}</div>
+        <div class="flex flex-col gap-2">${rows}</div>
+      </div>`;
+    },
+    vInboxApi() {
+      const st = this.inbState;
+      const CH = { telegram: 'Telegram', email: 'Почта', site: 'Сайт', social: 'Соцсети', call: 'Звонок' };
+      const URG = { high: ['Высокая', 'var(--err)'], medium: ['Средняя', 'var(--warn)'], low: ['Низкая', 'var(--ok)'] };
+      const rows = st.items.map(it => {
+        const a4 = it.a4_class || {};
+        const has = a4 && a4.topic;
+        const urg = URG[a4.urgency] || null;
+        const badge = { new: ['Новое', 'var(--info)'], in_progress: ['В работе', 'var(--warn)'],
+                        converted: ['Конвертировано', 'var(--ok)'], spam: ['Спам', 'var(--text-mute)'] }[it.status] || [it.status, ''];
+        return `<div class="card p-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="pill text-[11px]">${CH[it.channel] || it.channel}</span>
+            <span class="label flex-1">${this.esc(it.contact || 'контакт не указан')} · ${(it.received_at || '').slice(0, 16).replace('T', ' ')}</span>
+            <span class="pill text-[11px]" style="color:${badge[1]};border-color:${badge[1]}">${badge[0]}</span>
+            ${urg ? `<span class="pill text-[11px]" style="color:${urg[1]};border-color:${urg[1]}">${urg[0]}</span>` : ''}
+          </div>
+          <div class="text-[13px] font-medium mb-1">${this.esc(it.subject || '(без темы)')}</div>
+          <div class="text-[13px] mb-2" style="color:var(--text-dim)">${this.esc((it.body || '').slice(0, 300))}</div>
+          ${has ? `<div class="card-2 p-2 mb-2 text-[12px]">
+            <div><span class="label">A4:</span> ${this.esc(a4.topic)}</div>
+            ${a4.reply_draft ? `<div class="mt-1" style="color:var(--text-dim)">Черновик ответа: ${this.esc(a4.reply_draft.slice(0, 300))}</div>` : ''}
+          </div>` : ''}
+          <div class="flex items-center gap-2 flex-wrap">
+            ${!has && it.status !== 'converted' ? `<button class="btn text-[12px]" data-inb-classify="${it.id}">🤖 Классифицировать (A4)</button>` : ''}
+            ${it.status === 'new' || it.status === 'in_progress' ? `<button class="btn btn-accent text-[12px]" data-inb-convert="${it.id}">→ В лид</button>
+            <button class="btn text-[12px]" data-inb-spam="${it.id}">Спам</button>` : ''}
+            ${it.lead_id ? `<span class="pill text-[11px]" style="color:var(--ok);border-color:var(--ok)">лид ${this.esc(String(it.lead_id))}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('') || `<div class="card p-6 text-center text-[13px]" style="color:var(--text-mute)">Обращений нет</div>`;
+      const fBtn = (f, label) => `<button class="btn text-[12px] ${st.filter === f ? 'btn-accent' : ''}" data-inb-filter="${f}">${label}</button>`;
+      return `<div class="flex flex-col gap-3">
+        <div class="card p-3 text-[13px]" style="color:var(--text-dim)">📥 Единая очередь обращений (соцсети, почта, сайт, звонки). A4 классифицирует и готовит черновик ответа; конвертация в лид — за оператором.</div>
+        <div class="flex items-center gap-2">${fBtn('new', 'Новые')}${fBtn('in_progress', 'В работе')}${fBtn('converted', 'Конвертированные')}${fBtn('spam', 'Спам')}${fBtn('', 'Все · ' + st.total)}</div>
         <div class="flex flex-col gap-2">${rows}</div>
       </div>`;
     },
@@ -4698,6 +4771,18 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-cal-day]').forEach(n => {
         n.onclick = () => { if (this.calSelPost) this.calAssign(n.getAttribute('data-cal-day')); };
+      });
+      el.querySelectorAll('[data-inb-filter]').forEach(b => {
+        b.onclick = () => this.inbFilter(b.getAttribute('data-inb-filter'));
+      });
+      el.querySelectorAll('[data-inb-classify]').forEach(b => {
+        b.onclick = () => this.inbClassify(parseInt(b.getAttribute('data-inb-classify'), 10));
+      });
+      el.querySelectorAll('[data-inb-convert]').forEach(b => {
+        b.onclick = () => this.inbConvert(parseInt(b.getAttribute('data-inb-convert'), 10));
+      });
+      el.querySelectorAll('[data-inb-spam]').forEach(b => {
+        b.onclick = () => this.inbSpam(parseInt(b.getAttribute('data-inb-spam'), 10));
       });
       el.querySelectorAll('[data-post-adapt]').forEach(b => {
         b.onclick = () => this.postAdapt(parseInt(b.getAttribute('data-post-adapt'), 10));
