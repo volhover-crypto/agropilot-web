@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.clients.models import Client
 from backend.deals.models import Deal
-from backend.common.errors import NotFoundError
+from backend.common.errors import NotFoundError, ValidationError
 from backend.common.deps import get_db, get_current_user
 
 clients_router = APIRouter(prefix="/clients", tags=["clients"])
