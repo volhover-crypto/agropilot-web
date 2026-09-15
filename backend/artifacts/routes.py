@@ -6,9 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
 
+from pydantic import BaseModel
+
 from backend.common.deps import get_db, get_current_user
-from backend.common.errors import NotFoundError
+from backend.common.errors import NotFoundError, ValidationError
 from backend.artifacts.models import Artifact, VALID_KINDS
+from backend.artifacts.template_models import ArtifactTemplate
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
@@ -24,6 +27,72 @@ _SAFE = re.compile(r"[^A-Za-z0-9._-]")
 def _safe_name(name: str) -> str:
     name = os.path.basename(name or "file")
     return _SAFE.sub("_", name)[:200] or "file"
+
+
+class GenerateBody(BaseModel):
+    template_code: str
+    deal_id: Optional[str] = None
+
+
+class TemplateBody(BaseModel):
+    code: str
+    kind: str
+    title_template: str
+    body_template: str
+    note: Optional[str] = None
+
+
+@router.get("/templates")
+async def list_templates(
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    rows = (await db.execute(select(ArtifactTemplate).order_by(ArtifactTemplate.code))).scalars().all()
+    return {"ok": True, "data": [r.to_dict() for r in rows]}
+
+
+@router.post("/templates")
+async def upsert_template(
+    payload: TemplateBody,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    if payload.kind not in VALID_KINDS:
+        raise ValidationError(f"kind должен быть одним из {sorted(VALID_KINDS)}")
+    tpl = (await db.execute(select(ArtifactTemplate)
+            .where(ArtifactTemplate.code == payload.code))).scalars().first()
+    if tpl is None:
+        tpl = ArtifactTemplate(code=payload.code, kind=payload.kind,
+                               title_template=payload.title_template,
+                               body_template=payload.body_template, note=payload.note)
+        db.add(tpl)
+    else:
+        tpl.kind = payload.kind
+        tpl.title_template = payload.title_template
+        tpl.body_template = payload.body_template
+        tpl.note = payload.note
+    await db.commit()
+    await db.refresh(tpl)
+    return {"ok": True, "data": tpl.to_dict()}
+
+
+@router.post("/generate")
+async def generate(
+    payload: GenerateBody,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """A5: черновик артефакта по шаблону из карточек сделки/клиента (§27).
+    Результат status=draft; отсутствующие переменные — в missing."""
+    from backend.artifacts.generate import generate_artifact
+
+    try:
+        art, missing = await generate_artifact(db, payload.template_code, payload.deal_id)
+    except KeyError as e:
+        raise ValidationError(str(e))
+    await db.commit()
+    await db.refresh(art)
+    return {"ok": True, "data": {"artifact": art.to_dict(), "missing": missing}}
 
 
 @router.get("")

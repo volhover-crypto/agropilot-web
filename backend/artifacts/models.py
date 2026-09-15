@@ -25,6 +25,9 @@ class Artifact(Base):
     size       = Column(BigInteger, nullable=True)
     type       = Column(String(32), nullable=True)
     status     = Column(String(16), nullable=True)
+    # §27/A5 (миграция 027)
+    body       = Column(Text, nullable=True)
+    client_id  = Column(String(16), nullable=True)
 
     def to_dict(self):
         return {
@@ -42,4 +45,6 @@ class Artifact(Base):
             "size": self.size,
             "type": self.type,
             "status": self.status,
+            "body": self.body,
+            "client_id": self.client_id,
         }
