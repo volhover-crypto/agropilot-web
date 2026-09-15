@@ -7,7 +7,7 @@ from typing import Optional
 from datetime import datetime
 
 from sqlalchemy import String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP
+from sqlalchemy.dialects.postgresql import ARRAY, TIMESTAMP, JSONB
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 
 
@@ -26,6 +26,9 @@ class Client(Base):
     health:     Mapped[Optional[str]]       = mapped_column(String(20), nullable=True)
     source:     Mapped[Optional[str]]       = mapped_column(String(32), nullable=True)
     status:     Mapped[Optional[str]]       = mapped_column(String(16), nullable=True)
+    # ТЗ v1.1 п. 8.4 (миграция 026)
+    inn:        Mapped[Optional[str]]         = mapped_column(String(12), nullable=True)
+    requisites: Mapped[Optional[dict]]        = mapped_column(JSONB, nullable=True, default=dict)
     created_at: Mapped[Optional[datetime]]  = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
     def to_dict(self) -> dict:
