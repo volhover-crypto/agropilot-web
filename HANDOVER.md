@@ -93,6 +93,13 @@
 - **PROD LIVE ✅ (2026-07-13):** backend поднят на живом сервере, frontend-флаги `CALENDAR_READY`, `SKILLS_READY`, `STRATEGY_READY` активированы коммитом `a6d5ed01`; smoke test дал три `200` на `/agropilot/api/v1/calendar`, `/agropilot/api/v1/team/skills`, `/agropilot/api/v1/strategy`.
 - **PROD STABLE ✅ (2026-07-17):** issue#1 полностью закрыт; backend переведён на systemd (`agropilot.service`), переживает ребут сервера; seed-данные в PostgreSQL.
 
+> - **§22 Входящие + A4 15.09**: backend/inbound (CRUD+дедуп, LLM-
+>   классификация с черновиком ответа, конвертация в лид B<N>; миграция
+>   023 — строковые FK), живая UI-очередь с фильтрами. Live-цикл проверен
+>   (обращение -> A4 -> лид B917). §16a: 8 кодов = 6 этапов ТЗ + 2
+>   терминальных статуса, миграция воронки не требуется. Осталось из
+>   Этапа 3: реквизиты по ИНН (Контур), «Мой день» + A6 (сводка).
+
 ## 1. Что за система (факт из кода)
 Объектно-ориентированный агро-B2B рабочий стол. Стек: Alpine.js (без сборки), Tailwind/Pico, ванильный JS, строковый innerHTML-рендер, hash-роутинг.
 Файлы: index.html (auth-guard, login-модал, темы); js/api.js (REST-клиент BFF :5555, /agropilot/api); js/app.objects.js (~130КБ ядро: state+resolvers+вьюхи); js/mock.objects.js (window.MOCKO демо-модель).
