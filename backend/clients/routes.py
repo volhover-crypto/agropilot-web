@@ -75,6 +75,11 @@ class ClientPatch(BaseModel):
     health:   Optional[str] = None
     source:   Optional[str] = None
     status:   Optional[str] = None
+    inn:      Optional[str] = None
+
+
+class RequisitesBody(BaseModel):
+    inn: Optional[str] = None  # если пусто -- берём inn из карточки
 
 
 @clients_router.get("")
@@ -144,6 +149,40 @@ async def create_client(
     d = item.to_dict()
     d["dealsCount"] = 0
     return _ok(d)
+
+
+@clients_router.post("/{client_id}/requisites")
+async def fetch_requisites(
+    client_id: str,
+    payload:    RequisitesBody,
+    db:         AsyncSession = Depends(get_db),
+    user                     = Depends(get_current_user),
+):
+    """Заполнить реквизиты клиента по ИНН из открытого ЕГРЮЛ (вариант 2).
+    Перезаписывает name только если карточка без названия; inn и requisites
+    сохраняются всегда. При сбое ЕГРЮЛ -- 422, ручной ввод остаётся."""
+    import asyncio as _a
+    from backend.clients.egrul import fetch_requisites_by_inn, EgrulError
+
+    item = await db.get(Client, client_id)
+    if not item:
+        raise NotFoundError("Client not found")
+    inn = (payload.inn or item.inn or "").strip()
+    if not inn:
+        raise ValidationError("укажите ИНН (в теле запроса или в карточке)")
+    try:
+        rec = await _a.to_thread(fetch_requisites_by_inn, inn)
+    except EgrulError as e:
+        raise ValidationError(f"ЕГРЮЛ: {e}")
+    item.inn = inn
+    item.requisites = rec
+    if not (item.name or "").strip() and rec.get("name"):
+        item.name = rec["name"]
+    if rec.get("region") and not item.region:
+        item.region = rec["region"]
+    await db.commit()
+    await db.refresh(item)
+    return _ok(item.to_dict())
 
 
 @clients_router.patch("/{client_id}")

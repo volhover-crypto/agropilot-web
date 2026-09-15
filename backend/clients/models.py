@@ -38,5 +38,7 @@ class Client(Base):
             "health":     self.health,
             "source":     self.source,
             "status":     self.status,
+            "inn":        self.inn,
+            "requisites": self.requisites or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
