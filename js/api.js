@@ -288,6 +288,9 @@ const AGL = {
   async convertInbound(id) {
     return apiFetch('/v1/inbound/' + id + '/convert', { method: 'POST', data: {} });
   },
+  async askAssistant(question) {
+    return apiFetch('/v1/assistant/ask', { method: 'POST', data: { question } });
+  },
   async patchInbound(id, data) {
     return apiFetch('/v1/inbound/' + id, { method: 'PATCH', data });
   },

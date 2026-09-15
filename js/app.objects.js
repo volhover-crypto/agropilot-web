@@ -762,9 +762,15 @@ vSkillsMy() {
     }
     try {
       let reply = '';
-      if (this.apiMode && window.AGL && window.AGL.orchChat) {
-        const res = await window.AGL.orchChat({ message: q });
-        reply = (res && (res.reply || res.text || res.message)) || '(\u043d\u0435\u0442 \u043e\u0442\u0432\u0435\u0442\u0430)';
+      if (this.apiMode && window.AGL) {
+        let res = null;
+        try { res = await window.AGL.askAssistant(q); }
+        catch (e1) { res = window.AGL.orchChat ? await window.AGL.orchChat({ message: q }) : null; }
+        const replyA7 = (res && res.answer) || (res && (res.reply || res.text || res.message));
+        reply = replyA7 || this.petReply(q);
+        this.owlPush(this.makeHint({ kind: 'chat', grade: 'HINT', text: 'Q: ' + q + '\nA: ' + reply, source: 'chat' }));
+        this.owlRender();
+        return;
       } else {
         reply = this.petReply(q);
       }
