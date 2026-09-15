@@ -7,7 +7,7 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import String, Integer, Date, Text, JSON
+from sqlalchemy import String, Integer, Date, Text, JSON, Numeric
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 
 

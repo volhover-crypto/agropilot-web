@@ -300,6 +300,15 @@ const AGL = {
   async fetchRequisites(clientId, inn) {
     return apiFetch('/v1/clients/' + clientId + '/requisites', { method: 'POST', data: { inn } });
   },
+  async loadDirections() {
+    return safeLoad('/v1/strategy/directions', []);
+  },
+  async createDirection(data) {
+    return apiFetch('/v1/strategy/directions', { method: 'POST', data });
+  },
+  async patchGoal(id, data) {
+    return apiFetch('/v1/goals/' + id, { method: 'PATCH', data });
+  },
   async askAssistant(question) {
     return apiFetch('/v1/assistant/ask', { method: 'POST', data: { question } });
   },

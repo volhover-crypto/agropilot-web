@@ -114,6 +114,13 @@ async def scan_sources(
         )
 
     run_id = uuid.uuid4().hex[:12]
+    _strategy_keywords = []
+    try:
+        from backend.strategy.direction_models import StrategyDirection as _SD
+        dirs = (await db.execute(select(_SD).where(_SD.status == "active"))).scalars().all()
+        _strategy_keywords = [k for d in dirs for k in (d.keywords or [])][:30]
+    except Exception:
+        pass
     now = datetime.now(timezone.utc)
     sources = (await db.execute(
         select(Source).where(Source.active.is_(True), Source.status == "active")
@@ -128,6 +135,10 @@ async def scan_sources(
             continue
         stats["collected"] += len(materials)
         keywords = src.keywords or []
+        if not keywords:
+            # §30: нет своих ключевых слов -- фильтруемся ключевыми словами
+            # активных направлений стратегии (ТЗ 8.1)
+            keywords = _strategy_keywords or []
         for mat in materials[:50]:  # за один прогон — до 50 на источник
             url = mat.get("url") or ""
             if url:

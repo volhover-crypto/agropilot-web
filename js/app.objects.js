@@ -4581,26 +4581,108 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.toast(this.M.agentConfig.privacyLocalOnly ? 'Приватные данные — только локальные LLM' : 'ВНИМАНИЕ: приватность ослаблена', this.M.agentConfig.privacyLocalOnly ? 'ok' : 'err');
       this.render();
     },
-    vStrategy() {
-        const list = this.M.strategyTasks || [];
-        if (!list.length) {
-            return `<div class="card p-4" style="color:var(--text-mute)">Стратегических задач пока нет</div>`;
-        }
-        const rows = list.map(t => {
-            const tags = (t.monitoring_focus || []).map(f => `<span class="pill text-[11px]">${this.esc(f)}</span>`).join('');
-            return `<div class="card-2 p-3 flex flex-col gap-2">
-                <div class="flex items-center justify-between gap-2">
-                    <div class="text-sm font-medium">${this.esc(t.title)}</div>
-                    <span class="pill text-[11px]">${this.esc(t.priority)}</span>
-                </div>
-                <div class="text-[12px]" style="color:var(--text-mute)">${this.esc(t.status)}</div>
-                <div class="flex gap-2 flex-wrap">${tags}</div>
-            </div>`;
-        }).join('');
-        return `<div class="card p-4">
-            <div class="text-2xl font-semibold mb-3">Стратегия</div>
-            <div class="flex flex-col gap-2">${rows}</div>
+    // ======== §30: СТРАТЕГИЯ — направления + цели (живые данные) ========
+    stratState: { dirs: [], goals: [], loaded: false },
+    async stratLoad() {
+      const st = this.stratState;
+      try {
+        const [dirs, goals] = await Promise.all([
+          window.AGL.loadDirections(), window.AGL.loadGoals(),
+        ]);
+        st.dirs = dirs || []; st.goals = goals || [];
+      } catch (e) { st.dirs = []; st.goals = []; }
+      st.loaded = true; this.render();
+    },
+    async stratAddDirection() {
+      const title = window.prompt('Название направления:');
+      if (!title || !title.trim()) return;
+      const kw = window.prompt('Ключевые слова через запятую (для медиа-мониторинга A1):') || '';
+      try {
+        await window.AGL.createDirection({
+          title: title.trim(),
+          keywords: kw.split(',').map(x => x.trim()).filter(Boolean),
+        });
+        this.toast('Направление создано', 'ok');
+        this.stratLoad();
+      } catch (e) { this.toast(e.message, 'err'); }
+    },
+    async stratGoalProgress(id, mult) {
+      const g = this.stratState.goals.find(x => x.id === id); if (!g) return;
+      // адаптивный шаг: 1% от target (минимум 1)
+      const step = Math.max(1, Math.round((Number(g.target) || 100) / 100));
+      const cur = Math.max(0, Number(g.current || 0) + mult * step);
+      try {
+        const upd = await window.AGL.patchGoal(id, { current: cur });
+        g.current = upd.current; g.progress = upd.progress;
+        this.render();
+      } catch (e) { this.toast(e.message, 'err'); }
+    },
+    vStrategyBlocks() {
+      const st = this.stratState;
+      if (!st.loaded && window.AGL && window.AGL.token) { this.stratLoad(); }
+      const goalsOf = (dirId) => st.goals.filter(g => g.direction_id === dirId);
+      const goalCard = (g) => {
+        const pct = g.progress || 0;
+        const val = (g.current != null ? String(g.current) : '—') + (g.unit ? ' ' + g.unit : '');
+        const tgt = g.target != null ? 'из ' + g.target + (g.unit ? ' ' + g.unit : '') : '';
+        return `<div class="card-2 p-3">
+          <div class="flex items-center gap-2 mb-1">
+            <div class="text-[13px] font-medium flex-1">${this.esc(g.title)}</div>
+            <span class="pill text-[11px]" style="color:var(--ok);border-color:var(--ok)">${pct}%</span>
+          </div>
+          <div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--ok)"></div>
+          </div>
+          <div class="flex items-center justify-between mt-1 text-[12px]" style="color:var(--text-dim)">
+            <span>${this.esc(val)} ${this.esc(tgt)}</span>
+            <span class="flex gap-1">
+              <button class="btn text-[11px]" data-goal-dec="${g.id}">−</button>
+              <button class="btn text-[11px]" data-goal-inc="${g.id}">+</button>
+            </span>
+          </div>
         </div>`;
+      };
+      const dirCards = st.dirs.map(d => `
+        <div class="card p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span style="color:${d.status === 'active' ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
+            <div class="text-[15px] font-semibold flex-1">${this.esc(d.title)}</div>
+            <span class="pill text-[11px]">${d.id}</span>
+          </div>
+          ${d.description ? `<div class="text-[12px] mb-2" style="color:var(--text-dim)">${this.esc(d.description)}</div>` : ''}
+          <div class="flex flex-wrap gap-1 mb-3">${(d.keywords || []).map(k => `<span class="pill text-[10px]">${this.esc(k)}</span>`).join('')}
+            <span class="pill text-[10px]" style="color:var(--accent);border-color:var(--accent)">фильтр A1</span></div>
+          <div class="flex flex-col gap-2">${goalsOf(d.id).map(goalCard).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Цели направления не привязаны</div>'}</div>
+        </div>`).join('');
+      const freeGoals = st.goals.filter(g => !g.direction_id);
+      return `<div class="flex flex-col gap-4">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="text-2xl font-semibold">Стратегия</div>
+          <button class="btn btn-accent text-[13px]" data-dir-add>+ Направление</button>
+        </div>
+        <div class="card p-3 text-[12px]" style="color:var(--text-dim)">Цепочка: направления → цели (KPI с прогрессом ±) → маркетинг. Ключевые слова направления — фильтр релевантности медиа-мониторинга A1 для источников без своих слов.</div>
+        ${dirCards || '<div class="card p-4" style="color:var(--text-mute)">Направлений пока нет</div>'}
+        ${freeGoals.length ? `<div class="card p-4"><div class="label mb-2">Цели без направления</div><div class="flex flex-col gap-2">${freeGoals.map(goalCard).join('')}</div></div>` : ''}
+        ${this.vStrategyTasksBlock()}
+      </div>`;
+    },
+
+    vStrategyTasksBlock() {
+      const list = this.M.strategyTasks || [];
+      if (!list.length) return '';
+      const rows = list.map(t => {
+        const tags = (t.monitoring_focus || []).map(f => `<span class="pill text-[11px]">${this.esc(f)}</span>`).join('');
+        return `<div class="card-2 p-3 flex items-center gap-2">
+          <div class="flex-1"><div class="text-sm font-medium">${this.esc(t.title)}</div>
+          <div class="text-[12px]" style="color:var(--text-mute)">${this.esc(t.status)} · ${this.esc(t.priority)}</div></div>
+          <div class="flex gap-1 flex-wrap">${tags}</div>
+        </div>`;
+      }).join('');
+      return `<div class="card p-4"><div class="label mb-2">Стратегические задачи</div><div class="flex flex-col gap-2">${rows}</div></div>`;
+    },
+
+    vStrategy() {
+        return this.vStrategyBlocks();
     },
     // ======== §29: АГЕНТЫ — редактор промтов в Настройках ========
     agentsState: { items: [], loaded: false },
@@ -4840,6 +4922,15 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-cal-day]').forEach(n => {
         n.onclick = () => { if (this.calSelPost) this.calAssign(n.getAttribute('data-cal-day')); };
+      });
+      el.querySelectorAll('[data-dir-add]').forEach(b => {
+        b.onclick = () => this.stratAddDirection();
+      });
+      el.querySelectorAll('[data-goal-inc]').forEach(b => {
+        b.onclick = () => this.stratGoalProgress(b.getAttribute('data-goal-inc'), 1);
+      });
+      el.querySelectorAll('[data-goal-dec]').forEach(b => {
+        b.onclick = () => this.stratGoalProgress(b.getAttribute('data-goal-dec'), -1);
       });
       el.querySelectorAll('[data-agent-save]').forEach(b => {
         b.onclick = () => this.agentSavePrompt(b.getAttribute('data-agent-save'));
