@@ -288,6 +288,18 @@ const AGL = {
   async convertInbound(id) {
     return apiFetch('/v1/inbound/' + id + '/convert', { method: 'POST', data: {} });
   },
+  async loadAgents() {
+    return safeLoad('/v1/agents', []);
+  },
+  async putAgentPrompt(code, text, note) {
+    return apiFetch('/v1/agents/' + code + '/prompt', { method: 'PUT', data: { text, note } });
+  },
+  async generateArtifact(templateCode, dealId) {
+    return apiFetch('/v1/artifacts/generate', { method: 'POST', data: { template_code: templateCode, deal_id: dealId } });
+  },
+  async fetchRequisites(clientId, inn) {
+    return apiFetch('/v1/clients/' + clientId + '/requisites', { method: 'POST', data: { inn } });
+  },
   async askAssistant(question) {
     return apiFetch('/v1/assistant/ask', { method: 'POST', data: { question } });
   },

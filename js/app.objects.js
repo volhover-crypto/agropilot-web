@@ -4027,6 +4027,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="flex items-center gap-3 mb-2"><span style="color:${this.healthColor(c.health)}">●</span><div class="text-lg font-semibold">${this.esc(c.name)}</div></div>
           <div class="text-[13px]" style="color:var(--text-dim)">${c.industry} · ${c.region} · контакт: ${this.esc(c.contact)}</div>
           <div class="mt-2 flex flex-wrap gap-1">${c.need.map(n => `<span class="pill">${n}</span>`).join('')}</div>
+          <div class="mt-2"><button class="btn text-[12px]" data-client-inn="${c.id}">📋 Заполнить реквизиты по ИНН (ЕГРЮЛ)</button></div>
         </div>
         <div class="card p-4"><div class="flex items-center justify-between mb-3"><div class="label">Сделки клиента</div><button class="btn btn-accent text-[13px]" data-deal-add="${c.id}">+ Сделка</button></div><div class="flex flex-col gap-2">${dealList || this.empty()}</div></div>
         ${this.miniGraph('client', id)}
@@ -4044,6 +4045,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="text-lg font-semibold mb-1">${this.esc(d.title)}</div>
           <div class="text-[13px] mb-3" style="color:var(--text-dim)">Клиент: <a class="underline cursor-pointer" data-go="client:${c ? c.id : ''}">${this.esc(this.clientName(c))}</a> · ${this.money(d.amount)} · отв: ${this.esc(d.owner)}${d.packageName ? ` · 📦 ${this.esc(d.packageName)}` : ''}</div>
           ${this.stageBar(d.stage)}
+          <div class="mt-2"><button class="btn text-[12px]" data-deal-art="${d.id}">📄 Создать артефакт (КП/письмо/договор)</button></div>
         </div>
         <div class="card p-4"><div class="flex items-center gap-2 mb-3">${this.petIco(18)}<div class="label">ПЕТРУШКА по этому объекту</div></div><div class="flex flex-col gap-2">${owlHtml}</div></div>
         ${this.activityBlock('deal', id)}
@@ -4600,6 +4602,66 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <div class="flex flex-col gap-2">${rows}</div>
         </div>`;
     },
+    // ======== §29: АГЕНТЫ — редактор промтов в Настройках ========
+    agentsState: { items: [], loaded: false },
+    async agentsLoad() {
+      const st = this.agentsState;
+      st.items = (await window.AGL.loadAgents()) || [];
+      st.loaded = true; this.render();
+    },
+    async agentSavePrompt(code) {
+      const ta = document.getElementById('prm-' + code);
+      if (!ta) return;
+      try {
+        const r = await window.AGL.putAgentPrompt(code, ta.value, 'правка из UI');
+        this.toast('Промт ' + code + ' сохранён (v' + r.version + ')', 'ok');
+        this.agentsLoad();
+      } catch (e) { this.toast(e.message || 'нет прав или ошибка', 'err'); }
+    },
+    vAgentsSection() {
+      const st = this.agentsState;
+      if (!st.loaded && window.AGL && window.AGL.token) { this.agentsLoad(); }
+      const rows = st.items.map(a => `
+        <div class="card-2 p-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="pill text-[11px]">${a.code.toUpperCase()}</span>
+            <span class="text-[13px] font-medium flex-1">${this.esc(a.name)}</span>
+            <span class="pill text-[11px]">${this.esc(a.model || '')}</span>
+            ${a.prompt_version ? `<span class="pill text-[11px]" style="color:var(--ok);border-color:var(--ok)">промт v${a.prompt_version}</span>` : `<span class="pill text-[11px]" style="color:var(--text-mute)">без LLM-промта</span>`}
+          </div>
+          <div class="text-[11px] mb-1" style="color:var(--text-dim)">${this.esc(a.role || '')}</div>
+          ${a.current_prompt ? `<textarea id="prm-${a.code}" class="input w-full text-[12px]" rows="4">${this.esc(a.current_prompt)}</textarea>
+          <div class="flex justify-end mt-1"><button class="btn btn-accent text-[12px]" data-agent-save="${a.code}">Сохранить новую версию</button></div>`
+          : `<div class="text-[12px]" style="color:var(--text-mute)">Промт не требуется (правила/шаблоны).</div>`}
+        </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Загрузка…</div>';
+      return `<div class="card p-4">
+        <div class="label mb-2">Агенты A1–A7 · промты с версионированием (§29)</div>
+        <div class="text-[12px] mb-2" style="color:var(--text-mute)">Каждое сохранение — новая версия с автором; откат = вставить старый текст и сохранить. Право: agents:manage.</div>
+        <div class="flex flex-col gap-2">${rows}</div>
+      </div>`;
+    },
+
+    // ======== §26/§27: кнопки карточек ========
+    async clientFillInn(id) {
+      const inn = window.prompt('ИНН организации (10 или 12 цифр):');
+      if (!inn) return;
+      try {
+        const c = await window.AGL.fetchRequisites(id, inn.trim());
+        const r = c.requisites || {};
+        this.toast('Реквизиты заполнены: ' + (r.short_name || r.name || c.name || '').slice(0, 50), 'ok');
+        await this.loadFromAPI(); this.render();
+      } catch (e) { this.toast(e.message || 'ЕГРЮЛ недоступен — введите вручную', 'err'); }
+    },
+    async dealGenArtifact(dealId) {
+      const code = window.prompt('Шаблон: kp (КП) / letter (письмо) / contract (договор):', 'kp');
+      if (!code) return;
+      try {
+        const r = await window.AGL.generateArtifact(code.trim(), dealId);
+        this.toast(`Артефакт #${r.artifact.id} создан (draft)` + (r.missing.length ? ' · дозаполните: ' + r.missing.join(', ') : ''), 'ok');
+        this.go('artifacts');
+      } catch (e) { this.toast(e.message || 'Не удалось сгенерировать', 'err'); }
+    },
+
     vSettings() {
       const A = this.M.agentConfig;
       // 1) Грейды автономности
@@ -4610,6 +4672,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           return `<button class="btn text-[12px] ${on ? 'btn-accent' : ''}" data-set-grade="${g.id}" data-grade-val="${gc}" style="${on ? '' : 'opacity:.7'}">${this.gradeLabel(gc)}</button>`;
         }).join('');
         return `<div class="card-2 p-3 flex flex-col gap-2">
+      ${this.vAgentsSection()}
           <div><div class="text-[14px] font-medium">${this.esc(g.cat)}</div><div class="label">${this.esc(g.desc)}</div></div>
           <div class="flex items-center gap-2 flex-wrap"><span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${this.gradeColor(g.grade)}"></span>${seg}</div>
         </div>`;
@@ -4777,6 +4840,15 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-cal-day]').forEach(n => {
         n.onclick = () => { if (this.calSelPost) this.calAssign(n.getAttribute('data-cal-day')); };
+      });
+      el.querySelectorAll('[data-agent-save]').forEach(b => {
+        b.onclick = () => this.agentSavePrompt(b.getAttribute('data-agent-save'));
+      });
+      el.querySelectorAll('[data-client-inn]').forEach(b => {
+        b.onclick = () => this.clientFillInn(b.getAttribute('data-client-inn'));
+      });
+      el.querySelectorAll('[data-deal-art]').forEach(b => {
+        b.onclick = () => this.dealGenArtifact(b.getAttribute('data-deal-art'));
       });
       el.querySelectorAll('[data-inb-filter]').forEach(b => {
         b.onclick = () => this.inbFilter(b.getAttribute('data-inb-filter'));
