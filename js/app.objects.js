@@ -4672,7 +4672,6 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           return `<button class="btn text-[12px] ${on ? 'btn-accent' : ''}" data-set-grade="${g.id}" data-grade-val="${gc}" style="${on ? '' : 'opacity:.7'}">${this.gradeLabel(gc)}</button>`;
         }).join('');
         return `<div class="card-2 p-3 flex flex-col gap-2">
-      ${this.vAgentsSection()}
           <div><div class="text-[14px] font-medium">${this.esc(g.cat)}</div><div class="label">${this.esc(g.desc)}</div></div>
           <div class="flex items-center gap-2 flex-wrap"><span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${this.gradeColor(g.grade)}"></span>${seg}</div>
         </div>`;
@@ -4708,6 +4707,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <div><div class="text-[15px] font-semibold flex items-center gap-2">${icon} ${title}</div>${sub ? `<div class="label mt-0.5">${sub}</div>` : ''}</div>
         ${body}</div>`;
       return `<div class="flex flex-col gap-4">
+      ${this.vAgentsSection()}
         ${sec(this.petIco(18), 'Грейды автономности ПЕТРУШКА', 'Уровень самостоятельности модератора по категориям действий (без редеплоя, через agent_config + CONFIRM)', `<div class="grid grid-cols-1 md:grid-cols-3 gap-2">${gradeRows}</div>`)}
         ${sec('🔐', 'Гибридная LLM-маршрутизация', 'Выбор модели по типу задачи и грифу приватности', privacyCard)}
         ${sec('👥', 'Команда', 'Этап 1 — координация (редактирование на экране «Команда»)', `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${teamRows}</div><a class="btn text-[12px] self-start" data-go="team">Открыть «Команда» →</a>`)}
