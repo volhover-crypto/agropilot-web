@@ -1,7 +1,7 @@
 # backend/agents/models.py -- §29: agent_cards + prompts
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, DateTime
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, func
 from sqlalchemy.dialects.postgresql import TIMESTAMP, JSONB
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 
@@ -40,7 +40,7 @@ class Prompt(Base):
     text:       Mapped[str]            = mapped_column(Text, nullable=False)
     note:       Mapped[str]            = mapped_column(Text, nullable=True)
     author_id:  Mapped[str]            = mapped_column(String(16), nullable=True)
-    created_at: Mapped[datetime]       = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime]       = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     def to_dict(self) -> dict:
         return {
