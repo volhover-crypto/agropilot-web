@@ -22,6 +22,7 @@ from backend.inbound.models import Inbound
 from backend.common.deps import get_db, get_current_user
 from backend.common.errors import NotFoundError, ValidationError, ConflictError
 from backend.common.llm import llm_chat, llm_configured, LLMError
+from backend.agents.registry import get_agent_prompt
 
 inbound_router = APIRouter(prefix="/inbound", tags=["inbound"])
 
@@ -148,7 +149,8 @@ async def classify_inbound(
         f"Тема: {item.subject or '—'}\nТекст обращения:\n{item.body or '(пусто)'}"
     )
     try:
-        raw = await asyncio.to_thread(llm_chat, prompt, A4_SYSTEM, None, 500)
+        a4 = await get_agent_prompt(db, 'a4', A4_SYSTEM)
+        raw = await asyncio.to_thread(llm_chat, prompt, a4, None, 500)
     except LLMError as e:
         raise ValidationError(f"LLM сбой: {str(e)[:150]}")
     try:

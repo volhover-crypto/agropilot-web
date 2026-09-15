@@ -29,6 +29,7 @@ from backend.news.routes import news_router
 from backend.inbound.routes import inbound_router
 from backend.myday.routes import myday_router
 from backend.assistant.routes import assistant_router
+from backend.agents.routes import agents_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -98,6 +99,9 @@ app.include_router(myday_router, prefix="/agropilot/api/v1")
 
 # ТЗ v1.1 п. 8.8 — чат-ассистент A7
 app.include_router(assistant_router, prefix="/agropilot/api/v1")
+
+# §29 — карточки агентов и промты
+app.include_router(agents_router, prefix="/agropilot/api/v1")
 
 # §19 — Auth (JWT login/refresh/logout)
 app.include_router(auth_router, prefix="/agropilot/api/v1")

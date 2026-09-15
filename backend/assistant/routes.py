@@ -29,6 +29,7 @@ from backend.news.models import NewsItem
 from backend.common.deps import get_db, get_current_user
 from backend.common.errors import ValidationError
 from backend.common.llm import llm_chat, llm_configured, LLMError
+from backend.agents.registry import get_agent_prompt
 
 assistant_router = APIRouter(prefix="/assistant", tags=["assistant"])
 
@@ -126,7 +127,8 @@ async def ask(
         + "\n\nВопрос пользователя: " + q
     )
     try:
-        answer = await asyncio.to_thread(llm_chat, prompt, A7_SYSTEM, None, 500)
+        a7 = await get_agent_prompt(db, 'a7', A7_SYSTEM)
+        answer = await asyncio.to_thread(llm_chat, prompt, a7, None, 500)
     except LLMError as e:
         raise ValidationError(f"LLM сбой: {str(e)[:150]}")
     return _ok({"answer": answer, "context_stats": {
