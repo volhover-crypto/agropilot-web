@@ -81,7 +81,8 @@ async def build_context(db: AsyncSession, question: str) -> dict:
     news = []
     for n in news_all:
         hay = ((n.title or "") + " " + (n.summary or "")).lower()
-        if not words or any(w in hay for w in words):
+        # усечение основы (орошению/орошение): первые 6 символов слова
+        if not words or any(w[:6] in hay for w in words):
             news.append({"title": (n.title or "")[:120],
                          "status": n.status,
                          "relevance": float(n.relevance) if n.relevance is not None else None,
