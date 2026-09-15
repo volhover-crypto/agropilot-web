@@ -2442,7 +2442,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
 
     vInbox() {
-      if (this.inbState.loaded && (this.inbState.items.length || this.inbState.total)) return this.vInboxApi();
+      if (this.inbState.loaded) return this.vInboxApi();
       if (!this.inbState.loaded && window.AGL && window.AGL.token) { this.inbLoad(); }
       const all = this.M.inbox || [];
       const list = this.inboxFilter === 'new' ? all.filter(i => i.status === 'new') : all.filter(i => i.status !== 'dismissed');
