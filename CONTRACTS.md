@@ -1569,6 +1569,23 @@ DoD 21 (календарь публикаций): ВЫПОЛНЕН 2026-09-14 �
 MVP-замена drag-and-drop клик-назначением (перенос DnD — v2 при
 необходимости). Проверено live: slot 2026-09-16 10:00 записан в БД.
 
+## §31. Хвосты: channels-CRUD, TG-коннектор входящих, pytest
+
+Статус: реализовано 2026-09-16.
+
+- **channels-CRUD** (§21.1): GET/POST/PATCH/DELETE /v1/channels; токены в
+  connection запрещены (422), только token_env-ссылки. Публикация
+  (POST /content/{id}/publish) принимает channel_id -> connection.chat_id.
+  Live: create/delete проверены; фикс created_at (server_default).
+- **TG-коннектор входящих** (§22): backend/inbound/tg_poller.py — getUpdates
+  каждые 5 мин (agropilot-tg-inbox.timer), сообщения приватных чатов ->
+  inbounds (channel=telegram, дедуп по tg message_id, служебный чат
+  владельца и боты фильтруются). A4-классификация в UI по кнопке.
+- **pytest**: tests/test_parsers.py (8 тестов: парсеры t.me/RSS, ЕГРЮЛ с
+  моками, рендер шаблонов артефактов с missing, уровни mia_monitor,
+  bcrypt roundtrip). Запуск: venv/bin/python -m pytest tests/ -q —
+  8 passed. Зависимость pytest добавлена в venv сервера.
+
 ## §30. Блоки «Стратегии»/«Цели» (следующий этап ТЗ v1.1)
 
 Статус: реализовано 2026-09-16 (миграция 029).
