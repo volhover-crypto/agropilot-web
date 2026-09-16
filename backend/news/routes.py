@@ -163,4 +163,8 @@ async def scan_sources(
             ))
             stats["inserted"] += 1
     await db.commit()
+    from backend.agents.runlog import log_run
+    await log_run(db, 'a1', items=stats["inserted"], meta={
+        "sources": stats["sources"], "collected": stats["collected"],
+        "errors": len(stats["errors"]), "run_id": run_id})
     return _ok({"run_id": run_id, **stats})
