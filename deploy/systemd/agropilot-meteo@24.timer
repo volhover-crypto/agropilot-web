@@ -1,0 +1,10 @@
+# §34: ежедневно 06:00 МСК — рекомендации на ближайшие 24 ч
+[Unit]
+Description=AgroPILOT MIA — ежедневный прогноз (24 ч)
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

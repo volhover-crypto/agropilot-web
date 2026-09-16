@@ -303,6 +303,28 @@ const AGL = {
   async loadAgentsDashboard() {
     return safeLoad('/v1/agents/dashboard/summary', null);
   },
+  // §34: MIA-погодный агро-консультант
+  async meteoLatest() {
+    return safeLoad('/v1/meteo/latest', []);
+  },
+  async meteoRun(pointId, cropCode, horizon, send) {
+    return apiFetch('/v1/meteo/run', { method: 'POST', data: { point_id: pointId, crop_code: cropCode, horizon_h: horizon, send: !!send } });
+  },
+  async meteoAddPoint(data) {
+    return apiFetch('/v1/meteo/points', { method: 'POST', data });
+  },
+  async meteoDelPoint(id) {
+    return apiFetch('/v1/meteo/points/' + id, { method: 'DELETE' });
+  },
+  async meteoAddCrop(data) {
+    return apiFetch('/v1/meteo/crops', { method: 'POST', data });
+  },
+  async meteoAddSub(data) {
+    return apiFetch('/v1/meteo/subs', { method: 'POST', data });
+  },
+  async meteoDelSub(id) {
+    return apiFetch('/v1/meteo/subs/' + id, { method: 'DELETE' });
+  },
   async loadDirections() {
     return safeLoad('/v1/strategy/directions', []);
   },

@@ -1,0 +1,10 @@
+# §34: пн 06:00 МСК — рекомендации на 120 ч
+[Unit]
+Description=AgroPILOT MIA — прогноз на 5 дней (120 ч)
+
+[Timer]
+OnCalendar=Mon *-*-* 06:00:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

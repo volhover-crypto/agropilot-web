@@ -1,0 +1,10 @@
+# §34: MIA — погодный агро-консультант (шаблон; %i = горизонт 24|72|120)
+[Unit]
+Description=AgroPILOT MIA — прогноз и агрорекомендации (%i ч)
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/opt/agropilot-web/.env
+WorkingDirectory=/opt/agropilot-web
+ExecStart=/opt/agropilot-web/venv/bin/python -m backend.meteo.run_forecast --horizon %i

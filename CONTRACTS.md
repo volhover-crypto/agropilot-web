@@ -1569,6 +1569,41 @@ DoD 21 (календарь публикаций): ВЫПОЛНЕН 2026-09-14 �
 MVP-замена drag-and-drop клик-назначением (перенос DnD — v2 при
 необходимости). Проверено live: slot 2026-09-16 10:00 записан в БД.
 
+## §34. MIA — погодный агро-консультант (замена §17 field_alerts)
+
+Статус: реализация 17.09 (миграция 033). Решения владельца: Open-Meteo
+(без ключа), 06:00 МСК ежедневно (24 ч), пн/чт (72 ч), пн (120 ч),
+получатель — TG-чат владельца, старая механика §17 заменена целиком
+(таймер mia остановлен; лента field_alerts остаётся как read-only архив).
+
+- Справочники (все — CRUD, оператор пополняет сам): crops (код+название),
+  geo_points (название+lat/lon), crop_phases (фенофаза по месяцам
+  культуры, MVP-календарь), crop_rules (детерминированные правила:
+  kind=risk|window, metric temp_min/temp_max/precip_sum/humidity_avg/
+  wind_max, op, threshold, severity info|warn|critical, текст рекомендации),
+  meteo_subscriptions (точка+культура+horizons int[] из {24,72,120}).
+- Пайплайн POST /v1/meteo/run {point_id, crop_code, horizon_h, send}:
+  Open-Meteo hourly (temperature_2m, precipitation, relative_humidity_2m,
+  wind_speed_10m; timezone Europe/Moscow) -> агрегаты по горизонту ->
+  правила с учётом фенофазы месяца (МСК) -> weather_runs (metrics/risks/
+  windows, critical при severity=critical) -> LLM-резюме «Плюсы/Минусы/
+  Рекомендации» (агент a-mia, реестр §29, лог §32/§33) -> Telegram.
+- GET /v1/meteo/latest (для UI), GET /v1/meteo/runs (история), CRUD:
+  /v1/meteo/points, /crops, /rules, /subs, /phases. Справочники и запуск —
+  manager/admin; просмотр — все аутентифицированные.
+- Расписания (systemd, шаблон agropilot-meteo@.service + таймеры):
+  @24 — ежедневно 06:00 Europe/Moscow; @72 — Mon,Thu 06:00; @120 — Mon
+  06:00. CLI: python -m backend.meteo.run_forecast --horizon N (сервисный
+  вход u7, прогоняет все активные подписки с этим горизонтом, send=true).
+- Границы v1: правила однофакторные (окна комбинирует LLM в тексте);
+  фенофаза календарная (ручная корректировка — v2); кнопка «резюме -> в
+  пост A2» — v2; ночной контроль заморозков вне расписания — v2.
+
+DoD 34: после деплоя — ручной POST /run (send=false и send=true) для
+ЮБК/виноград по всем трём горизонтам; резюме в TG доставлено; справочники
+редактируются из UI; таймеры висят в list-timers; карточка a-mia видна в
+дашборде агентов.
+
 ## §33. Дашборд агентов v2 — алерты, графики, качество промтов
 
 Статус: реализовано 2026-09-16 (без миграций: поверх run_logs/content_versions/

@@ -4261,6 +4261,49 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       st.offset = 0; this.newsLoad();
     },
 
+    // ======== §34: MIA — погода и агрорекомендации ========
+    meteoState: { items: [], loaded: false, send: false, busy: false },
+    async meteoLoad() {
+      const st = this.meteoState;
+      try { st.items = (await window.AGL.meteoLatest()) || []; }
+      catch (e) { st.items = []; }
+      st.loaded = true; this.render();
+    },
+    async meteoRun(pointId, cropCode, horizon) {
+      const st = this.meteoState;
+      st.busy = true; this.render();
+      try {
+        await window.AGL.meteoRun(pointId, cropCode, horizon, st.send);
+        st.items = (await window.AGL.meteoLatest()) || [];
+        this.toast('🌤 Прогноз ' + horizon + ' ч готов' + (st.send ? ' и отправлен в TG' : ''), 'ok');
+      } catch (e) {
+        this.toast('MIA: ' + (e && e.message ? e.message : 'ошибка прогона'), 'err');
+      }
+      st.busy = false; this.render();
+    },
+    async meteoAddPoint(name, lat, lon) {
+      try {
+        await window.AGL.meteoAddPoint({ name, lat: parseFloat(lat), lon: parseFloat(lon) });
+        this.toast('Пункт добавлен', 'ok');
+      } catch (e) { this.toast('MIA: ' + (e && e.message ? e.message : 'ошибка'), 'err'); }
+      await this.meteoLoad();
+    },
+    async meteoAddCrop(code, name) {
+      try {
+        await window.AGL.meteoAddCrop({ code, name });
+        this.toast('Культура добавлена (фенофазы и правила — через API/Настройки)', 'ok');
+      } catch (e) { this.toast('MIA: ' + (e && e.message ? e.message : 'ошибка'), 'err'); }
+      await this.meteoLoad();
+    },
+    async meteoAddSub(pointId, cropCode, horizons) {
+      try {
+        await window.AGL.meteoAddSub({ point_id: parseInt(pointId, 10), crop_code: cropCode,
+          horizons: (horizons || '24').split(',').map(x => parseInt(x.trim(), 10)).filter(x => x) });
+        this.toast('Подписка добавлена', 'ok');
+      } catch (e) { this.toast('MIA: ' + (e && e.message ? e.message : 'ошибка'), 'err'); }
+      await this.meteoLoad();
+    },
+
     newsPage(delta) {
       const st = this.newsState;
       const next = st.offset + delta * st.limit;
@@ -4429,6 +4472,79 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
 
     vMonitoring() {
+      // §34: блок MIA — погода и агрорекомендации (сверху, живой источник)
+      const mws = this.meteoState;
+      if (!mws.loaded) { this.meteoLoad(); }
+      const meteoCards = (mws.items || []).map(it => {
+        const r = it.last_run;
+        const m = (r && r.metrics) || {};
+        const crit = r && r.critical;
+        const col = !r ? 'var(--text-mute)' : crit ? 'var(--err)' : (r.risks || []).length ? 'var(--warn)' : 'var(--ok)';
+        const hBtns = (it.sub.horizons || [24]).map(h =>
+          `<button class="btn text-[11px]" data-meteo-run="${it.sub.point_id}|${it.sub.crop_code}|${h}">▶ ${h}ч</button>`).join(' ');
+        const summary = r && r.summary
+          ? `<div class="text-[12px] mt-1 whitespace-pre-line" style="color:var(--text-dim)">${this.esc(r.summary).slice(0, 900)}</div>`
+          : '<div class="text-[12px] mt-1" style="color:var(--text-mute)">прогонов ещё не было</div>';
+        const risks = ((r && r.risks) || []).map(x =>
+          `<span class="pill text-[10px]" style="color:${x.severity === 'critical' ? 'var(--err)' : 'var(--warn)'};border-color:${x.severity === 'critical' ? 'var(--err)' : 'var(--warn)'}">${this.esc(x.metric)} ${x.op} ${x.threshold}</span>`).join(' ');
+        const winds = ((r && r.windows) || []).map(x =>
+          `<span class="pill text-[10px]" style="color:var(--ok);border-color:var(--ok)">${this.esc(x.metric)} ${x.op} ${x.threshold}</span>`).join(' ');
+        return `<div class="card-2 p-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span style="color:${col}">●</span>
+            <span class="text-sm font-medium">🌤 ${this.esc(it.point_name || ('пункт ' + it.sub.point_id))} · ${this.esc(it.sub.crop_code)}</span>
+            <span class="pill text-[10px]">${this.esc(m.phase || '—')}</span>
+            ${crit ? '<span class="pill text-[10px]" style="color:var(--err);border-color:var(--err)">критично</span>' : ''}
+            <span class="flex-1"></span>
+            ${hBtns}
+          </div>
+          <div class="text-[11px] mt-1" style="color:var(--text-mute)">
+            ${m.temp_min != null ? `t ${m.temp_min}…${m.temp_max} °C · осадки ${m.precip_sum} мм · ветер до ${m.wind_max} м/с · влажность ${m.humidity_avg}% · ` : ''}
+            ${(r && r.ran_at || '').slice(0, 16).replace('T', ' ')}${r && r.telegram_sent ? ' · 📨 в TG' : ''}
+          </div>
+          ${risks || winds ? `<div class="flex flex-wrap gap-1 mt-1">${risks} ${winds}</div>` : ''}
+          ${summary}
+        </div>`;
+      }).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Подписок нет — добавьте ниже (пункт + культура).</div>';
+      const meteoBlock = `<div class="card p-4">
+        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div class="label">🌤 Погода и агрорекомендации · MIA</div>
+          <label class="text-[12px] flex items-center gap-1 cursor-pointer" style="color:var(--text-dim)">
+            <input type="checkbox" ${mws.send ? 'checked' : ''} data-meteo-send> отправлять в Telegram
+          </label>
+        </div>
+        <div class="text-[11px] mb-2" style="color:var(--text-mute)">Прогноз Open-Meteo → правила культуры и фенофазы → резюме «плюсы/минусы/рекомендации». Расписание: 24 ч — ежедневно 06:00 МСК, 72 ч — пн/чт, 120 ч — пн.</div>
+        <div class="flex flex-col gap-2">${meteoCards}</div>
+        <div class="mt-3 flex flex-wrap gap-2 items-end">
+          <div class="flex flex-col gap-1">
+            <span class="label text-[10px]">пункт: название / lat / lon</span>
+            <div class="flex gap-1">
+              <input class="inp text-[12px]" style="width:150px" placeholder="ЮБК — Ялта" data-meteo-pname>
+              <input class="inp text-[12px]" style="width:80px" placeholder="44.495" data-meteo-plat>
+              <input class="inp text-[12px]" style="width:80px" placeholder="34.166" data-meteo-plon>
+              <button class="btn text-[12px]" data-meteo-padd>+ пункт</button>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="label text-[10px]">культура: код / название</span>
+            <div class="flex gap-1">
+              <input class="inp text-[12px]" style="width:90px" placeholder="vine" data-meteo-ccode>
+              <input class="inp text-[12px]" style="width:130px" placeholder="Виноград" data-meteo-cname>
+              <button class="btn text-[12px]" data-meteo-cadd>+ культура</button>
+            </div>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="label text-[10px]">подписка: пункт# / код культуры / горизонты</span>
+            <div class="flex gap-1">
+              <input class="inp text-[12px]" style="width:60px" placeholder="1" data-meteo-spoint>
+              <input class="inp text-[12px]" style="width:90px" placeholder="vine" data-meteo-scrop>
+              <input class="inp text-[12px]" style="width:110px" placeholder="24,72,120" data-meteo-shor>
+              <button class="btn btn-accent text-[12px]" data-meteo-sadd>+ подписка</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
       const rows = (this.M.sources || []).map(s => `<div class="card-2 p-3 flex items-center gap-3">
         <span style="color:${s.active ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
         <span class="pill">${s.type}</span>
@@ -4467,6 +4583,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       const from = mst.total ? mst.offset + 1 : 0;
       const to = Math.min(mst.offset + mst.limit, mst.total);
       return `<div class="flex flex-col gap-4">
+        ${meteoBlock}
         <div class="card p-4">
           <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
             <div class="label">Наблюдения · ${mst.total}</div>
@@ -5002,6 +5119,33 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-mon-page]').forEach(b => {
         b.onclick = () => this.monPage(parseInt(b.getAttribute('data-mon-page'), 10));
       });
+      // §34: MIA — прогон погоды, чекбокс TG, добавление пунктов/культур/подписок
+      el.querySelectorAll('[data-meteo-run]').forEach(b => {
+        const [pid, crop, h] = (b.getAttribute('data-meteo-run') || '').split('|');
+        b.onclick = () => this.meteoRun(parseInt(pid, 10), crop, parseInt(h, 10));
+      });
+      const msend = el.querySelector('[data-meteo-send]');
+      if (msend) msend.onchange = (ev) => { this.meteoState.send = ev.target.checked; };
+      const mpAdd = el.querySelector('[data-meteo-padd]');
+      if (mpAdd) mpAdd.onclick = () => {
+        const n = (el.querySelector('[data-meteo-pname]') || {}).value || '';
+        const la = (el.querySelector('[data-meteo-plat]') || {}).value || '';
+        const lo = (el.querySelector('[data-meteo-plon]') || {}).value || '';
+        this.meteoAddPoint(n.trim(), la.trim(), lo.trim());
+      };
+      const mcAdd = el.querySelector('[data-meteo-cadd]');
+      if (mcAdd) mcAdd.onclick = () => {
+        const c = (el.querySelector('[data-meteo-ccode]') || {}).value || '';
+        const n = (el.querySelector('[data-meteo-cname]') || {}).value || '';
+        this.meteoAddCrop(c.trim(), n.trim());
+      };
+      const msAdd = el.querySelector('[data-meteo-sadd]');
+      if (msAdd) msAdd.onclick = () => {
+        const p = (el.querySelector('[data-meteo-spoint]') || {}).value || '';
+        const c = (el.querySelector('[data-meteo-scrop]') || {}).value || '';
+        const h = (el.querySelector('[data-meteo-shor]') || {}).value || '24';
+        this.meteoAddSub(p.trim(), c.trim(), h);
+      };
       // §20.6: медиа-мониторинг — фильтры, пагинация, статусы, скан
       el.querySelectorAll('[data-news-filter]').forEach(b => {
         b.onclick = () => this.newsFilter(b.getAttribute('data-news-filter'));
