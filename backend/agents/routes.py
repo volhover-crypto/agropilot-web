@@ -90,12 +90,66 @@ async def list_runs(
     return _ok([r.to_dict() for r in rows])
 
 
+# §33: дефолты лимитов расходов (переопределяются через PATCH /agents/{code}.limits)
+_LIMIT_DEFAULTS = {
+    "cost_usd_day": 1.0,     # $/сутки на агента (gpt-4o-mini)
+    "cost_usd_week": 5.0,    # $/7 дней
+    "tokens_day": 200_000,   # токенов/сутки
+    "errors_day": 5,         # ошибок/сутки
+}
+
+# §33: ожидаемая частота прогонов (часы); None = агент работает по запросу
+_SCHEDULE_H = {"a1": 1, "a6": 24}
+
+
+def _agent_limits(card: AgentCard) -> dict:
+    """Слияние лимитов карточки с дефолтами (карточка приоритетна)."""
+    merged = dict(_LIMIT_DEFAULTS)
+    merged.update(card.limits or {})
+    return merged
+
+
+def _limit_alerts(code: str, day: dict, week: dict, limits: dict) -> list:
+    """Алерты превышения лимитов за сутки/неделю (§33)."""
+    out = []
+    checks = [
+        ("cost_day", day["cost_usd"], limits.get("cost_usd_day"), "$ {:.3f}/сутки > лимита $ {:.3f}"),
+        ("cost_week", week["cost_usd"], limits.get("cost_usd_week"), "$ {:.3f}/7дн > лимита $ {:.3f}"),
+        ("tokens_day", day["tokens"], limits.get("tokens_day"), "{} токенов/сутки > лимита {}"),
+        ("errors_day", day["errors"], limits.get("errors_day"), "{} ошибок/сутки > лимита {}"),
+    ]
+    for kind, value, limit, fmt in checks:
+        if limit and value > limit:  # limit=0/None — контроль отключён
+            out.append({"agent_code": code, "kind": kind,
+                        "value": value, "limit": limit,
+                        "message": fmt.format(value, limit)})
+    return out
+
+
+def _staleness_hours(code: str, active: bool, last_run: dict | None) -> float | None:
+    """Часы молчания агента с расписанием; None — расписание не задано/агент на паузе."""
+    every = _SCHEDULE_H.get(code)
+    if every is None or not active:
+        return None
+    if not last_run:
+        return float(every * 24)  # ни одного прогона — «молчит» давно
+    started = last_run.get("started_at") or ""
+    try:
+        t = datetime.fromisoformat(started)
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return round((datetime.now(timezone.utc) - t).total_seconds() / 3600, 1)
+    except ValueError:
+        return None
+
+
 @agents_router.get("/dashboard/summary")
 async def dashboard_summary(
     db:   AsyncSession = Depends(get_db),
     user               = Depends(get_current_user),
 ):
-    """Агрегаты по агентам за 24ч/7д + лента последних запусков (§32)."""
+    """§32 агрегаты 24ч/7д + §33 v2: дневной ряд 14д, алерты лимитов,
+    метрика правок черновиков, «молчание» агентов с расписанием."""
     from datetime import timedelta
     from sqlalchemy import func, case
     from backend.agents.runlog_models import RunLog
@@ -103,9 +157,12 @@ async def dashboard_summary(
     now = datetime.now(timezone.utc)
     day = now - timedelta(hours=24)
     week = now - timedelta(days=7)
+    fortnight = now - timedelta(days=14)
 
     cards = (await db.execute(select(AgentCard).order_by(AgentCard.code))).scalars().all()
-    out = []
+
+    # -- агрегаты по агентам (24ч/7д) + алерты + молчание --
+    out, alerts = [], []
     for c in cards:
         async def agg(since):
             row = (await db.execute(select(
@@ -118,14 +175,67 @@ async def dashboard_summary(
             return {"runs": int(row[0]), "errors": int(row[1]),
                     "tokens": int(row[2]), "cost_usd": float(row[3] or 0),
                     "items": int(row[4])}
+        day_agg, week_agg = await agg(day), await agg(week)
         last = (await db.execute(select(RunLog)
                 .where(RunLog.agent_code == c.code)
                 .order_by(RunLog.started_at.desc()).limit(1))).scalars().first()
+        last_dict = last.to_dict() if last else None
+        limits = _agent_limits(c)
+        alerts.extend(_limit_alerts(c.code, day_agg, week_agg, limits))
+        every = _SCHEDULE_H.get(c.code)
+        stale = _staleness_hours(c.code, c.active, last_dict)
+        if stale is not None and every and stale > every + 1:
+            alerts.append({
+                "agent_code": c.code, "kind": "silent", "value": stale,
+                "limit": float(every),
+                "message": "молчит {:.0f} ч (ожидался каждые {} ч)".format(stale, every)})
         out.append({
             "code": c.code, "name": c.name, "active": c.active,
-            "day": await agg(day), "week": await agg(week),
-            "last_run": last.to_dict() if last else None,
+            "day": day_agg, "week": week_agg,
+            "last_run": last_dict,
+            "expected_every_h": every,
+            "stale_hours": stale,
         })
+
+    # -- дневной ряд за 14 дней (дни по Asia/Almaty — как у таймеров) --
+    day_expr = func.to_char(func.timezone("Asia/Almaty", RunLog.started_at), "YYYY-MM-DD")
+    rows = (await db.execute(select(
+        day_expr.label("d"),
+        func.count(RunLog.id),
+        func.coalesce(func.sum(case((RunLog.status == 'error', 1), else_=0)), 0),
+        func.coalesce(func.sum(RunLog.total_tokens), 0),
+        func.coalesce(func.sum(RunLog.cost_usd), 0),
+    ).where(RunLog.started_at >= fortnight).group_by(day_expr).order_by(day_expr))).all()
+    by_date = {r[0]: r for r in rows}
+    almaty = timezone(timedelta(hours=5))
+    daily = []
+    for i in range(14):
+        d = (now + timedelta(days=i - 13)).astimezone(almaty).strftime("%Y-%m-%d")
+        r = by_date.get(d)
+        daily.append({"date": d,
+                      "runs": int(r[1]) if r else 0,
+                      "errors": int(r[2]) if r else 0,
+                      "tokens": int(r[3]) if r else 0,
+                      "cost_usd": float(r[4]) if r else 0.0})
+
+    # -- метрика правок черновиков (§33): версии после первой = правки --
+    from backend.content.models import ContentVersion
+    vrows = (await db.execute(select(
+        ContentVersion.content_id,
+        func.count(ContentVersion.id),
+    ).where(ContentVersion.created_at >= fortnight)
+        .group_by(ContentVersion.content_id))).all()
+    contents = len(vrows)
+    edited = sum(1 for r in vrows if r[1] > 1)
+    revisions = sum(r[1] - 1 for r in vrows)
+    edits = {
+        "period_days": 14,
+        "contents": contents,
+        "edited": edited,
+        "avg_revisions": round(revisions / contents, 2) if contents else 0.0,
+        "untouched_pct": round(100.0 * (contents - edited) / contents, 1) if contents else 0.0,
+    }
+
     recent = (await db.execute(select(RunLog).order_by(
         RunLog.started_at.desc()).limit(15))).scalars().all()
     totals_week = (await db.execute(select(
@@ -138,6 +248,9 @@ async def dashboard_summary(
         "recent": [r.to_dict() for r in recent],
         "week_totals": {"runs": int(totals_week[0]), "tokens": int(totals_week[1]),
                         "cost_usd": float(totals_week[2] or 0)},
+        "daily": daily,
+        "alerts": alerts,
+        "edits": edits,
     })
 
 

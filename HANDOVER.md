@@ -158,6 +158,27 @@
 >   скриптов фронта. Осталось крупное: email-входящие (нужен IMAP-доступ),
 >   Instagram-коннектор, v2 дашборда (алерты лимитов, графики,
 >   метрика правок черновиков).
+> - **§33 дашборд v2 16.09 (вечер)**: без миграций — daily-ряд 14 дней
+>   (дни по Asia/Almaty), alerts (лимиты cost/tokens/errors из
+>   agent_cards.limits + дефолты; silent «молчит N ч» по расписанию
+>   a1=1ч/a6=24ч), метрика edits качества черновиков A2 из
+>   content_versions, плашки/график/метрики в UI. pytest 15/15
+>   (tests/test_agents_dashboard.py — 7 новых). Локальный venv .venv для
+>   прогонов тестов на машине юзера. ДЕПЛОЙ НА ПРОД ЖДЁТ root-доступа.
+> - **Диагностика 16.09 (вечер) — ТРЕБУЕТ СЕРВЕРА (root)**:
+>   1) A6-digest сегодня 07:30 не исполнялся (0 записей a6 в run_logs;
+>   конвейер жив — ручной POST /myday/digest {"send":false} прошёл,
+>   LLM-сводка сгенерирована и залогирована). Проверить
+>   `systemctl list-timers agropilot-a6*`, `journalctl -u
+>   agropilot-a6.service` (таймер 15.09 работал).
+>   2) A1-n8n не гоняет hourly: единственный лог a1 — ручной скан
+>   16.09 05:19 UTC, автопрогонов нет. Проверить контейнер n8n,
+>   workflow active, executions (REST /rest недоступен без сессии
+>   владельца; basic auth на /rest не работает).
+>   3) refresh u7 истекает 28.09 — продлить (login u7 -> refresh ->
+>   /root/n8n/docker-compose.yml AGROPILOT_SERVICE_REFRESH ->
+>   docker compose up -d --force-recreate n8n). Пароль u7 актуален
+>   (логин проверен).
 
 ## 1. Что за система (факт из кода)
 Объектно-ориентированный агро-B2B рабочий стол. Стек: Alpine.js (без сборки), Tailwind/Pico, ванильный JS, строковый innerHTML-рендер, hash-роутинг.

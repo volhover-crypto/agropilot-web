@@ -2999,14 +2999,30 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       const d = st.data;
       if (!d) return `<div class="card p-4 text-[13px]" style="color:var(--text-mute)">Дашборд агентов загружается…</div>`;
       const t = d.week_totals || {};
+      // алерты (§33): лимиты расходов + «молчание» агентов с расписанием
+      const alertPills = (d.alerts || []).map(al => `
+        <div class="card-2 p-2 flex items-center gap-2 text-[12px]" style="border-color:var(--warn)">
+          <span>⚠️</span>
+          <span class="pill text-[10px]">${(al.agent_code || '').toUpperCase()}</span>
+          <span class="flex-1">${this.esc(al.message || al.kind)}</span>
+        </div>`).join('');
+      const alertsWidget = alertPills ? `
+        <div class="mb-3">
+          <div class="label mb-1" style="color:var(--warn)">Алерты агентов</div>
+          <div class="flex flex-col gap-1">${alertPills}</div>
+        </div>` : '';
       const cards = (d.agents || []).map(a => {
         const last = a.last_run;
         const col = !last ? 'var(--text-mute)' : last.status === 'error' ? 'var(--err)' : 'var(--ok)';
         const lastTxt = last ? (last.started_at || '').slice(5, 16).replace('T', ' ') : 'нет запусков';
+        const staleBad = (a.expected_every_h && a.stale_hours != null && a.stale_hours > a.expected_every_h + 1);
+        const stalePill = staleBad
+          ? `<span class="pill text-[10px]" style="color:var(--warn);border-color:var(--warn)">молчит ${Math.round(a.stale_hours)} ч</span>` : '';
         return `<div class="card p-3">
           <div class="flex items-center gap-2 mb-1">
             <span style="color:${col}">●</span>
             <span class="text-[13px] font-medium flex-1">${this.esc(a.name)}</span>
+            ${stalePill}
             ${a.active ? '' : '<span class="pill text-[10px]" style="color:var(--text-mute)">пауза</span>'}
           </div>
           <div class="text-[11px] grid grid-cols-2 gap-x-2" style="color:var(--text-dim)">
@@ -3019,6 +3035,30 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           </div>
         </div>`;
       }).join('');
+      // дневной ряд 14 дней (§33): столбики запусков, подкрашенные ошибками
+      const daily = d.daily || [];
+      const maxRuns = Math.max(1, ...daily.map(x => x.runs));
+      const bars = daily.map(x => {
+        const h = Math.round(x.runs / maxRuns * 44) + (x.runs ? 4 : 2);
+        const hasErr = x.errors > 0;
+        return `<div class="flex-1 flex flex-col justify-end" title="${x.date}: ${x.runs} зап., ${x.errors} ош., ${x.tokens} ткн, $${x.cost_usd.toFixed(4)}">
+          <div style="height:${h}px;border-radius:3px 3px 0 0;background:${hasErr ? 'var(--err)' : 'var(--accent)'};opacity:.85"></div>
+          <div class="text-[9px] text-center" style="color:var(--text-mute)">${x.date.slice(8)}</div>
+        </div>`;
+      }).join('');
+      const dailyWidget = `
+        <div class="label mb-1">Запуски по дням · 14 дней (дни по времени Алматы)</div>
+        <div class="flex items-end gap-1 mb-1" style="height:64px">${bars}</div>`;
+      // метрика правок черновиков (§33): качество промта A2
+      const e = d.edits || {};
+      const editsWidget = `
+        <div class="label mb-1">Качество черновиков A2 · ${e.period_days || 14} дней</div>
+        <div class="grid gap-2 mb-1" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+          <div class="card-2 p-2"><div class="text-[11px]" style="color:var(--text-dim)">черновиков</div><div class="text-lg font-semibold">${e.contents || 0}</div></div>
+          <div class="card-2 p-2"><div class="text-[11px]" style="color:var(--text-dim)">правилось людьми</div><div class="text-lg font-semibold">${e.edited || 0}</div></div>
+          <div class="card-2 p-2"><div class="text-[11px]" style="color:var(--text-dim)">правок на черновик</div><div class="text-lg font-semibold">${e.avg_revisions ?? 0}</div></div>
+          <div class="card-2 p-2"><div class="text-[11px]" style="color:var(--text-dim)">вышло без правок</div><div class="text-lg font-semibold" style="color:var(--ok)">${e.untouched_pct ?? 0}%</div></div>
+        </div>`;
       const runs = (d.recent || []).map(r => `
         <div class="card-2 p-2 flex items-center gap-2 text-[12px]">
           <span style="color:${r.status === 'error' ? 'var(--err)' : 'var(--ok)'}">${r.status === 'error' ? '✕' : '✓'}</span>
@@ -3030,7 +3070,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div class="label">Агенты A1–A7 · 7 дней: ${t.runs || 0} запусков · ${t.tokens || 0} токенов · $${(t.cost_usd || 0).toFixed(3)}</div>
         </div>
+        ${alertsWidget}
         <div class="grid gap-2 mb-3" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${cards}</div>
+        ${dailyWidget}
+        ${editsWidget}
         <div class="label mb-1">Последние запуски</div>
         <div class="flex flex-col gap-1">${runs}</div>
       </div>`;
