@@ -208,6 +208,21 @@
 >   5) SSH: настроен ключ ~/.ssh/id_ed25519 (zcode-autopilot) в
 >   /root/.ssh/authorized_keys — `ssh root@mdked.hlab.kz` без пароля.
 >   Пароль по-прежнему работает.
+> - **A1 — до-разбор 17.09 (04:00 Алматы), ещё две причины сверх env-блока:**
+>   (1) строка AGROPILOT_SERVICE_REFRESH в /root/n8n/docker-compose.yml
+>   имела отступ 6 пробелов вместо 4 (наследие 14.09) — docker compose
+>   молча отдавал ПУСТУЮ переменную: refresh-нода получала 401 «Not
+>   enough segments». Нормализовано; после правок compose обязательны
+>   `docker compose config -q` + проверка printenv в контейнере.
+>   (2) n8n версионирует воркфлоу: исполнения шли по activeVersionId
+>   (старая версия 549f...), где Telegram-нода notify падала «Node does
+>   not have any credentials set». Починка: export:workflow → замена
+>   notify на httpRequest (Bot API sendMessage, $env.TELEGRAM_BOT_TOKEN
+>   — токен добавлен в compose) → import:workflow (новая версия
+>   64c1debe..., СБРАСЫВАЕТ active!) → update:workflow --active=true →
+>   force-recreate. Ручная цепочка refresh→scan после фикса env — ok
+>   (inserted 1). Первый прогон новой версии — 05:00 Алматы; проверить
+>   executions/run_logs (a1) и дашборд (алерт «молчит» должен уйти).
 
 ## 1. Что за система (факт из кода)
 Объектно-ориентированный агро-B2B рабочий стол. Стек: Alpine.js (без сборки), Tailwind/Pico, ванильный JS, строковый innerHTML-рендер, hash-роутинг.
