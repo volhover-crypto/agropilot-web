@@ -29,6 +29,11 @@ class Goal(Base):
     progress:     Mapped[Optional[int]]  = mapped_column(Integer, nullable=True)
     metric:       Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     signal:       Mapped[Optional[str]]  = mapped_column(String(32), nullable=True)
+    # §30 (миграция 029)
+    direction_id: Mapped[Optional[str]]  = mapped_column(String(16), nullable=True)
+    target:       Mapped[Optional[float]] = mapped_column(Numeric(14, 2), nullable=True)
+    unit:         Mapped[Optional[str]]  = mapped_column(String(16), nullable=True)
+    current:      Mapped[float]          = mapped_column(Numeric(14, 2), nullable=False, default=0)
 
     def to_dict(self) -> dict:
         return {
@@ -43,4 +48,8 @@ class Goal(Base):
             "progress":     self.progress,
             "metric":       self.metric,
             "signal":       self.signal,
+            "direction_id": self.direction_id,
+            "target":       float(self.target) if self.target is not None else None,
+            "unit":         self.unit,
+            "current":      float(self.current) if self.current is not None else 0,
         }
