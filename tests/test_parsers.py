@@ -2,27 +2,41 @@
 # Запуск: venv/bin/python -m pytest tests/ -q
 
 import json
-import types
+import urllib.request
 
 import pytest
 
 
+class FakeResp:
+    def __init__(self, payload: bytes):
+        self._p = payload
+
+    def read(self):
+        return self._p
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
 # ---------- collectors: telegram web ----------
 
-def test_telegram_web_parse(monkeypatch):
-    import backend.news.collectors as c
-
-    html = """
+TG_HTML = """
     <div class="tgme_widget_message_wrap"><div class="tgme_widget_message js-widget_message"
       data-post="Ch/101"><div class="tgme_widget_message_text js-message-text">Пост про
       <b>орошение</b> сада</div></div></div>
     <div class="tgme_widget_message_wrap"><div class="tgme_widget_message"
       data-post="Ch/102"><div class="tgme_widget_message_text">Второй пост</div></div></div>
     """
-    monkeypatch.setattr(c.urllib.request, "urlopen",
-                        lambda *a, **k: types.SimpleNamespace(
-                            read=lambda: html.encode(), __enter__=lambda s: s,
-                            __exit__=lambda s, *x: None))
+
+
+def test_telegram_web_parse(monkeypatch):
+    import backend.news.collectors as c
+
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req, timeout=None: FakeResp(TG_HTML.encode()))
     items = c.collect_telegram_web("https://t.me/Ch")
     assert len(items) == 2
     assert items[0]["url"].endswith("Ch/101")
@@ -37,10 +51,8 @@ def test_rss_parse(monkeypatch):
            "<item><title>Новость 1</title><description>текст</description><link>http://a</link></item>"
            "<item><title>Новость 2</title></item>"
            "</channel></rss>")
-    monkeypatch.setattr(c.urllib.request, "urlopen",
-                        lambda *a, **k: types.SimpleNamespace(
-                            read=lambda: xml.encode(), __enter__=lambda s: s,
-                            __exit__=lambda s, *x: None))
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req, timeout=None: FakeResp(xml.encode()))
     items = c.collect_rss("http://feed")
     assert len(items) == 2
     assert items[0]["title"] == "Новость 1"
@@ -57,29 +69,24 @@ def test_egrul_inn_validation():
         fetch_requisites_by_inn("abc")
 
 
+EGRUL_ROWS = {"rows": [{
+    "c": "ООО Тест", "n": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ «Тест»",
+    "i": "7707083893", "o": "1027700132195", "p": "773601001",
+    "r": "16.08.2002", "g": "ГЕНЕРАЛЬНЫЙ ДИРЕКТОР: Иванов Иван Иванович",
+    "rn": "Г.Москва"}]}
+
+
 def test_egrul_parse(monkeypatch):
     import backend.clients.egrul as e
 
-    def fake_post(url, data, headers=None, timeout=None):
-        return types.SimpleNamespace(
-            read=lambda: json.dumps({"t": "TOKEN", "captchaRequired": False}).encode(),
-            __enter__=lambda s: s, __exit__=lambda s, *x: None)
-
-    def fake_get(url, headers=None, timeout=None):
-        assert url.endswith("/search-result/TOKEN")
-        return types.SimpleNamespace(
-            read=lambda: json.dumps({"rows": [{
-                "c": "ООО Тест", "n": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ «Тест»",
-                "i": "7707083893", "o": "1027700132195", "p": "773601001",
-                "r": "16.08.2002", "g": "ГЕНЕРАЛЬНЫЙ ДИРЕКТОР: Иванов Иван Иванович",
-                "rn": "Г.Москва"}]}).encode(),
-            __enter__=lambda s: s, __exit__=lambda s, *x: None)
-
-    monkeypatch.setattr(e.urllib.request, "Request", lambda url, data=None, headers=None: (url, data))
     def fake_urlopen(req, timeout=None):
-        url, data = req
-        return fake_post(url, data, timeout=timeout) if data else fake_get(url, timeout=timeout)
-    monkeypatch.setattr(e.urllib.request, "urlopen", fake_urlopen)
+        url = getattr(req, "full_url", str(req))
+        if url.rstrip("/").endswith("egrul.nalog.ru"):
+            return FakeResp(json.dumps({"t": "TOKEN", "captchaRequired": False}).encode())
+        assert url.endswith("/search-result/TOKEN")
+        return FakeResp(json.dumps(EGRUL_ROWS).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
     rec = e.fetch_requisites_by_inn("7707083893")
     assert rec["ogrn"] == "1027700132195"
