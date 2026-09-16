@@ -1,7 +1,7 @@
 # backend/channels/models.py -- §21.1: channels (миграция 018)
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, Boolean, DateTime
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, func
 from sqlalchemy.dialects.postgresql import TIMESTAMP, JSONB
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 
@@ -20,7 +20,7 @@ class Channel(Base):
     adapt_prompt: Mapped[str]       = mapped_column(Text, nullable=True)
     active:       Mapped[bool]      = mapped_column(Boolean, default=True)
     stats:        Mapped[dict]      = mapped_column(JSONB, default=dict)
-    created_at:   Mapped[datetime]  = mapped_column(TIMESTAMP(timezone=True))
+    created_at:   Mapped[datetime]  = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
     def to_dict(self) -> dict:
         return {

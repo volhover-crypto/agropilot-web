@@ -66,6 +66,7 @@ async def create_channel(
         type=payload.type, name=name,
         connection=conn, adapt_prompt=payload.adapt_prompt,
         active=True,
+        created_at=datetime.now(timezone.utc),
     )
     db.add(item)
     await db.commit()
