@@ -31,6 +31,7 @@ from backend.myday.routes import myday_router
 from backend.assistant.routes import assistant_router
 from backend.agents.routes import agents_router
 from backend.strategy.directions import directions_router
+from backend.channels.routes import channels_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -106,6 +107,9 @@ app.include_router(agents_router, prefix="/agropilot/api/v1")
 
 # §30 — направления стратегии (Стратегии/Цели)
 app.include_router(directions_router, prefix="/agropilot/api/v1")
+
+# §21.1 — каналы публикаций (CRUD)
+app.include_router(channels_router, prefix="/agropilot/api/v1")
 
 # §19 — Auth (JWT login/refresh/logout)
 app.include_router(auth_router, prefix="/agropilot/api/v1")

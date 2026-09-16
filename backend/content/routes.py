@@ -72,7 +72,8 @@ class FromNewsBody(BaseModel):
 
 
 class PublishBody(BaseModel):
-    chat_id: Optional[str] = None  # целевой чат/канал; по умолчанию TELEGRAM_CHAT_ID
+    chat_id: Optional[str] = None    # явный чат; иначе канал channel_id, иначе TELEGRAM_CHAT_ID
+    channel_id: Optional[int] = None # канал из справочника channels (§21.1)
 
 
 class ContentPatch(BaseModel):
@@ -237,9 +238,19 @@ async def publish_content(
         raise ValidationError("публикация требует права content:approve")
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = (payload.chat_id or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+    chat_id = (payload.chat_id or "").strip()
+    if not chat_id and payload.channel_id:
+        from backend.channels.models import Channel as _Ch
+        ch = await db.get(_Ch, payload.channel_id)
+        if not ch:
+            raise NotFoundError(f"channel {payload.channel_id} не найден")
+        if not ch.active:
+            raise ValidationError(f"канал «{ch.name}» отключён")
+        chat_id = str((ch.connection or {}).get("chat_id") or "").strip()
+    if not chat_id:
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not token or not chat_id:
-        raise ValidationError("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не настроены")
+        raise ValidationError("не задан chat_id (канал/TELEGRAM_CHAT_ID) или TELEGRAM_BOT_TOKEN")
 
     text = (item.title + "\n\n" + (item.body or "")).strip()[:4000]
     req = urllib.request.Request(
