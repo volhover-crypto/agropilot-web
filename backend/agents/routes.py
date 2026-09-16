@@ -114,12 +114,12 @@ async def dashboard_summary(
                 func.coalesce(func.sum(RunLog.total_tokens), 0),
                 func.coalesce(func.sum(RunLog.cost_usd), 0),
                 func.coalesce(func.sum(RunLog.items), 0),
-            ).where(RunLog.agent_code == c.id, RunLog.started_at >= since))).one()
+            ).where(RunLog.agent_code == c.code, RunLog.started_at >= since))).one()
             return {"runs": int(row[0]), "errors": int(row[1]),
                     "tokens": int(row[2]), "cost_usd": float(row[3] or 0),
                     "items": int(row[4])}
         last = (await db.execute(select(RunLog)
-                .where(RunLog.agent_code == c.id)
+                .where(RunLog.agent_code == c.code)
                 .order_by(RunLog.started_at.desc()).limit(1))).scalars().first()
         out.append({
             "code": c.code, "name": c.name, "active": c.active,
