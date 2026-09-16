@@ -3047,7 +3047,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         </div>`;
       }).join('');
       const dailyWidget = `
-        <div class="label mb-1">Запуски по дням · 14 дней (дни по времени Алматы)</div>
+        <div class="label mb-1">Запуски по дням · 14 дней (московское время)</div>
         <div class="flex items-end gap-1 mb-1" style="height:64px">${bars}</div>`;
       // метрика правок черновиков (§33): качество промта A2
       const e = d.edits || {};

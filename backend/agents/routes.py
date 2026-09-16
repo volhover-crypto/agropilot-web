@@ -197,8 +197,8 @@ async def dashboard_summary(
             "stale_hours": stale,
         })
 
-    # -- дневной ряд за 14 дней (дни по Asia/Almaty — как у таймеров) --
-    day_expr = func.to_char(func.timezone("Asia/Almaty", RunLog.started_at), "YYYY-MM-DD")
+    # -- дневной ряд за 14 дней (дни по Europe/Moscow — рабочее время системы) --
+    day_expr = func.to_char(func.timezone("Europe/Moscow", RunLog.started_at), "YYYY-MM-DD")
     rows = (await db.execute(select(
         day_expr.label("d"),
         func.count(RunLog.id),
@@ -207,10 +207,10 @@ async def dashboard_summary(
         func.coalesce(func.sum(RunLog.cost_usd), 0),
     ).where(RunLog.started_at >= fortnight).group_by(day_expr).order_by(day_expr))).all()
     by_date = {r[0]: r for r in rows}
-    almaty = timezone(timedelta(hours=5))
+    msk = timezone(timedelta(hours=3))
     daily = []
     for i in range(14):
-        d = (now + timedelta(days=i - 13)).astimezone(almaty).strftime("%Y-%m-%d")
+        d = (now + timedelta(days=i - 13)).astimezone(msk).strftime("%Y-%m-%d")
         r = by_date.get(d)
         daily.append({"date": d,
                       "runs": int(r[1]) if r else 0,

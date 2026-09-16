@@ -159,7 +159,7 @@
 >   Instagram-коннектор, v2 дашборда (алерты лимитов, графики,
 >   метрика правок черновиков).
 > - **§33 дашборд v2 16.09 (вечер)**: без миграций — daily-ряд 14 дней
->   (дни по Asia/Almaty), alerts (лимиты cost/tokens/errors из
+>   (дни по Europe/Moscow с 17.09 — было Asia/Almaty), alerts (лимиты cost/tokens/errors из
 >   agent_cards.limits + дефолты; silent «молчит N ч» по расписанию
 >   a1=1ч/a6=24ч), метрика edits качества черновиков A2 из
 >   content_versions, плашки/график/метрики в UI. pytest 15/15
@@ -179,6 +179,13 @@
 >   /root/n8n/docker-compose.yml AGROPILOT_SERVICE_REFRESH ->
 >   docker compose up -d --force-recreate n8n). Пароль u7 актуален
 >   (логин проверен).
+> - **17.09 (ночь) — РАБОЧЕЕ ВРЕМЯ СИСТЕМЫ = Europe/Moscow (решение
+>   владельца, «навсегда»)**: сервер физически в Алматы (+05), но все
+>   расписания/отчёты системы — по МСК (UTC+3), TZ задаётся явно:
+>   agropilot-a6.timer OnCalendar=...07:30:00 Europe/Moscow (07:30 МСК
+>   = 09:30 Алматы = 04:30 UTC); n8n GENERIC_TIMEZONE=Europe/Moscow;
+>   §33 daily-ряд — func.timezone('Europe/Moscow'). Новые фичи с
+>   расписанием/группировкой по дням — только Europe/Moscow.
 > - **17.09 (ночь) — ВСЁ РЕШЕНО, деплой da7c673 на продe/origin:**
 >   1) A6 — ЛОЖНАЯ ТРЕВОГА: digest 16.09 07:30 прошёл успешно
 >   (journalctl: telegram_sent=True, 6 overdue/3 hot), но ДО деплоя

@@ -1576,7 +1576,8 @@ agent_cards.limits §32/§21/§29).
 
 - GET /v1/agents/dashboard/summary расширен:
   - `daily`: ровно 14 записей {date, runs, errors, tokens, cost_usd} — дни
-    по Asia/Almaty (как у таймеров), нулевые дни заполнены.
+    по Europe/Moscow (рабочее время системы, решение владельца 17.09),
+    нулевые дни заполнены.
   - `alerts`: [{agent_code, kind, value, limit, message}]; kinds:
     cost_day/cost_week/tokens_day/errors_day (превышение лимитов) и
     silent («молчит N ч» — агент с расписанием без прогонов дольше
@@ -1730,7 +1731,9 @@ toast со списком missing-переменных). Проверено в �
   входящие, посты на правке.
 - POST /v1/myday/digest {send, user_id, tone} — то же + LLM-сводка
   (тон: env A6_TONE или разовый параметр tone); send=true -> Telegram.
-- Расписание: agropilot-a6.timer, ежедневно 07:30 Asia/Almaty, CLI
+- Расписание: agropilot-a6.timer, ежедневно 07:30 Europe/Moscow (правка
+  17.09: сервер в Алматы, но рабочее время системы — МСК; TZ задана явно
+  в OnCalendar), CLI
   python -m backend.myday.send_digest (сервисный вход u7, U7_PASSWORD в .env).
 - Live: сводка из реальных данных (6 просроченных, 3 горячие сделки),
   telegram_sent=true (CLI и API).
