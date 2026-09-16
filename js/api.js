@@ -300,6 +300,9 @@ const AGL = {
   async fetchRequisites(clientId, inn) {
     return apiFetch('/v1/clients/' + clientId + '/requisites', { method: 'POST', data: { inn } });
   },
+  async loadAgentsDashboard() {
+    return safeLoad('/v1/agents/dashboard/summary', null);
+  },
   async loadDirections() {
     return safeLoad('/v1/strategy/directions', []);
   },

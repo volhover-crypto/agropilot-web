@@ -26,6 +26,7 @@ from backend.content.models import Content
 from backend.common.deps import get_db, get_current_user
 from backend.common.errors import ValidationError
 from backend.common.llm import llm_chat, llm_configured, LLMError
+from backend.agents.runlog import llm_call_logged
 
 myday_router = APIRouter(prefix="/myday", tags=["myday"])
 
@@ -141,8 +142,9 @@ async def post_digest(
         tone = payload.tone or A6_TONE
         try:
             sys = f"Ты — ассистент напоминаний A6 системы AgroPILOT. Тон: {tone}"
-            summary = await asyncio.to_thread(
-                llm_chat, _build_prompt(day), sys, None, 700)
+            summary = await llm_call_logged(db, 'a6', _build_prompt(day), sys,
+                                            max_tokens=700,
+                                            meta={"send": payload.send})
         except LLMError as e:
             summary = f"LLM недоступна ({str(e)[:100]}) — агрегат без сводки."
     sent = False

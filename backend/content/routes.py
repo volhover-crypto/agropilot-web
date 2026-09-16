@@ -23,6 +23,7 @@ from backend.common.deps import get_db, get_current_user
 from backend.team.models import TeamMember
 from backend.common.llm import llm_chat, llm_configured, LLMError, A2_SYSTEM, A3_SYSTEM
 from backend.agents.registry import get_agent_prompt
+from backend.agents.runlog import llm_call_logged, log_run
 
 content_router = APIRouter(prefix="/content", tags=["content"])
 
@@ -171,7 +172,8 @@ async def create_from_news(
                 f"Ссылка на первоисточник: {news.url or 'нет'}"
             )
             a2 = await get_agent_prompt(db, 'a2', A2_SYSTEM)
-            body = await asyncio.to_thread(llm_chat, prompt, a2, None, 1000)
+            body = await llm_call_logged(db, 'a2', prompt, a2, max_tokens=1000,
+                                         meta={"news_id": news.id})
             title = (body.splitlines()[0][:200] if body else title)
             gen_note = f"сгенерировано LLM из news_item {news.id}"
         except LLMError as e:
@@ -307,7 +309,8 @@ async def adapt_content(
     )
     try:
         a3 = await get_agent_prompt(db, 'a3', A3_SYSTEM)
-        new_body = await asyncio.to_thread(llm_chat, prompt, a3, None, 1000)
+        new_body = await llm_call_logged(db, 'a3', prompt, a3, max_tokens=1000,
+                                         meta={"content_id": item.id})
     except LLMError as e:
         raise ValidationError(f"LLM сбой: {str(e)[:150]}")
     if not new_body:

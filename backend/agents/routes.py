@@ -9,6 +9,7 @@
 
 from typing import Optional
 
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -68,6 +69,76 @@ async def list_agents(
             current_prompt=p.text if p else None,
             prompt_version=p.version if p else None))
     return _ok(out)
+
+
+@agents_router.get("/runs/all")
+async def list_runs(
+    agent_code: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    db:   AsyncSession = Depends(get_db),
+    user               = Depends(get_current_user),
+):
+    from sqlalchemy import func
+    from backend.agents.runlog_models import RunLog
+    q = select(RunLog).order_by(RunLog.started_at.desc()).limit(min(limit, 200))
+    if agent_code:
+        q = q.where(RunLog.agent_code == agent_code)
+    if status:
+        q = q.where(RunLog.status == status)
+    rows = (await db.execute(q)).scalars().all()
+    return _ok([r.to_dict() for r in rows])
+
+
+@agents_router.get("/dashboard/summary")
+async def dashboard_summary(
+    db:   AsyncSession = Depends(get_db),
+    user               = Depends(get_current_user),
+):
+    """Агрегаты по агентам за 24ч/7д + лента последних запусков (§32)."""
+    from datetime import timedelta
+    from sqlalchemy import func, case
+    from backend.agents.runlog_models import RunLog
+
+    now = datetime.now(timezone.utc)
+    day = now - timedelta(hours=24)
+    week = now - timedelta(days=7)
+
+    cards = (await db.execute(select(AgentCard).order_by(AgentCard.code))).scalars().all()
+    out = []
+    for c in cards:
+        async def agg(since):
+            row = (await db.execute(select(
+                func.count(RunLog.id),
+                func.coalesce(func.sum(case((RunLog.status == 'error', 1), else_=0)), 0),
+                func.coalesce(func.sum(RunLog.total_tokens), 0),
+                func.coalesce(func.sum(RunLog.cost_usd), 0),
+                func.coalesce(func.sum(RunLog.items), 0),
+            ).where(RunLog.agent_code == c.id, RunLog.started_at >= since))).one()
+            return {"runs": int(row[0]), "errors": int(row[1]),
+                    "tokens": int(row[2]), "cost_usd": float(row[3] or 0),
+                    "items": int(row[4])}
+        last = (await db.execute(select(RunLog)
+                .where(RunLog.agent_code == c.id)
+                .order_by(RunLog.started_at.desc()).limit(1))).scalars().first()
+        out.append({
+            "code": c.code, "name": c.name, "active": c.active,
+            "day": await agg(day), "week": await agg(week),
+            "last_run": last.to_dict() if last else None,
+        })
+    recent = (await db.execute(select(RunLog).order_by(
+        RunLog.started_at.desc()).limit(15))).scalars().all()
+    totals_week = (await db.execute(select(
+        func.count(RunLog.id),
+        func.coalesce(func.sum(RunLog.total_tokens), 0),
+        func.coalesce(func.sum(RunLog.cost_usd), 0),
+    ).where(RunLog.started_at >= week))).one()
+    return _ok({
+        "agents": out,
+        "recent": [r.to_dict() for r in recent],
+        "week_totals": {"runs": int(totals_week[0]), "tokens": int(totals_week[1]),
+                        "cost_usd": float(totals_week[2] or 0)},
+    })
 
 
 @agents_router.patch("/{code}")

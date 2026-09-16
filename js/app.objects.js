@@ -2985,6 +2985,57 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       const maxSum = Math.max(1, ...rows.map(r => r.sum));
       return { rows, maxSum };
     },
+    // ======== §32: дашборд агентов ========
+    agDashState: { data: null, loaded: false },
+    async agDashLoad() {
+      const st = this.agDashState;
+      try { st.data = await window.AGL.loadAgentsDashboard(); }
+      catch (e) { st.data = null; }
+      st.loaded = true; this.render();
+    },
+    vAgentsDashboard() {
+      const st = this.agDashState;
+      if (!st.loaded && window.AGL && window.AGL.token) { this.agDashLoad(); }
+      const d = st.data;
+      if (!d) return `<div class="card p-4 text-[13px]" style="color:var(--text-mute)">Дашборд агентов загружается…</div>`;
+      const t = d.week_totals || {};
+      const cards = (d.agents || []).map(a => {
+        const last = a.last_run;
+        const col = !last ? 'var(--text-mute)' : last.status === 'error' ? 'var(--err)' : 'var(--ok)';
+        const lastTxt = last ? (last.started_at || '').slice(5, 16).replace('T', ' ') : 'нет запусков';
+        return `<div class="card p-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span style="color:${col}">●</span>
+            <span class="text-[13px] font-medium flex-1">${this.esc(a.name)}</span>
+            ${a.active ? '' : '<span class="pill text-[10px]" style="color:var(--text-mute)">пауза</span>'}
+          </div>
+          <div class="text-[11px] grid grid-cols-2 gap-x-2" style="color:var(--text-dim)">
+            <span>24ч: ${a.day.runs} зап. / ${a.day.errors} ош.</span>
+            <span>7д: ${a.week.runs} зап. / ${a.week.errors} ош.</span>
+            <span>токены 7д: ${a.week.tokens}</span>
+            <span>$7д: ${a.week.cost_usd.toFixed(3)}</span>
+            <span>результат 7д: ${a.week.items}</span>
+            <span>последний: ${this.esc(lastTxt)}</span>
+          </div>
+        </div>`;
+      }).join('');
+      const runs = (d.recent || []).map(r => `
+        <div class="card-2 p-2 flex items-center gap-2 text-[12px]">
+          <span style="color:${r.status === 'error' ? 'var(--err)' : 'var(--ok)'}">${r.status === 'error' ? '✕' : '✓'}</span>
+          <span class="pill text-[10px]">${r.agent_code.toUpperCase()}</span>
+          <span style="color:var(--text-dim)">${(r.started_at || '').slice(5, 16).replace('T', ' ')}</span>
+          <span class="flex-1 truncate" style="color:var(--text-mute)">${r.status === 'error' ? this.esc(r.error || '') : (r.total_tokens ? r.total_tokens + ' ткн' : (r.items ? r.items + ' ед.' : ''))}</span>
+        </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Запусков пока нет</div>';
+      return `<div class="card p-4">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div class="label">Агенты A1–A7 · 7 дней: ${t.runs || 0} запусков · ${t.tokens || 0} токенов · $${(t.cost_usd || 0).toFixed(3)}</div>
+        </div>
+        <div class="grid gap-2 mb-3" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${cards}</div>
+        <div class="label mb-1">Последние запуски</div>
+        <div class="flex flex-col gap-1">${runs}</div>
+      </div>`;
+    },
+
     vDashboard() {
       const kpis = this.dashKpis();
       const kpiCards = kpis.map(k => `<div class="card p-3">
@@ -2998,6 +3049,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         const w = Math.round(r.sum / fn.maxSum * 100);
         const col = r.terminal ? 'var(--ok)' : 'var(--accent)';
         return `<div class="flex items-center gap-2 text-[13px]">
+      ${this.vAgentsDashboard()}
           <span class="shrink-0" style="width:108px;color:var(--text-dim)">${r.stage}${r.terminal ? ' <span class="pill text-[10px]" style="color:var(--ok);border-color:var(--ok)">завершено</span>' : ''}</span>
           <div class="flex-1" style="height:22px;border-radius:6px;background:var(--border);overflow:hidden;position:relative">
             <div style="height:100%;width:${Math.max(w, r.cnt ? 6 : 0)}%;background:${col};opacity:.85"></div>

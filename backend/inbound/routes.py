@@ -23,6 +23,7 @@ from backend.common.deps import get_db, get_current_user
 from backend.common.errors import NotFoundError, ValidationError, ConflictError
 from backend.common.llm import llm_chat, llm_configured, LLMError
 from backend.agents.registry import get_agent_prompt
+from backend.agents.runlog import llm_call_logged
 
 inbound_router = APIRouter(prefix="/inbound", tags=["inbound"])
 
@@ -150,7 +151,8 @@ async def classify_inbound(
     )
     try:
         a4 = await get_agent_prompt(db, 'a4', A4_SYSTEM)
-        raw = await asyncio.to_thread(llm_chat, prompt, a4, None, 500)
+        raw = await llm_call_logged(db, 'a4', prompt, a4, max_tokens=500,
+                                    meta={"inbound_id": inbound_id})
     except LLMError as e:
         raise ValidationError(f"LLM сбой: {str(e)[:150]}")
     try:
