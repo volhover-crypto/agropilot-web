@@ -179,6 +179,28 @@
 >   /root/n8n/docker-compose.yml AGROPILOT_SERVICE_REFRESH ->
 >   docker compose up -d --force-recreate n8n). Пароль u7 актуален
 >   (логин проверен).
+> - **17.09 (ночь) — ВСЁ РЕШЕНО, деплой da7c673 на продe/origin:**
+>   1) A6 — ЛОЖНАЯ ТРЕВОГА: digest 16.09 07:30 прошёл успешно
+>   (journalctl: telegram_sent=True, 6 overdue/3 hot), но ДО деплоя
+>   §32-логирования — потому записи a6 в run_logs нет. Таймер жив,
+>   след. срабатывание 07:30 ежедневно.
+>   2) A1-n8n — ПРИЧИНА НАЙДЕНА: все hourly-исполнения падали с
+>   `ExpressionError: access to env vars denied` — новый n8n (latest)
+>   блокирует $env.* в выражениях нод (N8N_BLOCK_ENV_ACCESS_IN_NODE).
+>   Падали scan (fallback на $env.AGROPILOT_SERVICE_TOKEN) и notify
+>   ($env.ADMIN_TG_CHAT_ID). ФИКС: в /root/n8n/docker-compose.yml
+>   добавлены N8N_BLOCK_ENV_ACCESS_IN_NODE=false и
+>   ADMIN_TG_CHAT_ID=1051427322, контейнер force-recreate. Воркфлоу
+>   active=true, расписание hourly не менялось.
+>   3) refresh u7 ПРОДЛЁН до 30.09.2026 (новый из логина u7).
+>   СЛЕДУЮЩЕЕ ПРОДЛЕНИЕ: до 30.09 повторить (login u7 -> refresh ->
+>   compose -> force-recreate).
+>   4) §33 задеплоен (backend перезапущен, миграций нет), live-проверка
+>   ок (alerts/daily/edits отдаются; алерт «a1 молчит» подсветил сбой).
+>   pytest на сервере 15/15.
+>   5) SSH: настроен ключ ~/.ssh/id_ed25519 (zcode-autopilot) в
+>   /root/.ssh/authorized_keys — `ssh root@mdked.hlab.kz` без пароля.
+>   Пароль по-прежнему работает.
 
 ## 1. Что за система (факт из кода)
 Объектно-ориентированный агро-B2B рабочий стол. Стек: Alpine.js (без сборки), Tailwind/Pico, ванильный JS, строковый innerHTML-рендер, hash-роутинг.
