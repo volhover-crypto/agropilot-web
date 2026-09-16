@@ -35,3 +35,5 @@ Thumbs.db
 # upload storage (вне репо)
 /opt/agropilot-data/
 *.bak
+.venv/
+__pycache__/
