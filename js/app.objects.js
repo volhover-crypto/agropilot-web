@@ -4740,7 +4740,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       try {
         const r = await window.AGL.generateArtifact(code.trim(), dealId);
         this.toast(`Артефакт #${r.artifact.id} создан (draft)` + (r.missing.length ? ' · дозаполните: ' + r.missing.join(', ') : ''), 'ok');
+        await this.loadFromAPI();
+        this.artFolder = null;   // сгенерированные лежат в корне
         this.go('artifacts');
+        this.render();
       } catch (e) { this.toast(e.message || 'Не удалось сгенерировать', 'err'); }
     },
 
