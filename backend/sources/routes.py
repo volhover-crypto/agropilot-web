@@ -246,17 +246,23 @@ async def update_source(
 
 
 @sources_router.delete("/{source_id}")
-async def disable_source(
+async def delete_source(
     source_id: int,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    """§36: полное удаление источника КАСКАДОМ с его новостями (решение
+    владельца 17.09). Посты контента, созданные из новостей, остаются."""
+    from sqlalchemy import delete as _delete
+    from backend.news.models import NewsItem
+
     src = await db.get(Source, source_id)
     if not src:
         raise NotFoundError(f"source {source_id} not found")
     if not await _is_manager(db, user):
-        raise ForbiddenError("only manager/admin can disable sources")
-    src.status = "disabled"
+        raise ForbiddenError("only manager/admin can delete sources")
+    news_gone = (await db.execute(
+        _delete(NewsItem).where(NewsItem.source_id == source_id))).rowcount
+    await db.delete(src)
     await db.commit()
-    await db.refresh(src)
-    return _ok(src.to_dict())
+    return _ok({"deleted": source_id, "news_removed": int(news_gone or 0)})

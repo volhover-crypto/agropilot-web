@@ -269,6 +269,16 @@ const AGL = {
   async patchContent(id, data) {
     return apiFetch('/v1/content/' + id, { method: 'PATCH', data });
   },
+  // §35: TG-согласование постов + каналы
+  async loadChannels() {
+    return safeLoad('/v1/channels', []);
+  },
+  async createChannel(data) {
+    return apiFetch('/v1/channels', { method: 'POST', data });
+  },
+  async submitReview(id, data) {
+    return apiFetch('/v1/content/' + id + '/submit_review', { method: 'POST', data });
+  },
   async publishContent(id) {
     return apiFetch('/v1/content/' + id + '/publish', { method: 'POST', data: {} });
   },
@@ -361,6 +371,9 @@ const AGL = {
   },
   async rejectSource(id) {
     return apiFetch('/v1/sources/' + id + '/reject', { method: 'POST' });
+  },
+  async deleteSource(id) {
+    return apiFetch('/v1/sources/' + id, { method: 'DELETE' });
   },
 
   // ─── Reports (safeLoad) ───

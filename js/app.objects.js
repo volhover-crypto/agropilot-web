@@ -237,7 +237,7 @@ source: 'ai',
               kind: 'пост · ' + (c.platform || ''), icon: '📝',
               hashtags: '', channel: c.channel_ids && c.channel_ids.length ? String(c.channel_ids[0]) : '',
               slot: (c.scheduled_at || '').slice(0, 16).replace('T', ' '),
-              media: '', api: true,
+              media: '', api: true, approval: c.approval || null,
             }));
           }
 
@@ -2233,6 +2233,53 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.render();
     },
 
+    // §35: модалка отправки поста на TG-согласование (канал + срочность)
+    async submitReviewModal(id) {
+      const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
+      let channels = [];
+      try { channels = (await window.AGL.loadChannels()) || []; } catch (e) { channels = []; }
+      const chOpts = channels.map(c =>
+        `<option value="${c.id}">${this.esc(c.name)}${(c.connection && c.connection.chat_id) ? '' : ' (без chat_id!)'}</option>`).join('');
+      const chBlock = channels.length
+        ? `<label class="label">Канал публикации (кнопка «Опубликовать»)</label><select id="m_ch" class="input w-full mb-2"><option value="">— без канала (кнопка не опубликует) —</option>${chOpts}</select>`
+        : `<div class="card-2 p-2 mb-2 text-[12px]" style="color:var(--warn)">Каналов нет — задайте новый:</div>
+           <label class="label">Название канала</label><input id="m_chname" class="input w-full mb-2" placeholder="Наш агроканал" />
+           <label class="label">chat_id канала в Telegram</label><input id="m_chchat" class="input w-full mb-2" placeholder="напр. -1001234567890" />`;
+      this.openModal('📤 На согласование в Telegram', `
+        ${chBlock}
+        <label class="label">Срочность (SLA)</label>
+        <select id="m_urg" class="input w-full mb-2">
+          <option value="">Авто (новость ≥70% релевантности → 15 мин, иначе 2 ч)</option>
+          <option value="1">Срочно — 15 минут</option>
+          <option value="0">Плановое — 2 часа</option>
+        </select>
+        <div class="text-[12px]" style="color:var(--text-mute)">Руководителю в Telegram придёт пост с кнопками «Опубликовать / Правка / Отложить».</div>
+      `, async () => {
+        const v = (id2) => document.getElementById(id2);
+        try {
+          let channelId = null;
+          if (v('m_ch')) channelId = v('m_ch').value ? parseInt(v('m_ch').value, 10) : null;
+          else if (v('m_chname') && v('m_chchat')) {
+            const ch = await window.AGL.createChannel({
+              name: v('m_chname').value.trim(),
+              type: 'telegram',
+              connection: { chat_id: v('m_chchat').value.trim() },
+            });
+            channelId = (ch && ch.data && ch.data.id) || (ch && ch.id) || null;
+          }
+          const urg = v('m_urg').value;
+          const r = await window.AGL.submitReview(id, {
+            channel_id: channelId,
+            urgent: urg === '' ? null : urg === '1',
+          });
+          if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка', 'err'); return false; }
+          await this.loadFromAPI();
+          this.toast('📤 Пост отправлен на согласование в Telegram', 'ok');
+          return true;
+        } catch (e) { this.toast(e.message || 'Ошибка отправки', 'err'); return false; }
+      });
+    },
+
     async postAct(id, act) {
       const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
       if (!p.api) {  // mock-режим
@@ -2326,7 +2373,16 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         editor = `<div class="text-[13px] p-6 text-center" style="color:var(--text-mute)">Выберите черновик слева</div>`;
       } else {
         const canAct = sel.status !== 'одобрен';
+        // §35: бейдж TG-согласования
+        const ap = sel.approval;
+        const apprBadge = ap ? (
+            ap.status === 'pending' ? `<span class="pill text-[11px]" style="color:var(--warn);border-color:var(--warn)">⏳ TG-согласование${ap.urgent ? ' · срочно' : ''} до ${this.esc(ap.deadline_msk || '')} МСК</span>`
+          : ap.status === 'expired' ? `<span class="pill text-[11px]" style="color:var(--err);border-color:var(--err)">⏰ SLA истёк — решите вручную</span>`
+          : ap.status === 'approved' ? `<span class="pill text-[11px]" style="color:var(--ok);border-color:var(--ok)">✅ одобрено в TG</span>`
+          : ap.status === 'edited' ? `<span class="pill text-[11px]" style="color:var(--text-dim)">✏️ правка по кнопке TG</span>`
+          : ap.status === 'deferred' ? `<span class="pill text-[11px]" style="color:var(--text-dim)">⏰ отложено по кнопке TG</span>` : '') : '';
         const apiBtns = sel.api ? `<div class="flex gap-2 flex-wrap">
+          ${['draft','in_review'].includes(sel.apiStatus) ? `<button class="btn btn-accent text-[13px]" data-post-submit="${sel.id}">📤 На согласование (TG)</button>` : ''}
           ${sel.apiStatus === 'draft' ? `<button class="btn text-[13px]" data-post-act="review" data-post-id="${sel.id}">→ На проверку</button>` : ''}
           ${['approved','scheduled'].includes(sel.apiStatus) ? `<button class="btn btn-accent text-[13px]" data-post-publish="${sel.id}">🚀 Опубликовать в Telegram</button>` : ''}
           ${sel.apiStatus !== 'published' ? `<button class="btn text-[13px]" data-post-adapt="${sel.id}">✨ Адаптировать (LLM)</button>` : ''}
@@ -2334,7 +2390,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <button class="btn text-[13px]" data-post-act="rework" data-post-id="${sel.id}">↺ Вернуть на правку</button>` : ''}
           ${['draft','in_review','approved'].includes(sel.apiStatus) ? `<button class="btn text-[13px]" data-post-act="reject" data-post-id="${sel.id}" style="color:var(--err)">✕ Отклонить</button>` : ''}
           <span class="pill text-[11px]" style="color:var(--text-mute)">версии правок — в content_versions</span>
-        </div>` : '';
+        </div>${apprBadge ? `<div class="mt-2">${apprBadge}</div>` : ''}` : '';
         editor = `
           <div class="flex items-center gap-2 mb-3"><span class="text-lg">${sel.icon}</span><div class="text-sm font-semibold flex-1">${this.esc(sel.title)}</div><span class="pill text-[11px]" style="color:${this.postStatusColor(sel.status)};border-color:${this.postStatusColor(sel.status)}">${sel.status}</span></div>
           <div class="label mb-1">Текст поста</div>
@@ -4611,25 +4667,50 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       const st = this.newsState;
       if (!st.loaded) { this.newsLoad(); }
       const SU = this.NEWS_STATUS_UI;
+      const srcById = (id) => (this.M.sources || []).find(s => s.id === id);
       const rows = st.items.map(n => {
         const ui = SU[n.status] || { label: n.status, col: 'var(--text-mute)' };
+        const src = srcById(n.source_id);
+        const srcName = src ? (src.handle || src.url || ('#' + src.id)) : ('источник ' + (n.source_id || '—'));
         const rel = (n.relevance === null || n.relevance === undefined)
           ? '' : `релевантность ${Math.round(n.relevance * 100)}%`;
-        const reason = n.relevance_reason ? this.esc(n.relevance_reason) : '';
-        return `<div class="card-2 p-3 flex items-start gap-3">
-          <span class="shrink-0" style="color:${ui.col}">●</span>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm">${n.url ? `<a href="${this.esc(n.url)}" target="_blank" rel="noopener" class="underline">${this.esc(n.title)}</a>` : this.esc(n.title)}</div>
-            <div class="text-[12px]" style="color:var(--text-dim)">${(n.fetched_at || '').slice(0, 16).replace('T', ' ')}${rel ? ' · ' + rel : ''}${reason ? ' · ' + reason : ''}</div>
+        // §36: анонс + всплывающий фрейм с кратким содержанием (hover)
+        const summary = (n.summary || '').trim();
+        const anons = summary ? (summary.slice(0, 140) + (summary.length > 140 ? '…' : '')) : '— без аннотации —';
+        const previewText = (summary || n.title || '').slice(0, 400);
+        return `<div class="card-2 p-3" style="position:relative">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span style="color:${ui.col}">●</span>
+            <span class="pill text-[11px]" title="источник">${this.esc(srcName)}</span>
+            <span class="flex-1"></span>
+            ${rel ? `<span class="text-[11px]" style="color:var(--text-dim)">${rel}</span>` : ''}
+            <span class="pill whitespace-nowrap text-[11px]" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span>
           </div>
-          <span class="pill whitespace-nowrap shrink-0" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span>
-          ${n.status === 'new' ? `
-          <button class="btn text-[11px] whitespace-nowrap shrink-0" data-news-status="selected" data-news-id="${n.id}">В работу</button>
-          <button class="btn text-[11px] whitespace-nowrap shrink-0" data-news-status="rejected" data-news-id="${n.id}">Отклонить</button>` : ''}
-          ${n.status === 'selected' ? `
-          <button class="btn btn-accent text-[11px] whitespace-nowrap shrink-0" data-news-topost="${n.id}">В пост</button>` : ''}
+          <div class="text-sm font-medium mt-1 leading-snug">${n.url ? `<a href="${this.esc(n.url)}" target="_blank" rel="noopener" class="underline">${this.esc(n.title)}</a>` : this.esc(n.title)}</div>
+          <div class="text-[12px] mt-0.5" style="color:var(--text-dim)">${(n.fetched_at || '').slice(0, 16).replace('T', ' ')}</div>
+          <div class="news-anons text-[12px] mt-1 cursor-help" style="color:var(--text-mute)" data-news-prev="${n.id}">📄 ${this.esc(anons)}<span class="text-[10px]" style="color:var(--text-dim)"> (наведите — краткое содержание)</span></div>
+          <div class="news-preview" id="nprev-${n.id}" style="display:none;position:absolute;z-index:30;max-width:420px;left:12px;right:12px;bottom:44px">
+            <div class="card p-3 text-[12px]" style="background:var(--bg,#fff);box-shadow:0 8px 24px rgba(0,0,0,.18)">${this.esc(previewText)}</div>
+          </div>
+          <div class="flex items-center gap-2 mt-2 pt-2 flex-wrap" style="border-top:1px solid var(--border)">
+            ${n.status === 'new' ? `
+            <button class="btn text-[11px]" data-news-status="selected" data-news-id="${n.id}">В работу</button>
+            <button class="btn text-[11px]" data-news-status="rejected" data-news-id="${n.id}">Отклонить</button>` : ''}
+            ${n.status === 'selected' ? `
+            <button class="btn btn-accent text-[11px]" data-news-topost="${n.id}">В пост</button>` : ''}
+            ${n.status !== 'new' && n.status !== 'selected' ? `<span class="text-[11px]" style="color:var(--text-mute)">операции недоступны (статус: ${this.esc(ui.label)})</span>` : ''}
+          </div>
         </div>`;
       }).join('') || this.empty();
+      // §36: тулбар управления источниками — выше фильтров
+      const srcOpts = (this.M.sources || []).map(s =>
+        `<option value="${s.id}">${this.esc(s.handle || s.url || ('#' + s.id))} (${this.esc(s.type)})${s.status === 'active' ? '' : ' — ' + this.esc(s.status)}</option>`).join('');
+      const srcToolbar = `<div class="flex items-center gap-2 flex-wrap pb-2 mb-2" style="border-bottom:1px solid var(--border)">
+        <span class="label">Управление источниками</span>
+        <button class="btn text-[12px]" data-src-add>+ Источник</button>
+        <select id="newsSrcSelect" class="inp text-[12px]" style="width:auto;min-width:200px">${srcOpts || '<option value="">нет источников</option>'}</select>
+        <button class="btn text-[12px]" data-src-del style="color:var(--err)">✕ Удалить источник (с новостями)</button>
+      </div>`;
       const tab = (val, label) =>
         `<button class="btn text-[12px] ${st.status === val ? 'btn-accent' : ''}" data-news-filter="${val}">${label}</button>`;
       const from = st.total ? st.offset + 1 : 0;
@@ -4643,6 +4724,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
               <button class="btn btn-accent text-[12px]" data-news-scan ${st.scanning ? 'disabled' : ''}>${st.scanning ? 'Сканирую…' : 'Сканировать сейчас'}</button>
             </div>
           </div>
+          ${srcToolbar}
           <div class="flex flex-col gap-2 mt-2">${rows}</div>
           <div class="flex items-center gap-2 mt-2 text-[12px]">
             <span>${from}-${to} из ${st.total}</span>
@@ -4650,7 +4732,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <button class="btn text-[12px]" data-news-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
           </div>
         </div>
-        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Материалы собирает агент A1 из подключённых источников (телеграм-каналы, RSS, сайты) раз в час и оценивает релевантность по ключевым словам источника. «В работу» — материал попадает в очередь конвейера контента (A2).</div>
+        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Материалы собирает агент A1 из подключённых источников (телеграм-каналы, RSS, сайты) раз в час и оценивает релевантность по ключевым словам источника. «В работу» — материал попадает в очередь конвейера контента (A2). Удаление источника удаляет и все его материалы (решение владельца).</div>
       </div>`;
     },
 
@@ -5066,6 +5148,32 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       // 6.6: контент и соцсети (SSM)
       el.querySelectorAll('[data-post-sel]').forEach(n => n.onclick = () => this.postSelect(n.getAttribute('data-post-sel')));
       el.querySelectorAll('[data-post-act]').forEach(n => n.onclick = () => this.postAct(n.getAttribute('data-post-id'), n.getAttribute('data-post-act')));
+      // §36: hover-превью краткого содержания новости + удаление источника
+      el.querySelectorAll('[data-news-prev]').forEach(n => {
+        const box = el.querySelector('#nprev-' + n.getAttribute('data-news-prev'));
+        if (!box) return;
+        n.onmouseenter = () => { box.style.display = 'block'; };
+        n.onmouseleave = () => { box.style.display = 'none'; };
+      });
+      const srcDel = el.querySelector('[data-src-del]');
+      if (srcDel) srcDel.onclick = async () => {
+        const sel = el.querySelector('#newsSrcSelect');
+        const id = sel && sel.value ? parseInt(sel.value, 10) : null;
+        if (!id) { this.toast('Источник не выбран', 'err'); return; }
+        if (!window.confirm('Удалить источник вместе со ВСЕМИ его новостями? Действие необратимо.')) return;
+        try {
+          const r = await window.AGL.deleteSource(id);
+          if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка', 'err'); return; }
+          this.M.sources = await window.AGL.loadSources();
+          this.newsState.offset = 0;
+          await this.newsLoad();
+          this.toast('Источник и его новости удалены', 'ok');
+        } catch (e) { this.toast(e.message || 'Ошибка удаления', 'err'); }
+      };
+      // §35: отправка на TG-согласование
+      el.querySelectorAll('[data-post-submit]').forEach(n => {
+        n.onclick = () => this.submitReviewModal(parseInt(n.getAttribute('data-post-submit'), 10));
+      });
       el.querySelectorAll('[data-post-field]').forEach(n => {
         n.oninput = (e) => this.postField(n.getAttribute('data-post-id'), n.getAttribute('data-post-field'), e.target.value);
       });
