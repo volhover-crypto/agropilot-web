@@ -333,6 +333,11 @@ class AdaptBody(BaseModel):
     prompt: Optional[str] = None   # указания канала; иначе общий промт A3
 
 
+class RegenSegmentBody(BaseModel):
+    segment_code: Optional[str] = None
+    rubric_code:  Optional[str] = None
+
+
 @content_router.post("/{content_id}/regen_segment")
 async def regen_segment(
     content_id: int,
@@ -390,11 +395,6 @@ async def regen_segment(
     await db.commit()
     await db.refresh(item)
     return _ok(item.to_dict())
-
-
-class RegenSegmentBody(BaseModel):
-    segment_code: Optional[str] = None
-    rubric_code:  Optional[str] = None
 
 
 @content_router.post("/{content_id}/submit_review")
