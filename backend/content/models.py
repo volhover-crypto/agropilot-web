@@ -33,6 +33,9 @@ class Content(Base):
     tags:         Mapped[list]          = mapped_column(JSONB, nullable=False, default=list)
     channel_ids:  Mapped[list]          = mapped_column(JSONB, nullable=False, default=list)
     updated_at:   Mapped[datetime]      = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    # §37 — сегмент аудитории и рубрика
+    segment_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rubric_code:  Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -51,6 +54,8 @@ class Content(Base):
             "tags":         self.tags or [],
             "channel_ids":  self.channel_ids or [],
             "updated_at":   self.updated_at.isoformat() if self.updated_at else None,
+            "segment_code": self.segment_code,
+            "rubric_code":  self.rubric_code,
         }
 
 

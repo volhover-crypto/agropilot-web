@@ -28,6 +28,7 @@ from backend.catalog.routes import catalog_router
 from backend.news.routes import news_router
 # §34 — MIA weather advisor
 from backend.meteo.routes import meteo_router
+from backend.segments.routes import segments_router
 from backend.inbound.routes import inbound_router
 from backend.myday.routes import myday_router
 from backend.assistant.routes import assistant_router
@@ -95,6 +96,7 @@ app.include_router(catalog_router, prefix="/agropilot/api/v1")
 # §20 — Media monitoring (A1)
 app.include_router(news_router, prefix="/agropilot/api/v1")
 app.include_router(meteo_router, prefix="/agropilot/api/v1")
+app.include_router(segments_router, prefix="/agropilot/api/v1")
 
 # §22 — Входящие обращения (A4)
 app.include_router(inbound_router, prefix="/agropilot/api/v1")

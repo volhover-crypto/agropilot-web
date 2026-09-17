@@ -28,6 +28,7 @@ class Channel(Base):
             "connection": self.connection or {},
             "adapt_prompt": self.adapt_prompt,
             "active": self.active,
+            "segment_code": self.segment_code,
             "stats": self.stats or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

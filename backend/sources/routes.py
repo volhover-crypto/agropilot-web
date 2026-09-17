@@ -99,6 +99,7 @@ class SourceCreate(BaseModel):
     status: Optional[str] = "proposed"
     added_by: Optional[str] = None
     linked_strategy_task: Optional[str] = None
+    segment_code: Optional[str] = None  # §37: сегмент аудитории источника
 
 
 class SourceUpdate(BaseModel):
@@ -108,6 +109,7 @@ class SourceUpdate(BaseModel):
     keywords: Optional[List[str]] = None
     status: Optional[str] = None
     linked_strategy_task: Optional[str] = None
+    segment_code: Optional[str] = None
 
 
 @sources_router.get("")
@@ -165,6 +167,7 @@ async def create_source(
         status=status,
         added_by=payload.added_by,
         linked_strategy_task=payload.linked_strategy_task,
+        segment_code=payload.segment_code or None,  # §37
     )
     if status == "proposed":
         await _route_proposed(db, src)
@@ -235,6 +238,8 @@ async def update_source(
         src.keywords = _validate_keywords(payload.keywords)
     if payload.linked_strategy_task is not None:
         src.linked_strategy_task = payload.linked_strategy_task
+    if payload.segment_code is not None:  # §37: сегмент аудитории источника
+        src.segment_code = payload.segment_code or None
     if payload.status is not None:
         _validate_status(payload.status)
         src.status = payload.status

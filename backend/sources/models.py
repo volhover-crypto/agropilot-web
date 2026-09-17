@@ -6,7 +6,7 @@
 from typing import Optional, List
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, Integer, func
+from sqlalchemy import String, Boolean, Integer, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 
@@ -28,6 +28,7 @@ class Source(Base):
     receiver_user_id:     Mapped[Optional[str]]  = mapped_column(String(16), nullable=True)
     routing_reason:       Mapped[Optional[str]]  = mapped_column(String(16), nullable=True)
     created_at:           Mapped[datetime]       = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    segment_code:         Mapped[Optional[str]]  = mapped_column(Text, nullable=True)  # §37
 
     def to_dict(self) -> dict:
         return {
@@ -36,6 +37,7 @@ class Source(Base):
             "url":                  self.url,
             "handle":               self.handle,
             "keywords":             self.keywords or [],
+            "segment_code":         self.segment_code,
             "active":               self.active,
             "status":               self.status,
             "linked_strategy_task": self.linked_strategy_task,

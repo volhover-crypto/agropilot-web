@@ -70,6 +70,8 @@ class ContentCreate(BaseModel):
 class FromNewsBody(BaseModel):
     news_id: int
     platform: str = "telegram"
+    segment_code: Optional[str] = None  # §37: None -> сегмент новости/источника
+    rubric_code:  Optional[str] = None
 
 
 class SubmitReviewBody(BaseModel):
@@ -93,6 +95,8 @@ class ContentPatch(BaseModel):
     tags:         Optional[list]     = None
     channel_ids:  Optional[list]     = None
     comment:      Optional[str]      = None
+    segment_code: Optional[str]      = None  # §37
+    rubric_code:  Optional[str]      = None
 
 
 @content_router.get("")
@@ -175,7 +179,29 @@ async def create_from_news(
     if not news:
         raise NotFoundError(f"news_item {payload.news_id} не найден")
     now = datetime.now(timezone.utc)
-    # A2: LLM-генерация черновика из материала; при сбое/отсутствии ключа — копия
+    # A2: LLM-генерация черновика из материала; при сбое/отсутствии ключа — копия.
+    # §37: сегмент аудитории (payload -> новость -> источник) задаёт язык/CTA
+    # через промт-аддон; рубрика — угол поста.
+    from backend.segments.models import AudienceSegment, Rubric
+    from backend.sources.models import Source
+
+    segment_code = payload.segment_code or news.segment_code
+    if not segment_code:
+        src = await db.get(Source, news.source_id) if news.source_id else None
+        segment_code = (src.segment_code if src else None) or None
+    seg_addon, rubric_text = "", ""
+    if segment_code:
+        seg = (await db.execute(select(AudienceSegment).where(
+            AudienceSegment.code == segment_code))).scalars().first()
+        if seg and seg.active and seg.prompt_addon:
+            seg_addon = f"\n\nСЕГМЕНТ АУДИТОРИИ ({seg.name}):\n{seg.prompt_addon}"
+    rubric_code = payload.rubric_code
+    if rubric_code:
+        rub = (await db.execute(select(Rubric).where(
+            Rubric.code == rubric_code))).scalars().first()
+        if rub and rub.active:
+            rubric_text = f"\n\nРУБРИКА: «{rub.title}» — {rub.description or ''}"
+
     title = (news.title or "Черновик поста")[:300]
     body = news.summary or news.title or ""
     gen_note = "копия материала (LLM недоступна)"
@@ -185,10 +211,13 @@ async def create_from_news(
                 f"Напиши пост для Telegram на основе материала мониторинга.\n\n"
                 f"Материал: {news.title}\n{news.summary or ''}\n\n"
                 f"Ссылка на первоисточник: {news.url or 'нет'}"
+                f"{seg_addon}{rubric_text}"
             )
             a2 = await get_agent_prompt(db, 'a2', A2_SYSTEM)
             body = await llm_call_logged(db, 'a2', prompt, a2, max_tokens=1000,
-                                         meta={"news_id": news.id})
+                                         meta={"news_id": news.id,
+                                               "segment": segment_code,
+                                               "rubric": rubric_code})
             title = (body.splitlines()[0][:200] if body else title)
             gen_note = f"сгенерировано LLM из news_item {news.id}"
         except LLMError as e:
@@ -204,6 +233,8 @@ async def create_from_news(
         tags         = [],
         channel_ids  = [],
         updated_at   = now,
+        segment_code = segment_code,
+        rubric_code  = rubric_code,
     )
     db.add(item)
     await db.flush()
@@ -300,6 +331,70 @@ async def publish_content(
 
 class AdaptBody(BaseModel):
     prompt: Optional[str] = None   # указания канала; иначе общий промт A3
+
+
+@content_router.post("/{content_id}/regen_segment")
+async def regen_segment(
+    content_id: int,
+    payload:    RegenSegmentBody,
+    db:         AsyncSession = Depends(get_db),
+    user                     = Depends(get_current_user),
+):
+    """§37: переписать существующий пост под сегмент аудитории/рубрику.
+    Старый текст сохраняется версией; сегмент/рубрика фиксируются в посте."""
+    from backend.segments.models import AudienceSegment, Rubric
+
+    if not llm_configured():
+        raise ValidationError("LLM-шлюз не настроен (OPENROUTER_API_KEY)")
+    item = await db.get(Content, content_id)
+    if not item:
+        raise NotFoundError("Content not found")
+    if item.status == "published":
+        raise ValidationError("переписывать опубликованный пост нельзя")
+    seg_addon, rubric_text = "", ""
+    if payload.segment_code:
+        seg = (await db.execute(select(AudienceSegment).where(
+            AudienceSegment.code == payload.segment_code))).scalars().first()
+        if seg and seg.active and seg.prompt_addon:
+            seg_addon = f"\n\nСЕГМЕНТ АУДИТОРИИ ({seg.name}):\n{seg.prompt_addon}"
+    if payload.rubric_code:
+        rub = (await db.execute(select(Rubric).where(
+            Rubric.code == payload.rubric_code))).scalars().first()
+        if rub and rub.active:
+            rubric_text = f"\n\nРУБРИКА: «{rub.title}» — {rub.description or ''}"
+    if not seg_addon and not rubric_text:
+        raise ValidationError("укажите сегмент или рубрику (активные, с текстами)")
+    now = datetime.now(timezone.utc)
+    db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
+                          author_id=user.id, comment="версия до перегенерации под сегмент",
+                          created_at=now))
+    prompt = (f"Перепиши пост для Telegram под целевую аудиторию, сохранив суть.\n\n"
+              f"Заголовок: {item.title}\nТекст: {item.body}{seg_addon}{rubric_text}")
+    try:
+        a2 = await get_agent_prompt(db, 'a2', A2_SYSTEM)
+        new_body = await llm_call_logged(db, 'a2', prompt, a2, max_tokens=1000,
+                                         meta={"content_id": item.id,
+                                               "regen_segment": payload.segment_code,
+                                               "rubric": payload.rubric_code})
+    except LLMError as e:
+        raise ValidationError(f"LLM сбой: {str(e)[:150]}")
+    if not new_body:
+        raise ValidationError("LLM вернула пустой текст")
+    item.body = new_body
+    item.segment_code = payload.segment_code or item.segment_code
+    item.rubric_code = payload.rubric_code or item.rubric_code
+    item.updated_at = datetime.now(timezone.utc)
+    db.add(ContentVersion(content_id=item.id, title=item.title, body=item.body,
+                          author_id=user.id, comment="перегенерация под сегмент/рубрику",
+                          created_at=item.updated_at))
+    await db.commit()
+    await db.refresh(item)
+    return _ok(item.to_dict())
+
+
+class RegenSegmentBody(BaseModel):
+    segment_code: Optional[str] = None
+    rubric_code:  Optional[str] = None
 
 
 @content_router.post("/{content_id}/submit_review")
@@ -463,7 +558,8 @@ async def patch_content(
 
     old_title, old_body = item.title, item.body
     for field in ("title", "body", "platform", "status", "author_id",
-                  "published_at", "scheduled_at", "tags", "channel_ids"):
+                  "published_at", "scheduled_at", "tags", "channel_ids",
+                  "segment_code", "rubric_code"):
         if field in data:
             setattr(item, field, data[field])
     item.updated_at = datetime.now(timezone.utc)

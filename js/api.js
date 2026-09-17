@@ -276,6 +276,15 @@ const AGL = {
   async createChannel(data) {
     return apiFetch('/v1/channels', { method: 'POST', data });
   },
+  // §37: сегменты аудитории и рубрики
+  async loadSegments() { return safeLoad('/v1/segments', []); },
+  async createSegment(data) { return apiFetch('/v1/segments', { method: 'POST', data }); },
+  async patchSegment(id, data) { return apiFetch('/v1/segments/' + id, { method: 'PATCH', data }); },
+  async deleteSegment(id) { return apiFetch('/v1/segments/' + id, { method: 'DELETE' }); },
+  async loadRubrics() { return safeLoad('/v1/segments/rubrics', []); },
+  async createRubric(data) { return apiFetch('/v1/segments/rubrics', { method: 'POST', data }); },
+  async deleteRubric(id) { return apiFetch('/v1/segments/rubrics/' + id, { method: 'DELETE' }); },
+  async regenSegment(id, data) { return apiFetch('/v1/content/' + id + '/regen_segment', { method: 'POST', data }); },
   async submitReview(id, data) {
     return apiFetch('/v1/content/' + id + '/submit_review', { method: 'POST', data });
   },

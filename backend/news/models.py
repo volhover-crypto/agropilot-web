@@ -30,6 +30,7 @@ class NewsItem(Base):
     relevance:        Mapped[Optional[Decimal]]   = mapped_column(Numeric(4, 2), nullable=True)
     relevance_reason: Mapped[Optional[str]]       = mapped_column(Text, nullable=True)
     agent_run_id:     Mapped[Optional[str]]       = mapped_column(String(64), nullable=True)
+    segment_code:     Mapped[Optional[str]]       = mapped_column(Text, nullable=True)  # §37
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +46,7 @@ class NewsItem(Base):
             "relevance": float(self.relevance) if self.relevance is not None else None,
             "relevance_reason": self.relevance_reason,
             "agent_run_id": self.agent_run_id,
+            "segment_code": self.segment_code,
         }
 
 

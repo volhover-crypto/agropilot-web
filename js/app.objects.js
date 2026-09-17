@@ -238,6 +238,7 @@ source: 'ai',
               hashtags: '', channel: c.channel_ids && c.channel_ids.length ? String(c.channel_ids[0]) : '',
               slot: (c.scheduled_at || '').slice(0, 16).replace('T', ' '),
               media: '', api: true, approval: c.approval || null,
+              segmentCode: c.segment_code || '', rubricCode: c.rubric_code || '',
             }));
           }
 
@@ -2233,6 +2234,81 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.render();
     },
 
+    // ======== §37: сегменты аудитории и рубрики ========
+    segState: { segments: [], rubrics: [], loaded: false },
+    async segLoad() {
+      const st = this.segState;
+      try {
+        st.segments = (await window.AGL.loadSegments()) || [];
+        st.rubrics = (await window.AGL.loadRubrics()) || [];
+      } catch (e) { st.segments = []; st.rubrics = []; }
+      st.loaded = true; this.render();
+    },
+    async segSave(id, field, val) {
+      try {
+        await window.AGL.patchSegment(id, { [field]: val });
+        this.toast('Сегмент обновлён', 'ok');
+      } catch (e) { this.toast((e && e.message) || 'Ошибка', 'err'); }
+    },
+    async segAdd() {
+      this.openModal('Новый сегмент аудитории', `
+        <label class="label">Код (латиница)</label><input id="m_code" class="input w-full mb-2" placeholder="vine" />
+        <label class="label">Название</label><input id="m_name" class="input w-full mb-2" placeholder="Виноградники" />
+        <label class="label">Кто аудитория</label><input id="m_desc" class="input w-full mb-2" placeholder="Крым, агрономы виноградников" />
+        <label class="label">Инструкция для A2 (язык/CTA)</label><textarea id="m_addon" class="input w-full" rows="4" placeholder="Стиль, акценты, призывы к действию…"></textarea>
+      `, async () => {
+        const v = (i) => document.getElementById(i).value.trim();
+        if (!v('m_code') || !v('m_name')) { this.toast('Код и название обязательны', 'err'); return false; }
+        try {
+          const r = await window.AGL.createSegment({ code: v('m_code'), name: v('m_name'), description: v('m_desc'), prompt_addon: v('m_addon') });
+          if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка', 'err'); return false; }
+          await this.segLoad(); this.toast('Сегмент добавлен', 'ok'); return true;
+        } catch (e) { this.toast(e.message || 'Ошибка', 'err'); return false; }
+      });
+    },
+    async segDel(id) {
+      if (!window.confirm('Удалить сегмент? Источники/каналы/посты с ним останутся без сегмента.')) return;
+      try {
+        const r = await window.AGL.deleteSegment(id);
+        if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка', 'err'); return; }
+        await this.segLoad(); this.toast('Сегмент удалён (связи отвязаны)', 'ok');
+      } catch (e) { this.toast(e.message || 'Ошибка', 'err'); }
+    },
+    async rubAdd() {
+      this.openModal('Новая рубрика', `
+        <label class="label">Код (латиница)</label><input id="m_code" class="input w-full mb-2" placeholder="case_week" />
+        <label class="label">Название</label><input id="m_title" class="input w-full mb-2" placeholder="Кейс недели" />
+        <label class="label">Угол/тема</label><input id="m_desc" class="input w-full" placeholder="Практический кейс" />
+      `, async () => {
+        const v = (i) => document.getElementById(i).value.trim();
+        if (!v('m_code') || !v('m_title')) { this.toast('Код и название обязательны', 'err'); return false; }
+        try {
+          const r = await window.AGL.createRubric({ code: v('m_code'), title: v('m_title'), description: v('m_desc') });
+          if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка', 'err'); return false; }
+          await this.segLoad(); this.toast('Рубрика добавлена', 'ok'); return true;
+        } catch (e) { this.toast(e.message || 'Ошибка', 'err'); return false; }
+      });
+    },
+    async rubDel(id) {
+      if (!window.confirm('Удалить рубрику? Посты с ней останутся без рубрики.')) return;
+      try { await window.AGL.deleteRubric(id); await this.segLoad(); this.toast('Рубрика удалена', 'ok'); }
+      catch (e) { this.toast(e.message || 'Ошибка', 'err'); }
+    },
+    async postRegen(id) {
+      const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
+      const sel = document.querySelector(`[data-post-seg="${id}"]`);
+      const rub = document.querySelector(`[data-post-rub="${id}"]`);
+      const segment = sel ? sel.value : '';
+      const rubric = rub ? rub.value : '';
+      if (!segment && !rubric) { this.toast('Выберите сегмент или рубрику', 'err'); return; }
+      try {
+        const r = await window.AGL.regenSegment(id, { segment_code: segment || null, rubric_code: rubric || null });
+        if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка', 'err'); return; }
+        await this.loadFromAPI();
+        this.toast('✍ Пост переписан под сегмент (старый текст — в версиях)', 'ok');
+      } catch (e) { this.toast(e.message || 'Ошибка LLM', 'err'); }
+    },
+
     // §35: модалка отправки поста на TG-согласование (канал + срочность)
     async submitReviewModal(id) {
       const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
@@ -2395,6 +2471,19 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="flex items-center gap-2 mb-3"><span class="text-lg">${sel.icon}</span><div class="text-sm font-semibold flex-1">${this.esc(sel.title)}</div><span class="pill text-[11px]" style="color:${this.postStatusColor(sel.status)};border-color:${this.postStatusColor(sel.status)}">${sel.status}</span></div>
           <div class="label mb-1">Текст поста</div>
           <textarea class="input w-full mb-3" rows="4" data-post-field="body" data-post-id="${sel.id}">${this.esc(sel.body)}</textarea>
+          <div class="grid grid-cols-2 gap-2 mb-2">
+            <div><div class="label mb-1">Сегмент аудитории</div>
+              <select class="input w-full" data-post-seg="${sel.id}">
+                <option value="">— общий стиль —</option>
+                ${(this.segState.segments || []).filter(g => g.active).map(g => `<option value="${this.esc(g.code)}" ${sel.segmentCode === g.code ? 'selected' : ''}>${this.esc(g.name)}</option>`).join('')}
+              </select></div>
+            <div><div class="label mb-1">Рубрика</div>
+              <select class="input w-full" data-post-rub="${sel.id}">
+                <option value="">— без рубрики —</option>
+                ${(this.segState.rubrics || []).filter(r => r.active).map(r => `<option value="${this.esc(r.code)}" ${sel.rubricCode === r.code ? 'selected' : ''}>${this.esc(r.title)}</option>`).join('')}
+              </select></div>
+          </div>
+          ${sel.api && sel.apiStatus !== 'published' ? `<button class="btn text-[13px] mb-3" data-post-regen="${sel.id}">✍ Переписать под сегмент/рубрику (A2)</button>` : ''}
           <div class="label mb-1">Хэштеги</div>
           <input class="input w-full mb-3" data-post-field="hashtags" data-post-id="${sel.id}" value="${this.esc(sel.hashtags)}" />
           <div class="grid grid-cols-2 gap-2 mb-3">
@@ -2411,6 +2500,37 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       }
       const tabBtn = (t, label) => `<button class="btn text-[12px] ${this.contentTab === t ? 'btn-accent' : ''}" data-ctab="${t}">${label}</button>`;
       const calHtml = this.vContentCalendar(posts);
+      // §37: справочник сегментов и рубрик (управляет контент-мейкер)
+      if (!this.segState.loaded) { this.segLoad(); }
+      const sg = this.segState;
+      const segCards = (sg.segments || []).map(x => `<div class="card-2 p-3">
+          <div class="flex items-center gap-2">
+            <span class="pill text-[11px]">${this.esc(x.code)}</span>
+            <span class="text-[13px] font-medium flex-1">${this.esc(x.name)}</span>
+            <button class="btn text-[11px]" data-seg-toggle="${x.id}">${x.active ? '⏸' : '▶'}</button>
+            <button class="btn text-[11px]" data-seg-del="${x.id}" style="color:var(--err)">✕</button>
+          </div>
+          <div class="text-[12px] mt-1" style="color:var(--text-dim)">${this.esc(x.description || '')}</div>
+          <div class="text-[11px] mt-1" style="color:var(--text-mute)">A2: ${this.esc((x.prompt_addon || '').slice(0, 160))}${(x.prompt_addon || '').length > 160 ? '…' : ''}</div>
+        </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Сегментов нет</div>';
+      const rubRows = (sg.rubrics || []).map(r => `<div class="card-2 p-2 flex items-center gap-2">
+          <span class="pill text-[10px]">${this.esc(r.code)}</span>
+          <span class="text-[12px] flex-1">${this.esc(r.title)}${r.description ? ' — <span style=\'color:var(--text-mute)\'>' + this.esc(r.description) + '</span>' : ''}</span>
+          <button class="btn text-[11px]" data-rub-del="${r.id}" style="color:var(--err)">✕</button>
+        </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Рубрик нет</div>';
+      const segBlock = `<div class="card p-4">
+        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div class="label">🎯 Сегменты аудитории · A2 пишет языком сегмента</div>
+          <button class="btn btn-accent text-[12px]" data-seg-add>+ Сегмент</button>
+        </div>
+        <div class="grid gap-2 mb-3" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${segCards}</div>
+        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div class="label">🏷 Рубрикатор · угол поста</div>
+          <button class="btn text-[12px]" data-rub-add>+ Рубрика</button>
+        </div>
+        <div class="flex flex-col gap-1">${rubRows}</div>
+        <div class="text-[11px] mt-2" style="color:var(--text-mute)">Сегмент подставляется автоматически: пост ← новость ← источник (можно задать источнику в «+ Источник»), либо выбирается вручную у поста; «Переписать под сегмент» перегенерирует текст A2 (старый — в версиях).</div>
+      </div>`;
       return `<div class="flex flex-col gap-3">
         <div class="card p-3 flex items-center justify-between gap-2 flex-wrap text-[13px]" style="color:var(--text-dim)">
           <span>✍️ Конвейер: черновики A2 → правка редактора → публикация A3. Красный бейдж «согласование» — требует решения.</span>
@@ -2424,6 +2544,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           </div>
           <div class="card p-4">${editor}</div>
         </div>`}
+        ${segBlock}
       </div>`;
     },
     // ======== ЧАНК 6.9: ВХОДЯЩИЕ (лента Telegram/уведомлений → быстрое создание объекта) ========
@@ -4785,12 +4906,17 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <label class="label">URL</label><input id="m_url" class="input w-full mb-2" placeholder="напр. agro.ru/feed" />
         <label class="label">Handle (@канал, необяз.)</label><input id="m_handle" class="input w-full mb-2" placeholder="@channel" />
         <label class="label">Ключевые слова (через запятую)</label><input id="m_keywords" class="input w-full" placeholder="орошение, теплицы" />
+        <label class="label">Сегмент аудитории (для постов A2)</label>
+        <select id="m_segment" class="input w-full mb-2">
+          <option value="">— не задан —</option>
+          ${(this.segState.segments || []).filter(g => g.active).map(g => `<option value="${this.esc(g.code)}">${this.esc(g.name)}</option>`).join('')}
+        </select>
       `, async () => {
         const v = (id) => document.getElementById(id);
         const url = v('m_url').value.trim(); if (!url) { this.toast('Укажите URL', 'err'); return false; }
         const handle = v('m_handle').value.trim();
         const keywords = v('m_keywords').value.split(',').map(k => k.trim()).filter(Boolean);
-        const data = { type: v('m_type').value, url, handle: handle || null, keywords, status: 'active' };
+        const data = { type: v('m_type').value, url, handle: handle || null, keywords, status: 'active', segment_code: (v('m_segment') && v('m_segment').value) || null };
         try {
           const r = await window.AGL.createSource(data);
           if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка сохранения', 'err'); return false; }
@@ -5170,6 +5296,33 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           this.toast('Источник и его новости удалены', 'ok');
         } catch (e) { this.toast(e.message || 'Ошибка удаления', 'err'); }
       };
+      // §37: сегменты/рубрики — селекты запоминаются, кнопка перегенерации
+      el.querySelectorAll('[data-post-seg]').forEach(n => {
+        n.onchange = () => { const p = (this.M.posts || []).find(x => x.id === parseInt(n.getAttribute('data-post-seg'), 10)); if (p) { p.segmentCode = n.value; window.AGL.patchContent(p.id, { segment_code: n.value || null }).catch(() => {}); } };
+      });
+      el.querySelectorAll('[data-post-rub]').forEach(n => {
+        n.onchange = () => { const p = (this.M.posts || []).find(x => x.id === parseInt(n.getAttribute('data-post-rub'), 10)); if (p) { p.rubricCode = n.value; window.AGL.patchContent(p.id, { rubric_code: n.value || null }).catch(() => {}); } };
+      });
+      el.querySelectorAll('[data-post-regen]').forEach(n => {
+        n.onclick = () => this.postRegen(parseInt(n.getAttribute('data-post-regen'), 10));
+      });
+      // §37: справочник сегментов/рубрик
+      const segAdd = el.querySelector('[data-seg-add]'); if (segAdd) segAdd.onclick = () => this.segAdd();
+      const rubAdd = el.querySelector('[data-rub-add]'); if (rubAdd) rubAdd.onclick = () => this.rubAdd();
+      el.querySelectorAll('[data-seg-del]').forEach(n => {
+        n.onclick = () => this.segDel(parseInt(n.getAttribute('data-seg-del'), 10));
+      });
+      el.querySelectorAll('[data-seg-toggle]').forEach(n => {
+        n.onclick = async () => {
+          const id = parseInt(n.getAttribute('data-seg-toggle'), 10);
+          const g = (this.segState.segments || []).find(x => x.id === id);
+          if (g) await this.segSave(id, 'active', !g.active);
+          await this.segLoad();
+        };
+      });
+      el.querySelectorAll('[data-rub-del]').forEach(n => {
+        n.onclick = () => this.rubDel(parseInt(n.getAttribute('data-rub-del'), 10));
+      });
       // §35: отправка на TG-согласование
       el.querySelectorAll('[data-post-submit]').forEach(n => {
         n.onclick = () => this.submitReviewModal(parseInt(n.getAttribute('data-post-submit'), 10));

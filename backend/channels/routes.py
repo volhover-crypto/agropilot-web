@@ -33,6 +33,7 @@ class ChannelCreate(BaseModel):
 
 
 class ChannelPatch(BaseModel):
+    segment_code: Optional[str] = None  # §37
     name: Optional[str] = None
     connection: Optional[dict] = None
     adapt_prompt: Optional[str] = None

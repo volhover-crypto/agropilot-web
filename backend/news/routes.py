@@ -160,6 +160,7 @@ async def scan_sources(
                 relevance=rel,
                 relevance_reason=reason,
                 agent_run_id=run_id,
+                segment_code=getattr(src, "segment_code", None),  # §37 наследование
             ))
             stats["inserted"] += 1
     await db.commit()
