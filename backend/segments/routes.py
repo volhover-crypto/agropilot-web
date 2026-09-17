@@ -161,7 +161,9 @@ async def patch_segment(segment_id: int, payload: SegmentBody,
 @segments_router.delete("/{segment_id}")
 async def delete_segment(segment_id: int, db: AsyncSession = Depends(get_db),
                          user=Depends(get_current_user)):
-    """Удаление с автоотвязкой: sources/channels/news/content остаются без сегмента."""
+    """Удаление ЗАПРЕЩЕНО, пока сегмент используется (решение владельца
+    17.09): сначала отвязать сегмент от источников/каналов/новостей/постов."""
+    from sqlalchemy import func as _f
     if not await _can_edit_content(db, user):
         raise ValidationError("сегменты — право контент-мейкера (content:edit/approve)")
     seg = await db.get(AudienceSegment, segment_id)
@@ -172,14 +174,22 @@ async def delete_segment(segment_id: int, db: AsyncSession = Depends(get_db),
     from backend.channels.models import Channel
     from backend.news.models import NewsItem
     from backend.content.models import Content
-    counts = {}
-    for model, label in ((Source, "sources"), (Channel, "channels"),
-                         (NewsItem, "news"), (Content, "content")):
-        res = await db.execute(update(model).where(
-            model.segment_code == code).values(segment_code=None))
-        counts[label] = int(res.rowcount or 0)
+    used = []
+    for model, label, one, many in (
+            (Source, "источников", "источник", "источники"),
+            (Channel, "каналов", "канал", "каналы"),
+            (NewsItem, "новостей", "новость", "новости"),
+            (Content, "постов", "пост", "посты")):
+        n = (await db.execute(select(_f.count()).select_from(model).where(
+            model.segment_code == code))).scalar() or 0
+        if n:
+            used.append(f"{n} {many if n > 1 else one}")
+    if used:
+        raise ValidationError(
+            f"сегмент «{seg.name}» используется: " + ", ".join(used) +
+            ". Сначала отвяжите его (у источников/каналов/постов) — потом удаление станет доступно.")
     await db.delete(seg)
     await db.commit()
-    return _ok({"deleted": segment_id, "code": code, "unlinked": counts})
+    return _ok({"deleted": segment_id, "code": code})
 
 

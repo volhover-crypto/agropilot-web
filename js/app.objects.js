@@ -2267,11 +2267,11 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
     },
     async segDel(id) {
-      if (!window.confirm('Удалить сегмент? Источники/каналы/посты с ним останутся без сегмента.')) return;
+      if (!window.confirm('Удалить сегмент? Если он используется (источники/каналы/новости/посты) — удаление будет запрещено.')) return;
       try {
         const r = await window.AGL.deleteSegment(id);
         if (r && r.ok === false) { this.toast((r.error && r.error.message) || 'Ошибка', 'err'); return; }
-        await this.segLoad(); this.toast('Сегмент удалён (связи отвязаны)', 'ok');
+        await this.segLoad(); this.toast('Сегмент удалён', 'ok');
       } catch (e) { this.toast(e.message || 'Ошибка', 'err'); }
     },
     async rubAdd() {
