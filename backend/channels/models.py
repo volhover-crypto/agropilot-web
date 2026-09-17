@@ -19,6 +19,7 @@ class Channel(Base):
     connection:   Mapped[dict]      = mapped_column(JSONB, default=dict)
     adapt_prompt: Mapped[str]       = mapped_column(Text, nullable=True)
     active:       Mapped[bool]      = mapped_column(Boolean, default=True)
+    segment_code: Mapped[str | None] = mapped_column(Text, nullable=True)  # §37
     stats:        Mapped[dict]      = mapped_column(JSONB, default=dict)
     created_at:   Mapped[datetime]  = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
