@@ -72,6 +72,11 @@ class FromNewsBody(BaseModel):
     platform: str = "telegram"
 
 
+class SubmitReviewBody(BaseModel):
+    channel_id: Optional[int] = None   # куда публикует кнопка «Опубликовать»
+    urgent:     Optional[bool] = None  # None = авто (relevance >= 0.7)
+
+
 class PublishBody(BaseModel):
     chat_id: Optional[str] = None    # явный чат; иначе канал channel_id, иначе TELEGRAM_CHAT_ID
     channel_id: Optional[int] = None # канал из справочника channels (§21.1)
@@ -105,7 +110,17 @@ async def list_content(
         q = q.where(Content.status == status)
     q = q.limit(limit)
     rows = (await db.execute(q)).scalars().all()
-    return _ok([r.to_dict() for r in rows])
+    # §35: последнее TG-согласование к каждой карточке (бейджи SLA в UI)
+    from backend.content.approvals import ContentApproval
+    out = []
+    for r in rows:
+        d = r.to_dict()
+        appr = (await db.execute(
+            select(ContentApproval).where(ContentApproval.content_id == r.id)
+            .order_by(ContentApproval.id.desc()).limit(1))).scalars().first()
+        d["approval"] = appr.to_dict() if appr else None
+        out.append(d)
+    return _ok(out)
 
 
 @content_router.post("")
@@ -285,6 +300,100 @@ async def publish_content(
 
 class AdaptBody(BaseModel):
     prompt: Optional[str] = None   # указания канала; иначе общий промт A3
+
+
+@content_router.post("/{content_id}/submit_review")
+async def submit_review(
+    content_id: int,
+    payload:    SubmitReviewBody,
+    db:         AsyncSession = Depends(get_db),
+    user                     = Depends(get_current_user),
+):
+    """§35: отправить пост на согласование в Telegram с инлайн-кнопками.
+
+    Кнопки владельцу: Опубликовать / Правка / Отложить. SLA: срочные 15 мин,
+    плановые 2 ч (истекший — expired/pending_manual). Срочность: авто по
+    происхождению (связанная новость с relevance >= 0.7 — авто-срочно),
+    ручное переопределение payload.urgent.
+    """
+    from datetime import timedelta
+    from backend.content.approvals import ContentApproval
+    from backend.news.models import NewsItem
+
+    item = await db.get(Content, content_id)
+    if not item:
+        raise NotFoundError("Content not found")
+    if item.status not in ("draft", "in_review"):
+        raise ValidationError(
+            f"на согласование — из draft/in_review (сейчас: {item.status})")
+
+    # авто-срочность: пост из высокорелевантной новости (>= 0.7)
+    auto_urgent = False
+    if item.news_item_id:
+        ni = await db.get(NewsItem, item.news_item_id)
+        if ni and ni.relevance is not None and float(ni.relevance) >= 0.7:
+            auto_urgent = True
+    urgent = payload.urgent if payload.urgent is not None else auto_urgent
+
+    channel_name = ""
+    if payload.channel_id:
+        from backend.channels.models import Channel as _Ch
+        ch = await db.get(_Ch, payload.channel_id)
+        if not ch or not ch.active:
+            raise ValidationError("канал не найден или отключён — «Опубликовать» некуда слать")
+        channel_name = ch.name
+
+    now = datetime.now(timezone.utc)
+    deadline = now + timedelta(minutes=15 if urgent else 120)
+    # прежний pending закрываем (повторная отправка)
+    old = (await db.execute(select(ContentApproval).where(
+        ContentApproval.content_id == item.id,
+        ContentApproval.status == "pending"))).scalars().all()
+    for a in old:
+        a.status, a.decided_at, a.decided_by = "expired", now, "resubmit"
+
+    appr = ContentApproval(content_id=item.id, urgent=urgent, auto_urgent=auto_urgent,
+                           channel_id=payload.channel_id, sent_at=now,
+                           deadline_at=deadline, status="pending")
+    db.add(appr)
+    item.status = "in_review"
+    item.updated_at = now
+
+    # сообщение владельцу с кнопками
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if not token or not chat_id:
+        await db.commit()
+        raise ValidationError("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID не заданы — сообщение не отправлено")
+    msk = lambda t: t.astimezone(timezone(timedelta(hours=3))).strftime("%H:%M")
+    sla = "🔥 СРОЧНО · SLA 15 мин" if urgent else "🕒 плановое · SLA 2 ч"
+    text = (f"📋 Пост на согласовании #{item.id}\n"
+            f"{sla} (до {msk(deadline)} МСК)\n\n"
+            f"{item.title}\n\n{(item.body or '')[:900]}\n\n"
+            + (f"Канал публикации: {channel_name}\n" if channel_name else ""))
+    kb = {"inline_keyboard": [[
+        {"text": "✅ Опубликовать", "callback_data": f"ctnap:app:{item.id}:0"},
+        {"text": "✏️ Правка", "callback_data": f"ctnap:edt:{item.id}:0"},
+        {"text": "⏰ Отложить", "callback_data": f"ctnap:def:{item.id}:0"},
+    ]]}
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=_json.dumps({"chat_id": chat_id, "text": text,
+                          "reply_markup": kb}).encode("utf-8"),
+        headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = _json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        await db.commit()
+        raise ValidationError(f"Telegram отклонил отправку: {str(e)[:200]}")
+    if not resp.get("ok"):
+        await db.commit()
+        raise ValidationError(f"Telegram error: {str(resp.get('description'))[:200]}")
+    appr.tg_message_id = (resp.get("result") or {}).get("message_id")
+    await db.commit()
+    await db.refresh(appr)
+    return _ok(appr.to_dict())
 
 
 @content_router.post("/{content_id}/adapt")
