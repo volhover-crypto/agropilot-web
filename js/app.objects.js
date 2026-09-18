@@ -4409,6 +4409,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
 
     // ======== §20: МЕДИА-МОНИТОРИНГ (A1) ========
     newsState: {
+      help: false,
       items: [], total: 0, limit: 30, offset: 0,
       status: '', loading: false, loaded: false, scanning: false,
     },
@@ -4842,18 +4843,74 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <div class="label">Материалы · ${st.total}</div>
             <div class="flex flex-wrap gap-1">
               ${tab('new', 'Новые')}${tab('selected', 'В работе')}${tab('used', 'Использованные')}${tab('rejected', 'Отклонённые')}
+              <button class="btn text-[12px] ${st.help ? 'btn-accent' : ''}" data-news-help>📖 Справка</button>
               <button class="btn btn-accent text-[12px]" data-news-scan ${st.scanning ? 'disabled' : ''}>${st.scanning ? 'Сканирую…' : 'Сканировать сейчас'}</button>
             </div>
           </div>
+          ${st.help ? this.vNewsHelp() : `
           ${srcToolbar}
           <div class="flex flex-col gap-2 mt-2">${rows}</div>
           <div class="flex items-center gap-2 mt-2 text-[12px]">
             <span>${from}-${to} из ${st.total}</span>
             <button class="btn text-[12px]" data-news-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
             <button class="btn text-[12px]" data-news-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
-          </div>
+          </div>`}
         </div>
         <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Материалы собирает агент A1 из подключённых источников (телеграм-каналы, RSS, сайты) раз в час и оценивает релевантность по ключевым словам источника. «В работу» — материал попадает в очередь конвейера контента (A2). Удаление источника удаляет и все его материалы (решение владельца).</div>
+      </div>`;
+    },
+
+    // §38: справка медиа-мониторинга — онтология и механика пользования
+    vNewsHelp() {
+      const ent = (icon, name, fields, desc) => `<div class="card-2 p-3">
+        <div class="flex items-center gap-2"><span class="text-lg">${icon}</span><span class="text-[13px] font-semibold">${name}</span></div>
+        <div class="text-[12px] mt-1" style="color:var(--text-dim)">${desc}</div>
+        <div class="flex flex-wrap gap-1 mt-2">${fields.map(f => `<span class="pill text-[10px]">${f}</span>`).join('')}</div>
+      </div>`;
+      const step = (n, title, desc) => `<div class="flex gap-3 items-start">
+        <span class="pill shrink-0" style="border-color:var(--accent);color:var(--accent)">${n}</span>
+        <div class="flex-1"><div class="text-[13px] font-medium">${title}</div>
+        <div class="text-[12px] mt-0.5" style="color:var(--text-dim)">${desc}</div></div>
+      </div>`;
+      return `<div class="flex flex-col gap-4">
+        <div class="card p-4">
+          <div class="label mb-2">📚 Онтология раздела — из чего состоит</div>
+          <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+            ${ent('🔌', 'Источник', ['тип: telegram/RSS/сайт', 'URL/канал', 'ключевые слова', 'сегмент аудитории', 'статус'],
+              'Откуда агент A1 собирает материалы. Ключевые слова задают релевантность; сегмент задаёт язык будущих постов A2 (наследуется).')}
+            ${ent('📰', 'Материал (новость)', ['тема', 'краткое содержание', 'релевантность 0–100%', 'статус', 'источник', 'сегмент'],
+              'Единица ленты. Релевантность считает A1: доля ключевых слов источника (или слов активных направлений стратегии) в тексте.')}
+            ${ent('📊', 'Статусы материала', ['новая', 'в работе', 'использованная', 'отклонённая'],
+              'Жизненный цикл: новая → «В работу» → «В пост» (уходит в конвейер контента, помечается использованной) либо «Отклонить».')}
+            ${ent('🤖', 'Агент A1', ['скан ежечасно', 'дедуп по ссылке', 'лог в Дашборде'],
+              'Собирает материалы из всех активных источников по расписанию (n8n, каждый час), повторы не создаёт. Кнопка «Сканировать сейчас» — внеочередной прогон.')}
+            ${ent('🎯', 'Сегмент аудитории', ['виноградники', 'зерновые', 'теплицы', '+ свои'],
+              'Профиль аудитории с языком и CTA. Управляется в разделе «Контент». Материал наследует сегмент источника.')}
+          </div>
+          <div class="text-[12px] mt-3 p-2 card-2" style="color:var(--text-mute)">
+            Поток данных: <b>Источник → A1 (скан, релевантность) → Материал → «В пост» → A2 (черновик языком сегмента) → согласование в Telegram (SLA 15 мин / 2 ч) → A3 (публикация в канал) → Календарь</b>. Каждая стрелка — отдельный раздел системы.
+          </div>
+        </div>
+        <div class="card p-4">
+          <div class="label mb-2">🛠 Механика пользования — пошагово</div>
+          <div class="flex flex-col gap-3">
+            ${step(1, 'Подключите источник', 'Тулбар «Управление источниками» → «+ Источник»: тип (новости/RSS, конкурент, рынок…), URL (для Telegram — адрес канала вида t.me/имя), ключевые слова через запятую, сегмент аудитории. Источник сразу участвует в ближайшем скане.')}
+            ${step(2, 'Дождитесь скана или запустите сами', 'A1 сканирует каждый час автоматически. Кнопка «Сканировать сейчас» — принудительно. Новые материалы появляются во вкладке «Новые» с оценкой релевантности.')}
+            ${step(3, 'Читайте карточку', 'Сверху — источник и релевантность; далее тема (ссылка на первоисточник); ниже — анонс. Наведите курсор на строку анонса — всплывёт фрейм с кратким содержанием. Кнопки действий — в подвале карточки.')}
+            ${step(4, 'Разбирайте материалы', '«В работу» — важное, попадает во вкладку «В работе»; «Отклонить» — шум. Фильтры-вкладки сверху переключают статус, стрелки внизу листают страницы.')}
+            ${step(5, 'Создайте пост', 'У материала «в работе» нажмите «В пост» — агент A2 напишет черновик языком сегмента этой новости. Дальше работайте в разделе «Контент» (правка, согласование в TG, публикация).')}
+            ${step(6, 'Удаляйте ненужное', '«✕ Удалить источник (с новостями)» убирает источник и все его материалы — с подтверждением, необратимо. Посты, созданные из этих новостей, остаются.')}
+          </div>
+        </div>
+        <div class="card p-4">
+          <div class="label mb-2">💡 Подсказки</div>
+          <div class="text-[12px] flex flex-col gap-1" style="color:var(--text-dim)">
+            <div>• Релевантность ≥ 70% у материала автоматически делает будущий пост «срочным» при отправке на TG-согласование (SLA 15 минут вместо 2 часов).</div>
+            <div>• Ключевых слов 5–15 обычно достаточно: слишком общие («урожай») утопят ленту, слишком узкие — оставят её пустой.</div>
+            <div>• Если у источника нет своих ключевых слов, A1 использует слова активных направлений из раздела «Стратегия».</div>
+            <div>• Расходы и здоровье агентов (включая A1) — в разделе «Дашборд», блок «Агенты».</div>
+          </div>
+        </div>
       </div>`;
     },
 
@@ -5411,6 +5468,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-news-filter]').forEach(b => {
         b.onclick = () => this.newsFilter(b.getAttribute('data-news-filter'));
       });
+      // §38: вкладка «Справка» медиа-мониторинга
+      const nhelp = el.querySelector('[data-news-help]');
+      if (nhelp) nhelp.onclick = () => { this.newsState.help = !this.newsState.help; this.render(); };
       el.querySelectorAll('[data-news-page]').forEach(b => {
         b.onclick = () => this.newsPage(parseInt(b.getAttribute('data-news-page'), 10));
       });
