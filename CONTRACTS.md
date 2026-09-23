@@ -1652,10 +1652,15 @@ DoD 36: фронт на проде (v=1789610400) отдаёт тулбар и �
   status pending|approved|rejected|deferred|edited|expired, tg_message_id,
   decided_*. GET /v1/content отдаёт последнюю approval в карточке.
 - Кнопки обрабатывает tg_poller (callback_query, каждые 5 мин):
-  «Опубликовать» -> POST /publish {channel_id} (сервисный u7, публикация
-  в выбранный канал); «Правка» -> draft (approval=edited); «Отложить» ->
-  approved (deferred), слот — в календаре публикаций. Ответ кнопки +
-  editMessageText с итогом; повторное нажатие — «уже обработано».
+  «Опубликовать» -> сначала PATCH approved (publish не принимает
+  in_review), затем POST /publish {channel_id} (сервисный u7); «Правка» ->
+  draft (approval=edited); «Отложить» -> approved (deferred), слот — в
+  календаре публикаций. Ответ кнопки — best-effort (answerCallbackQuery
+  живёт секунды, при 5-мин цикле может опоздать — try/except), итог
+  дублируется editMessageText и пишется в журнал сервиса
+  «[approval] пост N: …»; повторное нажатие — «уже обработано».
+  Фиксы 23.09: select на уровне модуля (NameError — poller молча падал
+  неделю, SLA не истекал).
 - SLA: pending с истёкшим дедлайном -> expired + пометка сообщения в TG
   («решение в системе»); пост остаётся in_review, в UI красный бейдж
   «⏰ SLA истёк — решите вручную».
