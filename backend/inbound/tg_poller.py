@@ -166,8 +166,13 @@ async def _handle_approval_callback(s, token: str, cb: dict) -> None:
     data = (cb.get("data") or "").strip()
     cb_id = cb.get("id")
     parts = data.split(":")
-    ok_answer = lambda txt: _tg("answerCallbackQuery", token,
-                                callback_query_id=cb_id, text=txt)
+    def ok_answer(txt):
+        # ответ на кнопку живёт секунды, а цикл poller — до 5 минут:
+        # просроченный answerCallbackQuery даёт 400, это не ошибка бизнеса
+        try:
+            _tg("answerCallbackQuery", token, callback_query_id=cb_id, text=txt)
+        except Exception:
+            pass
     if len(parts) != 4 or parts[0] != "ctnap":
         ok_answer("неизвестная кнопка"); return
     action, cid = parts[1], int(parts[2])
