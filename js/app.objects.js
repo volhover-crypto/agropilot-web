@@ -2193,7 +2193,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     postStatusColor(s) {
       return s === 'одобрен' ? 'var(--ok)' : s === 'согласование' ? 'var(--err)' : s === 'отклонён' ? 'var(--text-mute)' : 'var(--warn)';
     },
-    postSelect(id) { this.postSel = id; this.render(); },
+    postSelect(id) { this.postSel = id; this.render(); },  // id: число (API) — парсится в обработчике
     contentTab: 'queue',   // §21: 'queue' | 'calendar'
     calSelPost: null,      // id поста, выбранного для назначения слота
     contentSwitchTab(t) { this.contentTab = t; this.render(); },
@@ -5329,7 +5329,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-proj-toggle]').forEach(n => n.onclick = () => this.projToggle(n.getAttribute('data-proj-toggle')));
       el.querySelectorAll('[data-proj-pin]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.projPinModal(n.getAttribute('data-proj-pin')); });
       // 6.6: контент и соцсети (SSM)
-      el.querySelectorAll('[data-post-sel]').forEach(n => n.onclick = () => this.postSelect(n.getAttribute('data-post-sel')));
+      el.querySelectorAll('[data-post-sel]').forEach(n => n.onclick = () => this.postSelect(parseInt(n.getAttribute('data-post-sel'), 10)));
       el.querySelectorAll('[data-post-act]').forEach(n => n.onclick = () => this.postAct(n.getAttribute('data-post-id'), n.getAttribute('data-post-act')));
       // §36: hover-превью краткого содержания новости + удаление источника
       el.querySelectorAll('[data-news-prev]').forEach(n => {
