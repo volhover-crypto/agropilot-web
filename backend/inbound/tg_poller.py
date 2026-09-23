@@ -19,6 +19,8 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 
+from sqlalchemy import select  # §35: нужен на уровне модуля (_sla_check/_handle_approval_callback)
+
 STATE_FILE = "/opt/agropilot-data/tg_poller_offset.json"
 
 
