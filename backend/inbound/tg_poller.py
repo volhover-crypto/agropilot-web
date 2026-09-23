@@ -186,8 +186,12 @@ async def _handle_approval_callback(s, token: str, cb: dict) -> None:
         ok_answer(f"ошибка сервисного входа: {str(e)[:80]}"); return
 
     if action == "app":
-        ok, resp = _api(tok, "POST", f"/v1/content/{cid}/publish",
-                        {"channel_id": appr.channel_id})
+        # кнопка согласует пост: in_review -> approved, затем публикация
+        if not _api(tok, "PATCH", f"/v1/content/{cid}", {"status": "approved"})[0]:
+            ok, resp = False, {"error": {"message": "не удалось согласовать пост"}}
+        else:
+            ok, resp = _api(tok, "POST", f"/v1/content/{cid}/publish",
+                            {"channel_id": appr.channel_id})
         if ok:
             appr.status, appr.decided_by = "approved", "tg:owner"
             appr.decided_at = datetime.now(timezone.utc)
