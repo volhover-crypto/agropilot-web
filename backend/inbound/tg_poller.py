@@ -173,6 +173,7 @@ async def _handle_approval_callback(s, token: str, cb: dict) -> None:
             _tg("answerCallbackQuery", token, callback_query_id=cb_id, text=txt)
         except Exception:
             pass
+        print(f"[approval] пост {cid}: {txt}", flush=True)
     if len(parts) != 4 or parts[0] != "ctnap":
         ok_answer("неизвестная кнопка"); return
     action, cid = parts[1], int(parts[2])
