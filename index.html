@@ -51,7 +51,7 @@
   </script>
   <script>(function(){try{var st=window['local'+'Storage'];var t=(st&&st.getItem('agropilot_theme'))||'light';var r=document.documentElement;r.classList.remove('dark','light');r.classList.add(t);}catch(e){}})();</script>
   <link rel="stylesheet" href="css/tailwind-scanned.css?v=1789602844" />
-  <link rel="stylesheet" href="css/reka-ui.css?v=20260924" />
+  <link rel="stylesheet" href="css/reka-ui.css?v=20260925" />
   <!-- Дизайн-язык Fibery (fibery.io, снят 24.09.2026): кремовый фон #faebd6,
        тёмно-коричневый текст #251d1a, бирюзовый акцент #309fb6, синий #3b758c.
        Шрифт Suisse Intl — коммерческий; ближайший свободный аналог — Inter. -->
@@ -75,17 +75,18 @@
     }
     body{ background:var(--bg); color:var(--text); font-family:'Suisse Intl','Inter',system-ui,'Segoe UI',Roboto,sans-serif; letter-spacing:-0.005em; }
     h1,h2,h3{ font-weight:800; letter-spacing:-0.02em; }
-    .card{ background:var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow:0 1px 2px rgba(37,29,26,.05),0 8px 24px rgba(37,29,26,.06); }
-    .card-2{ background:var(--surface-2); border:1px solid var(--border); border-radius:12px; }
+    .card{ background:var(--surface); border:1px solid var(--border); border-radius:6px; box-shadow:0 1px 2px rgba(37,29,26,.05),0 8px 24px rgba(37,29,26,.06); }
+    .card-2{ background:var(--surface-2); border:1px solid var(--border); border-radius:4px; }
     .label{ font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-mute); }
-    .btn{ background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:6px 12px; color:var(--text); cursor:pointer; font-weight:500; transition:border-color .12s,background .12s; }
+    .btn{ background:var(--surface-2); border:1px solid var(--border); border-radius:4px; padding:6px 12px; color:var(--text); cursor:pointer; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.03em; box-shadow:0 1px 2px rgba(37,29,26,.12); transition:border-color .12s,background .12s,box-shadow .12s; }
     .btn:hover{ border-color:var(--accent); }
+    .btn:active{ box-shadow:none; }
     .btn-accent{ background:var(--accent); border-color:var(--accent); color:#fffdfa; }
     .btn-accent:hover{ filter:brightness(1.06); }
-    .nav-item{ display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:12px; color:var(--text-dim); cursor:pointer; font-size:14px; font-weight:500; }
+    .nav-item{ display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:4px; color:var(--text-dim); cursor:pointer; font-size:14px; font-weight:500; }
     .nav-item:hover{ background:var(--surface-2); color:var(--text); }
     .nav-item.active{ background:var(--accent-soft); color:var(--accent); font-weight:600; }
-    .input{ background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:6px 10px; color:var(--text); }
+    .input{ background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:6px 10px; color:var(--text); }
     .pill{ font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); font-weight:500; }
     a{ color:var(--accent); }
     .fade-in{ animation:fi .2s ease; } @keyframes fi{ from{opacity:0; transform:translateY(4px)} to{opacity:1} }

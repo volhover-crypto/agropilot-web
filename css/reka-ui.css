@@ -28,7 +28,7 @@
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 6px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, .35);
 }
 .rk-dialog[data-state='open']   { animation: rk-pop-in .18s ease; }
@@ -71,7 +71,7 @@
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 6px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, .35);
   overflow: hidden;
 }
@@ -101,7 +101,7 @@
   align-items: center;
   gap: 12px;
   padding: 8px;
-  border-radius: 10px;
+  border-radius: 4px;
   background: var(--surface-2);
   border: 1px solid transparent;
   cursor: pointer;
@@ -137,7 +137,7 @@
   width: 340px;
   max-width: calc(100vw - 32px);
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 6px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--ok);
