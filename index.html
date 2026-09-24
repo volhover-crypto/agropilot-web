@@ -52,28 +52,42 @@
   <script>(function(){try{var st=window['local'+'Storage'];var t=(st&&st.getItem('agropilot_theme'))||'light';var r=document.documentElement;r.classList.remove('dark','light');r.classList.add(t);}catch(e){}})();</script>
   <link rel="stylesheet" href="css/tailwind-scanned.css?v=1789602844" />
   <link rel="stylesheet" href="css/reka-ui.css?v=20260924" />
+  <!-- Дизайн-язык Fibery (fibery.io, снят 24.09.2026): кремовый фон #faebd6,
+       тёмно-коричневый текст #251d1a, бирюзовый акцент #309fb6, синий #3b758c.
+       Шрифт Suisse Intl — коммерческий; ближайший свободный аналог — Inter. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
   <style>
     [x-cloak]{ display:none !important; }
     .cmdk-item:hover{ background:var(--accent-soft,rgba(0,0,0,.05)); }
+    /* тёмная тема — тёмные секции Fibery (#251d1a + текст #fffdfa) */
     :root{
-      --bg:#0b0f14; --surface:#121821; --surface-2:#0e141c; --border:#1f2937;
-      --text:#e5e7eb; --text-dim:#9ca3af; --text-mute:#6b7280;
-      --accent:#22c55e; --accent-soft:rgba(34,197,94,.12);
-      --ok:#22c55e; --warn:#fbbf24; --err:#ef4444; --info:#60a5fa;
+      --bg:#251d1a; --surface:#2f2723; --surface-2:#382e29; --border:#4a3d36;
+      --text:#fffdfa; --text-dim:#b8b0a9; --text-mute:#8a8079;
+      --accent:#309fb6; --accent-soft:rgba(48,159,182,.18);
+      --ok:#17b58f; --warn:#e0a34e; --err:#ef6b6b; --info:#6fa7bd;
     }
-    html.light{ --bg:#f7f8fa; --surface:#fff; --surface-2:#f1f3f6; --border:#e5e7eb; --text:#111827; --text-dim:#4b5563; --text-mute:#9ca3af; }
-    body{ background:var(--bg); color:var(--text); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
-    .card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; }
-    .card-2{ background:var(--surface-2); border:1px solid var(--border); border-radius:10px; }
+    /* светлая тема (дефолт) — кремовый лендинг Fibery */
+    html.light{
+      --bg:#faebd6; --surface:#fdf7ef; --surface-2:#f4e6d2; --border:#e4d5c0;
+      --text:#251d1a; --text-dim:#6d645f; --text-mute:#9c948f;
+    }
+    body{ background:var(--bg); color:var(--text); font-family:'Suisse Intl','Inter',system-ui,'Segoe UI',Roboto,sans-serif; letter-spacing:-0.005em; }
+    h1,h2,h3{ font-weight:800; letter-spacing:-0.02em; }
+    .card{ background:var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow:0 1px 2px rgba(37,29,26,.05),0 8px 24px rgba(37,29,26,.06); }
+    .card-2{ background:var(--surface-2); border:1px solid var(--border); border-radius:12px; }
     .label{ font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-mute); }
-    .btn{ background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:6px 10px; color:var(--text); cursor:pointer; }
+    .btn{ background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:6px 12px; color:var(--text); cursor:pointer; font-weight:500; transition:border-color .12s,background .12s; }
     .btn:hover{ border-color:var(--accent); }
-    .btn-accent{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
-    .nav-item{ display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; color:var(--text-dim); cursor:pointer; font-size:14px; }
+    .btn-accent{ background:var(--accent); border-color:var(--accent); color:#fffdfa; }
+    .btn-accent:hover{ filter:brightness(1.06); }
+    .nav-item{ display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:12px; color:var(--text-dim); cursor:pointer; font-size:14px; font-weight:500; }
     .nav-item:hover{ background:var(--surface-2); color:var(--text); }
-    .nav-item.active{ background:var(--accent-soft); color:var(--accent); }
-    .input{ background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:6px 10px; color:var(--text); }
-    .pill{ font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); }
+    .nav-item.active{ background:var(--accent-soft); color:var(--accent); font-weight:600; }
+    .input{ background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:6px 10px; color:var(--text); }
+    .pill{ font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); font-weight:500; }
+    a{ color:var(--accent); }
     .fade-in{ animation:fi .2s ease; } @keyframes fi{ from{opacity:0; transform:translateY(4px)} to{opacity:1} }
     .mono{ font-family:ui-monospace,Menlo,monospace; }
     /* Splitter between main and owl panel */
