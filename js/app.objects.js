@@ -81,8 +81,7 @@ source: 'ai',
       // If no token, try to show login
       if (!AGL.token) {
         console.warn('[AGL] no token, showing login');
-        const lm = document.getElementById('loginModal');
-        if (lm) lm.style.display = 'flex';
+        if (window.$login) window.$login.open();
         this.apiMode = false;
         return false;
       }
@@ -274,8 +273,7 @@ await this._loadAiLayer();
             AGL.token = null;
             localStorage.removeItem('agropilot_token');
             localStorage.removeItem('agropilot_refresh');
-            const lm = document.getElementById('loginModal');
-            if (lm) lm.style.display = 'flex';
+            if (window.$login) window.$login.open();
           }
           console.warn('[AGL] API load failed, using mock:', e);
           this.apiMode = false;
@@ -346,9 +344,8 @@ await this._loadAiLayer();
             this.M.deals.forEach(d => { if (!d.history) d.history = [{ date: d.updated, kind: 'create', text: 'Сделка создана' }]; });
           } else {
             this.toast('Работа в демо-режиме (mock)', 'info');
-            // Show login modal if no token
-            const lm = document.getElementById('loginModal');
-            if (lm && !AGL.token) lm.style.display = 'flex';
+            // Show login dialog (Reka UI) if no token
+            if (!AGL.token && window.$login) window.$login.open();
           }
         });
       }
@@ -363,15 +360,9 @@ await this._loadAiLayer();
       this.initProjectForm();
       // Init goal status change
       this.initGoalStatus();
-      // чанк 3.2 / 6.20: глобальный поиск Ctrl/Cmd-K
+      // чанк 3.2 / 6.20: глобальный поиск Ctrl/Cmd-K (Esc/Enter/стрелки обрабатывает Reka-диалог $palette)
       window.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (!this.cmdkOpen) this.cmdkShow(); return; }
-        if (!this.cmdkOpen) return;
-        if (e.key === 'Escape') { e.preventDefault(); this.cmdkClose(); }
-        else if (e.key === 'Enter') {
-          const first = this.cmdkFirst();
-          if (first) { e.preventDefault(); this.cmdkClose(); this.go(first.type, first.id); }
-        }
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (!this.cmdkOpen) this.cmdkShow(); }
       });
     },
     tick() { this.clock = new Date().toLocaleTimeString('ru-RU'); },
@@ -408,7 +399,7 @@ await this._loadAiLayer();
         artifacts: 'Артефакты',
         graph: 'Граф объектов',
         skills: 'Навыки команды',
-        monitoring: 'Мониторинг рынка',
+        monitoring: 'Мониторинг событий',
         medianews: 'Медиа-мониторинг',
         catalog: 'Справочник',
         client: 'Карточка клиента',
@@ -419,11 +410,8 @@ await this._loadAiLayer();
 
     // ---- toast ----
     toast(msg, kind = 'ok') {
-      const c = { ok: 'var(--ok)', err: 'var(--err)', info: 'var(--info)' }[kind] || 'var(--ok)';
-      const i = { ok: '✓', err: '✕', info: 'ℹ' }[kind] || '✓';
-      const id = Date.now() + Math.random();
-      this.toasts.push({ id, msg, color: c, icon: i });
-      setTimeout(() => this.toasts = this.toasts.filter(t => t.id !== id), 3000);
+      // Reka UI Toast (js/ui-reka.js); старый this.toasts больше не рендерится
+      window.$toast(msg, kind);
     },
 
     // ---- helpers (используются экранами) ----
@@ -497,7 +485,11 @@ await this._loadAiLayer();
         else if (this.route === 'settings') html = this.vSettings();
         else if (this.route === 'strategy') html = this.vStrategy();
         else html = `<div class="card p-8 text-center" style="color:var(--text-mute)"><div class="text-2xl font-semibold mb-2">Раздел не найден</div><div class="mb-4">Такого раздела нет или он ещё не подключён.</div><button class="btn btn-accent" data-go="myday:">На главную</button></div>`;
-        el.innerHTML = `<div class="fade-in">${html}</div>`;
+        // fade-in — только при смене раздела: повторные render() того же экрана
+        // (догрузка данных, переключение вкладок) не должны мерцать
+        const anim = this._fadeRoute !== this.route ? ' class="fade-in"' : '';
+        this._fadeRoute = this.route;
+        el.innerHTML = `<div${anim}>${html}</div>`;
         this.bindView();
         this.owlRender();
       });
@@ -2200,7 +2192,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     calSelectPost(id) { this.calSelPost = id; this.toast('Выберите день в календаре', 'info'); this.render(); },
     async calAssign(day) {
       // §21: назначение слота публикации выбранным постом (MVP: клик вместо DnD)
-      const p = (this.M.posts || []).find(x => x.id === this.calSelPost); if (!p || !p.api) return;
+      const p = (this.M.posts || []).find(x => String(x.id) === String(this.calSelPost)); if (!p || !p.api) return;
       const when = day + 'T10:00';
       try {
         const upd = await window.AGL.patchContent(p.id, { scheduled_at: when });
@@ -2212,7 +2204,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.render();
     },
     async postAdapt(id) {
-      const p = (this.M.posts || []).find(x => x.id === id); if (!p || !p.api) return;
+      const p = (this.M.posts || []).find(x => String(x.id) === String(id)); if (!p || !p.api) return;
       const hint = window.prompt('Указания для адаптации под канал (пусто — общий стиль):');
       try {
         const upd = await window.AGL.adaptContent(p.id, hint || null);
@@ -2222,19 +2214,74 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.render();
     },
 
+    // П.6: обязательные поля перед публикацией — всё должно быть заполнено
+    postMissingFields(p) {
+      const miss = [];
+      if (!(p.title || '').trim()) miss.push('заголовок');
+      if (!(p.body || '').trim()) miss.push('текст поста');
+      if (!(p.hashtags || '').trim()) miss.push('хэштеги');
+      if (!(p.slot || '').trim()) miss.push('слот публикации');
+      if (!(p.channel || '').trim()) miss.push('канал');
+      if (!(p.media || '').trim()) miss.push('описание медиа');
+      if (!p.segmentCode) miss.push('сегмент аудитории');
+      if (!p.rubricCode) miss.push('рубрика');
+      return miss;
+    },
+    // терминальные статусы — пост в архиве, из очереди черновиков скрывается
+    isArchivedPost(p) {
+      return ['published', 'rejected', 'archived'].includes(p.apiStatus)
+        || ['опубликован', 'отклонён', 'архив'].includes(p.status);
+    },
+
     async postPublish(id) {
-      const p = (this.M.posts || []).find(x => x.id === id); if (!p || !p.api) return;
+      const p = (this.M.posts || []).find(x => String(x.id) === String(id)); if (!p || !p.api) return;
+      // П.6: публикация запрещена, пока не заполнены все поля карточки поста
+      const miss = this.postMissingFields(p);
+      if (miss.length) { this.toast('Заполните перед публикацией: ' + miss.join(', '), 'err'); return; }
       // §21/6.6: публикация — только явное подтверждение человека
       if (!confirm('Опубликовать пост в Telegram?\n\n' + (p.title || '').slice(0, 120))) return;
       try {
         const upd = await window.AGL.publishContent(p.id);
         p.apiStatus = upd.status; p.status = 'опубликован';
-        this.toast('Пост опубликован в Telegram', 'ok');
+        if (String(this.postSel) === String(id)) this.postSel = null;
+        this.toast('Пост опубликован — перенесён в архив опубликованных', 'ok');
       } catch (e) { this.toast(e.message || 'Публикация не удалась', 'err'); }
       this.render();
     },
 
     // ======== §37: сегменты аудитории и рубрики ========
+    // П.7: инструкция по работе с направлениями и сегментами — модальное окно
+    segHelpShow() {
+      const ent = (icon, name, desc) => `<div class="card-2 p-3">
+        <div class="flex items-center gap-2"><span class="text-lg">${icon}</span><span class="text-[13px] font-semibold">${name}</span></div>
+        <div class="text-[12px] mt-1" style="color:var(--text-dim)">${desc}</div>
+      </div>`;
+      const step = (n, title, desc) => `<div class="flex gap-3 items-start">
+        <span class="pill shrink-0" style="border-color:var(--accent);color:var(--accent)">${n}</span>
+        <div class="flex-1"><div class="text-[13px] font-medium">${title}</div>
+        <div class="text-[12px] mt-0.5" style="color:var(--text-dim)">${desc}</div></div>
+      </div>`;
+      this.openModal('Инструкция · Направления и сегменты аудитории', `
+        <div class="flex flex-col gap-4">
+          <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">
+            ${ent('🧭', 'Направление — ЧТО ловим', 'Отрасль/рынок, на который нацелена компания. Задаётся в разделе «Стратегия». Примеры: зерновые, тепличные комплексы, виноградники, питомники и саженцы, овощи открытого грунта, интенсивные сады.')}
+            ${ent('🎯', 'Сегмент — КАК пишем', 'Профиль аудитории внутри направления: кому и каким языком пишет агент A2. Задаётся в разделе «Контент и соцсети». Примеры: «агрономы зерновых хозяйств», «тепличные технологи», «владельцы виноградников», «питомниководы».')}
+            ${ent('🏷', 'Рубрика — угол поста', 'Тематический ракурс внутри сегмента: кейсы, советы агронома, цены рынка, анонсы. Выбирается у поста перед публикацией.')}
+            ${ent('🔗', 'Связка', 'Направление фильтрует материалы мониторинга по ключевым словам; сегмент задаёт язык, тон и CTA будущих постов. Рекомендация: одно направление → 1–3 сегмента.')}
+          </div>
+          <div>
+            <div class="label mb-2">Пошагово</div>
+            <div class="flex flex-col gap-3">
+              ${step(1, 'Создайте направление', '«Стратегия» → «+ Направление»: название и ключевые слова через запятую (пшеница, урожай, севок…). Если у источника нет своих слов, A1 использует слова активных направлений как фильтр релевантности.')}
+              ${step(2, 'Создайте сегмент', '«Контент и соцсети» → «+ Сегмент»: код (латиницей), название, кто аудитория, инструкция для A2 — стиль, акценты, призывы к действию.')}
+              ${step(3, 'Привяжите сегмент к источнику', '«Медиа-мониторинг» → «+ Источник»: выберите сегмент — все материалы источника унаследуют его, и A2 будет писать посты языком этого сегмента.')}
+              ${step(4, 'Проверьте результат', 'Материал → «В пост» → A2 пишет черновик языком сегмента. Кнопка «Переписать под сегмент/рубрику» перегенерирует текст (старая версия сохраняется в истории правок).')}
+            </div>
+          </div>
+          <div class="card-2 p-2 text-[12px]" style="color:var(--text-mute)">Пример: направление «Виноградники» (ключевые слова: виноград, лоза, милдью, урожай) → сегменты «технологи-виноградари» (обучающий тон, термины) и «владельцы хозяйств» (деловой тон, экономика) — по сегменту на каждый канал.</div>
+        </div>
+      `, null, { wide: true, noFooter: true });
+    },
     segState: { segments: [], rubrics: [], loaded: false },
     async segLoad() {
       const st = this.segState;
@@ -2295,7 +2342,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       catch (e) { this.toast(e.message || 'Ошибка', 'err'); }
     },
     async postRegen(id) {
-      const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
+      const p = (this.M.posts || []).find(x => String(x.id) === String(id)); if (!p) return;
       const sel = document.querySelector(`[data-post-seg="${id}"]`);
       const rub = document.querySelector(`[data-post-rub="${id}"]`);
       const segment = sel ? sel.value : '';
@@ -2311,7 +2358,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
 
     // §35: модалка отправки поста на TG-согласование (канал + срочность)
     async submitReviewModal(id) {
-      const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
+      const p = (this.M.posts || []).find(x => String(x.id) === String(id)); if (!p) return;
+      // П.6: карточка поста должна быть заполнена до отправки на публикацию
+      const miss = this.postMissingFields(p);
+      if (miss.length) { this.toast('Заполните перед отправкой на согласование: ' + miss.join(', '), 'err'); return; }
       let channels = [];
       try { channels = (await window.AGL.loadChannels()) || []; } catch (e) { channels = []; }
       const chOpts = channels.map(c =>
@@ -2331,7 +2381,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         </select>
         <div class="text-[12px]" style="color:var(--text-mute)">Руководителю в Telegram придёт пост с кнопками «Опубликовать / Правка / Отложить».</div>
       `, async () => {
-        const v = (id2) => document.getElementById(id2);
+          const v = (id2) => document.getElementById(id2);
         try {
           let channelId = null;
           if (v('m_ch')) channelId = v('m_ch').value ? parseInt(v('m_ch').value, 10) : null;
@@ -2343,6 +2393,8 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             });
             channelId = (ch && ch.data && ch.data.id) || (ch && ch.id) || null;
           }
+          // П.6: канал обязателен — без него кнопка публикации не сработает
+          if (!channelId) { this.toast('Выберите или задайте канал публикации', 'err'); return false; }
           const urg = v('m_urg').value;
           const r = await window.AGL.submitReview(id, {
             channel_id: channelId,
@@ -2357,11 +2409,14 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
 
     async postAct(id, act) {
-      const p = (this.M.posts || []).find(x => x.id === id); if (!p) return;
+      const p = (this.M.posts || []).find(x => String(x.id) === String(id)); if (!p) return;
       if (!p.api) {  // mock-режим
         if (act === 'approve') { p.status = 'одобрен'; this.toast('Пост одобрен в публикацию', 'ok'); }
         else if (act === 'rework') { p.status = 'на переработку'; this.toast('Возвращён на переработку', 'info'); }
-        else if (act === 'reject') { p.status = 'отклонён'; this.toast('Пост отклонён', 'info'); }
+        // П.6: «Отклонить» автоматически кладёт пост в архив отклонённых —
+        // отдельная ручная кнопка «в архив» не нужна
+        else if (act === 'reject') { p.status = 'отклонён'; this.toast('Пост отклонён — перемещён в архив отклонённых', 'info'); }
+        if (act === 'reject' && String(this.postSel) === String(id)) this.postSel = null;
         this.render(); return;
       }
       // §21: живой конвейер — переходы через PATCH /v1/content/{id}
@@ -2373,11 +2428,14 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
                      scheduled: 'запланирован', published: 'опубликован',
                      rejected: 'отклонён', archived: 'архив' };
         p.apiStatus = upd.status; p.status = RU[upd.status] || upd.status;
-        this.toast(act === 'approve' ? 'Пост одобрен в публикацию' : 'Статус: ' + p.status, 'ok');
+        if (act === 'reject' && String(this.postSel) === String(id)) this.postSel = null;
+        this.toast(act === 'approve' ? 'Пост одобрен в публикацию'
+          : act === 'reject' ? 'Пост отклонён — перемещён в архив отклонённых'
+          : 'Статус: ' + p.status, 'ok');
       } catch (e) { this.toast(e.message || 'Не удалось сменить статус', 'err'); }
       this.render();
     },
-    postField(id, field, val) { const p = (this.M.posts || []).find(x => x.id === id); if (p) p[field] = val; },
+    postField(id, field, val) { const p = (this.M.posts || []).find(x => String(x.id) === String(id)); if (p) p[field] = val; },
     // §21: календарь публикаций (месяц) — посты по scheduled_at
     vContentCalendar(posts) {
       const RU_MON = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -2430,10 +2488,12 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     vContent() {
       const M = this.M;
       const posts = M.posts || [];
-      const sel = this.postSel ? posts.find(p => p.id === this.postSel) : null;
-      const cntAppr = posts.filter(p => p.status === 'согласование').length;
+      const sel = this.postSel ? posts.find(p => String(p.id) === String(this.postSel)) : null;
+      // П.6: очередь — только живые посты; опубликованные и отклонённые в архивах
+      const live = posts.filter(p => !this.isArchivedPost(p));
+      const cntAppr = live.filter(p => p.status === 'согласование').length;
       // левая колонка: очередь черновиков
-      const queue = posts.map(p => {
+      const queue = live.map(p => {
         const on = sel && sel.id === p.id;
         const badge = p.status === 'согласование'
           ? `<span class="pill text-[10px]" style="background:var(--err);color:#fff;border:0">согласование</span>`
@@ -2499,7 +2559,8 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           </div>`;
       }
       const tabBtn = (t, label) => `<button class="btn text-[12px] ${this.contentTab === t ? 'btn-accent' : ''}" data-ctab="${t}">${label}</button>`;
-      const calHtml = this.vContentCalendar(posts);
+      const calHtml = this.vContentCalendar(live);
+      const archHtml = this.vContentArchives(posts);
       // §37: справочник сегментов и рубрик (управляет контент-мейкер)
       if (!this.segState.loaded) { this.segLoad(); }
       const sg = this.segState;
@@ -2521,7 +2582,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       const segBlock = `<div class="card p-4">
         <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <div class="label">🎯 Сегменты аудитории · A2 пишет языком сегмента</div>
-          <button class="btn btn-accent text-[12px]" data-seg-add>+ Сегмент</button>
+          <div class="flex gap-1">
+            <button class="btn text-[12px]" data-seg-help>📖 Инструкция</button>
+            <button class="btn btn-accent text-[12px]" data-seg-add>+ Сегмент</button>
+          </div>
         </div>
         <div class="grid gap-2 mb-3" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${segCards}</div>
         <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
@@ -2534,17 +2598,40 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return `<div class="flex flex-col gap-3">
         <div class="card p-3 flex items-center justify-between gap-2 flex-wrap text-[13px]" style="color:var(--text-dim)">
           <span>✍️ Конвейер: черновики A2 → правка редактора → публикация A3. Красный бейдж «согласование» — требует решения.</span>
-          <span class="flex gap-1">${tabBtn('queue', 'Очередь')}${tabBtn('calendar', '📅 Календарь')}</span>
+          <span class="flex gap-1">${tabBtn('queue', 'Очередь')}${tabBtn('calendar', '📅 Календарь')}${tabBtn('archives', '🗂 Архивы')}</span>
         </div>
-        ${this.contentTab === 'calendar' ? calHtml : `
+        ${this.contentTab === 'calendar' ? calHtml : this.contentTab === 'archives' ? archHtml : `
         <div class="grid gap-3" style="grid-template-columns:300px 1fr">
           <div class="card p-3">
-            <div class="label mb-2">Очередь черновиков · ${posts.length} · 🔴 ${cntAppr}</div>
+            <div class="label mb-2">Очередь черновиков · ${live.length} · 🔴 ${cntAppr}</div>
             <div class="flex flex-col gap-2">${queue}</div>
           </div>
           <div class="card p-4">${editor}</div>
         </div>`}
         ${segBlock}
+      </div>`;
+    },
+    // П.6: архивы публикаций — опубликованные / отклонённые / ручной архив
+    vContentArchives(posts) {
+      const grp = (title, list, col) => `<div class="card p-4">
+        <div class="label mb-2">${title} · ${list.length}</div>
+        <div class="flex flex-col gap-2">${list.map(p => `<div class="card-2 p-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span>${p.icon || '📝'}</span>
+            <span class="text-[13px] font-medium flex-1 leading-snug">${this.esc(p.title)}</span>
+            <span class="pill text-[10px]" style="color:${col};border-color:${col}">${this.esc(p.status)}</span>
+          </div>
+          <div class="text-[11px] mt-1" style="color:var(--text-dim)">${this.esc(p.kind || '')}${p.slot ? ' · слот ' + this.esc(p.slot) : ''}${p.channel ? ' · ' + this.esc(p.channel) : ''}</div>
+        </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Пусто</div>'}</div>
+      </div>`;
+      const pub = posts.filter(p => p.apiStatus === 'published' || p.status === 'опубликован');
+      const rej = posts.filter(p => p.apiStatus === 'rejected' || p.status === 'отклонён');
+      const arc = posts.filter(p => p.apiStatus === 'archived' || p.status === 'архив');
+      return `<div class="flex flex-col gap-3">
+        ${grp('✅ Архив опубликованных', pub, 'var(--ok)')}
+        ${grp('🚫 Архив отклонённых', rej, 'var(--err)')}
+        ${grp('📦 Архив (вручную)', arc, 'var(--text-mute)')}
+        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Посты попадают сюда автоматически: «Опубликовать» — в архив опубликованных, «Отклонить» — в архив отклонённых (без ручных действий). История публикаций доступна и из «Медиа-мониторинга» → «🗂 Архивы публикаций».</div>
       </div>`;
     },
     // ======== ЧАНК 6.9: ВХОДЯЩИЕ (лента Telegram/уведомлений → быстрое создание объекта) ========
@@ -3700,111 +3787,38 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       return { groups, total: matched.length, q };
     },
     // Первый результат (для Enter)
-    cmdkFirst() {
-      const r = this.cmdkResults();
-      for (const g of r.groups) { if (g.items.length) return g.items[0]; }
-      return null;
-    },
-
-    // ======== ЧАНК 6.20 — раздел 2: vCmdk (палитра поиска, императивный overlay) ========
-    // Подсветка совпадений подстроки
-    cmdkHl(text, q) {
-      const s = this.esc(text || '');
-      if (!q) return s;
-      const lc = s.toLowerCase(), ql = q.toLowerCase();
-      let out = '', i = 0;
-      while (true) {
-        const p = lc.indexOf(ql, i);
-        if (p === -1) { out += s.slice(i); break; }
-        out += s.slice(i, p) + '<mark style="background:var(--accent-soft,#fde68a);color:inherit;border-radius:3px;padding:0 1px">' + s.slice(p, p + ql.length) + '</mark>';
-        i = p + ql.length;
-      }
-      return out;
-    },
-    // Внутренний HTML палитры (поле + результаты)
-    cmdkInnerHtml() {
-      const r = this.cmdkResults();
-      const q = r.q;
-      let body = '';
-      if (!q) {
-        // Пустой запрос → подсказка по фасетам
-        const facets = [['🎯', 'Цели'], ['📁', 'Проекты'], ['👤', 'Клиенты'], ['🤝', 'Сделки'], ['✅', 'Задачи'], ['📄', 'Артефакты']];
-        body = `<div class="p-4 text-[13px]" style="color:var(--text-dim)">
-          <div class="mb-2">Начните вводить — поиск по всем объектам:</div>
-          <div class="flex flex-wrap gap-1.5">` +
-          facets.map(([ic, lb]) => `<span class="pill text-[12px]">${ic} ${lb}</span>`).join('') +
-          `</div><div class="mt-3 text-[11px]" style="color:var(--text-mute)">↑↓ Enter — открыть · Esc — закрыть</div></div>`;
-      } else if (!r.total) {
-        body = `<div class="p-6 text-center text-[13px]" style="color:var(--text-mute)">Ничего не найдено по «${this.esc(q)}»</div>`;
-      } else {
-        body = `<div class="max-h-[360px] overflow-auto py-1">` + r.groups.map(g => {
-          const items = g.items.map(o => `
-            <div class="cmdk-item flex items-center gap-2 px-3 py-2 cursor-pointer" data-go="${o.type}:${o.id}" style="border-radius:8px">
-              <span class="text-[15px]">${o.icon}</span>
-              <span class="flex-1 min-w-0">
-                <span class="block text-[13px] truncate">${this.cmdkHl(o.title, q)}</span>
-                <span class="block text-[11px] truncate" style="color:var(--text-mute)">${this.cmdkHl(o.sub, q)}</span>
-              </span>
-            </div>`).join('');
-          const more = g.more > 0 ? `<div class="px-3 py-1 text-[11px]" style="color:var(--text-mute)">+${g.more} ещё</div>` : '';
-          return `<div class="mb-1">
-            <div class="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide" style="color:var(--text-mute)">${g.icon} ${g.label} <span style="opacity:.6">${g.total}</span></div>
-            ${items}${more}
-          </div>`;
-        }).join('') + `</div>`;
-      }
-      return `<div class="card w-[560px] max-w-full" style="overflow:hidden">
-        <div class="flex items-center gap-2 px-3 py-2 border-b" style="border-color:var(--border)">
-          <span class="text-[15px]" style="color:var(--text-mute)">🔍</span>
-          <input id="cmdkInput" class="input flex-1 text-[14px]" style="border:0;background:transparent" placeholder="Поиск по объектам…" value="${this.esc(q)}" />
-          <button class="btn text-[12px]" id="cmdk_x">Esc</button>
-        </div>
-        ${body}
-      </div>`;
-    },
-    // Открыть/обновить overlay
-    cmdkRender() {
-      let m = document.getElementById('cmdkModal');
-      if (!m) { m = document.createElement('div'); m.id = 'cmdkModal'; document.body.appendChild(m); }
-      m.className = 'fixed inset-0 z-[60] flex items-start justify-center p-4';
-      m.style.background = 'rgba(0,0,0,.45)';
-      m.style.paddingTop = '12vh';
-      m.innerHTML = this.cmdkInnerHtml();
-      // overlay click closes
-      m.onclick = (e) => { if (e.target === m) this.cmdkClose(); };
-      // input live
-      const inp = document.getElementById('cmdkInput');
-      if (inp) {
-        inp.oninput = (e) => {
-          const pos = e.target.selectionStart;
-          this.cmdkQuery = e.target.value;
-          this.cmdkRerender();
-          const ni = document.getElementById('cmdkInput');
-          if (ni) { ni.focus(); try { ni.setSelectionRange(pos, pos); } catch (_) { } }
-        };
-        inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
-      }
-      const xb = document.getElementById('cmdk_x'); if (xb) xb.onclick = () => this.cmdkClose();
-      // data-go items
-      m.querySelectorAll('[data-go]').forEach(n => {
-        n.onclick = (e) => {
-          e.stopPropagation();
-          const [t, id] = (n.getAttribute('data-go') || '').split(':');
-          this.cmdkClose();
-          this.go(t, id);
-        };
+    // ======== ЧАНК 6.20: палитра Ctrl/Cmd-K на Reka UI (js/ui-reka.js, $palette) ========
+    // Единый источник результатов: команды/сущности из paletteResults + фасетный индекс cmdkIndex
+    cmdkFetch(q) {
+      this.paletteQuery = q;
+      const out = this.paletteResults();
+      const seen = new Set(out.map(o => (o.title || '') + '|' + (o.sub || '')));
+      const ql = (q || '').trim().toLowerCase();
+      this.cmdkIndex().filter(o => !ql || o.hay.indexOf(ql) !== -1).slice(0, 12).forEach(o => {
+        const k = (o.title || '') + '|' + (o.sub || '');
+        if (seen.has(k)) return;
+        seen.add(k);
+        out.push({ icon: o.icon, kind: 'Переход', title: o.title, sub: o.sub, type: o.type, id: o.id });
       });
-    },
-    // Перерисовать только тело при вводе (overlay уже открыт)
-    cmdkRerender() {
-      const m = document.getElementById('cmdkModal'); if (!m) return;
-      this.cmdkRender();
+      return out.slice(0, 16);
     },
     cmdkToggle() { this.cmdkOpen ? this.cmdkClose() : this.cmdkShow(); },
-    cmdkShow() { this.cmdkOpen = true; this.cmdkQuery = ''; this.cmdkRender(); },
+    cmdkShow() {
+      this.cmdkOpen = true; this.cmdkQuery = '';
+      window.$palette.open({
+        placeholder: 'Поиск по клиентам, сделкам, задачам, целям, проектам…',
+        fetch: (q) => this.cmdkFetch(q),
+        onPick: (it) => {
+          this.cmdkClose();
+          if (it.act) this.paletteAct(it.act);
+          else if (it.go) this.paletteGo(it.go);
+          else if (it.type) this.go(it.type, it.id);
+        },
+      });
+    },
     cmdkClose() {
       this.cmdkOpen = false; this.cmdkQuery = '';
-      const m = document.getElementById('cmdkModal'); if (m) m.remove();
+      window.$palette.close();
     },
     // Алиасы для кнопки в шапке (@click="paletteOpen()")
     paletteOpen() { this.cmdkShow(); },
@@ -4409,7 +4423,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
 
     // ======== §20: МЕДИА-МОНИТОРИНГ (A1) ========
     newsState: {
-      help: false,
+      help: false, srcOpen: false,
       items: [], total: 0, limit: 30, offset: 0,
       status: '', loading: false, loaded: false, scanning: false,
     },
@@ -4520,11 +4534,22 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         await window.AGL.patchNews(id, status);
         const it = this.newsState.items.find(x => x.id === id);
         if (it) it.status = status;
-        this.toast('Статус обновлён', 'ok');
+        // П.5: отклонённый материал НЕ архивируется — остаётся во вкладке
+        // «Отклонённые» (архивы публикаций отдельные, у постов в «Контенте»)
+        this.toast(status === 'rejected' ? 'Материал отклонён (вкладка «Отклонённые»)' : 'Статус обновлён', 'ok');
         this.render();
       } catch (e) {
         this.toast(e.message || 'нет прав на смену статуса', 'err');
       }
+    },
+    // П.5: справка — модальное окно (не подменяет ленту)
+    newsHelpShow() {
+      this.openModal('Справка · Медиа-мониторинг', this.vNewsHelp(), null, { wide: true, noFooter: true });
+    },
+    // П.6: история публикаций — архивы в разделе «Контент»
+    newsArchives() {
+      this.contentTab = 'archives';
+      this.go('content');
     },
 
     // §18 — «Справочник» (Блок B): read-only дерево поверх реестров.
@@ -4650,38 +4675,63 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
 
     vMonitoring() {
-      // §34: блок MIA — погода и агрорекомендации (сверху, живой источник)
+      // §34: блок MIA — погода и агрорекомендации (сверху, живой источник).
+      // П.2 доработки 24.09: презентация по макету — «герой»-шапка с крупной
+      // температурой, полоса метрик, риски/окна, рекомендации, сетка горизонтов.
       const mws = this.meteoState;
       if (!mws.loaded) { this.meteoLoad(); }
+      const wIcon = (m) => (m.precip_sum == null) ? '🌤' : (m.precip_sum > 5 ? '🌧' : m.precip_sum > 0 ? '🌦' : (m.temp_min != null && m.temp_min < 0 ? '❄️' : '⛅'));
+      const metricCell = (label, val, hint) => `<div class="card-2 p-2 text-center" style="min-width:110px">
+        <div style="font-size:17px;font-weight:600;line-height:1.2">${val}</div>
+        <div class="label" style="margin-top:2px">${label}</div>${hint ? `<div class="text-[10px]" style="color:var(--text-mute)">${hint}</div>` : ''}
+      </div>`;
       const meteoCards = (mws.items || []).map(it => {
         const r = it.last_run;
         const m = (r && r.metrics) || {};
         const crit = r && r.critical;
         const col = !r ? 'var(--text-mute)' : crit ? 'var(--err)' : (r.risks || []).length ? 'var(--warn)' : 'var(--ok)';
-        const hBtns = (it.sub.horizons || [24]).map(h =>
-          `<button class="btn text-[11px]" data-meteo-run="${it.sub.point_id}|${it.sub.crop_code}|${h}">▶ ${h}ч</button>`).join(' ');
-        const summary = r && r.summary
-          ? `<div class="text-[12px] mt-1 whitespace-pre-line" style="color:var(--text-dim)">${this.esc(r.summary).slice(0, 900)}</div>`
-          : '<div class="text-[12px] mt-1" style="color:var(--text-mute)">прогонов ещё не было</div>';
         const risks = ((r && r.risks) || []).map(x =>
-          `<span class="pill text-[10px]" style="color:${x.severity === 'critical' ? 'var(--err)' : 'var(--warn)'};border-color:${x.severity === 'critical' ? 'var(--err)' : 'var(--warn)'}">${this.esc(x.metric)} ${x.op} ${x.threshold}</span>`).join(' ');
+          `<span class="pill text-[10px]" style="color:${x.severity === 'critical' ? 'var(--err)' : 'var(--warn)'};border-color:${x.severity === 'critical' ? 'var(--err)' : 'var(--warn)'}">⚠ ${this.esc(x.metric)} ${x.op} ${x.threshold}</span>`).join(' ');
         const winds = ((r && r.windows) || []).map(x =>
-          `<span class="pill text-[10px]" style="color:var(--ok);border-color:var(--ok)">${this.esc(x.metric)} ${x.op} ${x.threshold}</span>`).join(' ');
-        return `<div class="card-2 p-3">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span style="color:${col}">●</span>
-            <span class="text-sm font-medium">🌤 ${this.esc(it.point_name || ('пункт ' + it.sub.point_id))} · ${this.esc(it.sub.crop_code)}</span>
-            <span class="pill text-[10px]">${this.esc(m.phase || '—')}</span>
-            ${crit ? '<span class="pill text-[10px]" style="color:var(--err);border-color:var(--err)">критично</span>' : ''}
-            <span class="flex-1"></span>
-            ${hBtns}
+          `<span class="pill text-[10px]" style="color:var(--ok);border-color:var(--ok)">✓ ${this.esc(x.metric)} ${x.op} ${x.threshold}</span>`).join(' ');
+        const tempBig = (m.temp_min != null)
+          ? `${m.temp_min}…${m.temp_max}°C`
+          : '<span style="color:var(--text-mute)">— прогонов не было</span>';
+        const hCards = (it.sub.horizons || [24]).map(h =>
+          `<div class="card-2 p-2 text-center" style="min-width:96px">
+            <div class="label">${h} ч</div>
+            <button class="btn text-[11px] mt-1" data-meteo-run="${it.sub.point_id}|${it.sub.crop_code}|${h}">▶ Обновить</button>
+          </div>`).join('');
+        return `<div class="card p-4" style="${crit ? 'border-color:var(--err)' : ''}">
+          <div class="flex items-start gap-3 flex-wrap">
+            <span style="font-size:34px;line-height:1">${wIcon(m)}</span>
+            <div style="flex:1;min-width:220px">
+              <div style="font-size:16px;font-weight:600">${this.esc(it.point_name || ('пункт ' + it.sub.point_id))} <span style="color:var(--text-dim);font-weight:400">· ${this.esc(it.sub.crop_code)}</span></div>
+              <div class="flex items-center gap-1 flex-wrap mt-1">
+                <span class="pill text-[10px]">фенофаза: ${this.esc(m.phase || '—')}</span>
+                ${crit ? '<span class="pill text-[10px]" style="color:var(--err);border-color:var(--err)">критично</span>' : ''}
+                ${r && r.telegram_sent ? '<span class="pill text-[10px]" style="color:var(--ok);border-color:var(--ok)">📨 отправлено в TG</span>' : ''}
+              </div>
+              <div class="text-[11px] mt-1" style="color:var(--text-mute)">${r ? 'обновлено ' + this.esc((r.ran_at || '').slice(0, 16).replace('T', ' ')) + ' МСК' : 'данных пока нет'}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:30px;font-weight:600;line-height:1;color:${col}">${tempBig}</div>
+            </div>
           </div>
-          <div class="text-[11px] mt-1" style="color:var(--text-mute)">
-            ${m.temp_min != null ? `t ${m.temp_min}…${m.temp_max} °C · осадки ${m.precip_sum} мм · ветер до ${m.wind_max} м/с · влажность ${m.humidity_avg}% · ` : ''}
-            ${(r && r.ran_at || '').slice(0, 16).replace('T', ' ')}${r && r.telegram_sent ? ' · 📨 в TG' : ''}
+          <div class="flex flex-wrap gap-2 mt-3">
+            ${metricCell('осадки', (m.precip_sum != null ? m.precip_sum + ' мм' : '—'), 'за горизонт')}
+            ${metricCell('ветер', (m.wind_max != null ? 'до ' + m.wind_max + ' м/с' : '—'), 'максимум')}
+            ${metricCell('влажность', (m.humidity_avg != null ? m.humidity_avg + '%' : '—'), 'средняя')}
+            ${metricCell('риски', (r ? (r.risks || []).length : '—'), ((r && r.windows) || []).length + ' благоприятных окон')}
           </div>
-          ${risks || winds ? `<div class="flex flex-wrap gap-1 mt-1">${risks} ${winds}</div>` : ''}
-          ${summary}
+          ${risks || winds ? `<div class="flex flex-wrap gap-1 mt-2">${risks} ${winds}</div>` : ''}
+          ${r && r.summary ? `<div class="mt-2 card-2 p-2">
+            <div class="label mb-1">📋 Агрорекомендации MIA</div>
+            <div class="text-[12px] whitespace-pre-line" style="color:var(--text-dim)">${this.esc(r.summary).slice(0, 900)}</div>
+          </div>` : ''}
+          <div class="flex flex-wrap gap-2 mt-3 items-center">
+            <span class="label">горизонты прогноза</span>${hCards}
+          </div>
         </div>`;
       }).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Подписок нет — добавьте ниже (пункт + культура).</div>';
       const meteoBlock = `<div class="card p-4">
@@ -4693,63 +4743,88 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         </div>
         <div class="text-[11px] mb-2" style="color:var(--text-mute)">Прогноз Open-Meteo → правила культуры и фенофазы → резюме «плюсы/минусы/рекомендации». Расписание: 24 ч — ежедневно 06:00 МСК, 72 ч — пн/чт, 120 ч — пн.</div>
         <div class="flex flex-col gap-2">${meteoCards}</div>
-        <div class="mt-3 flex flex-wrap gap-2 items-end">
-          <div class="flex flex-col gap-1">
-            <span class="label text-[10px]">пункт: название / lat / lon</span>
-            <div class="flex gap-1">
-              <input class="inp text-[12px]" style="width:150px" placeholder="ЮБК — Ялта" data-meteo-pname>
-              <input class="inp text-[12px]" style="width:80px" placeholder="44.495" data-meteo-plat>
-              <input class="inp text-[12px]" style="width:80px" placeholder="34.166" data-meteo-plon>
-              <button class="btn text-[12px]" data-meteo-padd>+ пункт</button>
+        <details class="mt-3">
+          <summary class="btn text-[12px]" style="display:inline-block;cursor:pointer">⚙ Управление подписками MIA</summary>
+          <div class="mt-2 flex flex-wrap gap-2 items-end">
+            <div class="flex flex-col gap-1">
+              <span class="label text-[10px]">пункт: название / lat / lon</span>
+              <div class="flex gap-1">
+                <input class="inp text-[12px]" style="width:150px" placeholder="ЮБК — Ялта" data-meteo-pname>
+                <input class="inp text-[12px]" style="width:80px" placeholder="44.495" data-meteo-plat>
+                <input class="inp text-[12px]" style="width:80px" placeholder="34.166" data-meteo-plon>
+                <button class="btn text-[12px]" data-meteo-padd>+ пункт</button>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="label text-[10px]">культура: код / название</span>
+              <div class="flex gap-1">
+                <input class="inp text-[12px]" style="width:90px" placeholder="vine" data-meteo-ccode>
+                <input class="inp text-[12px]" style="width:130px" placeholder="Виноград" data-meteo-cname>
+                <button class="btn text-[12px]" data-meteo-cadd>+ культура</button>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="label text-[10px]">подписка: пункт# / код культуры / горизонты</span>
+              <div class="flex gap-1">
+                <input class="inp text-[12px]" style="width:60px" placeholder="1" data-meteo-spoint>
+                <input class="inp text-[12px]" style="width:90px" placeholder="vine" data-meteo-scrop>
+                <input class="inp text-[12px]" style="width:110px" placeholder="24,72,120" data-meteo-shor>
+                <button class="btn btn-accent text-[12px]" data-meteo-sadd>+ подписка</button>
+              </div>
             </div>
           </div>
-          <div class="flex flex-col gap-1">
-            <span class="label text-[10px]">культура: код / название</span>
-            <div class="flex gap-1">
-              <input class="inp text-[12px]" style="width:90px" placeholder="vine" data-meteo-ccode>
-              <input class="inp text-[12px]" style="width:130px" placeholder="Виноград" data-meteo-cname>
-              <button class="btn text-[12px]" data-meteo-cadd>+ культура</button>
-            </div>
-          </div>
-          <div class="flex flex-col gap-1">
-            <span class="label text-[10px]">подписка: пункт# / код культуры / горизонты</span>
-            <div class="flex gap-1">
-              <input class="inp text-[12px]" style="width:60px" placeholder="1" data-meteo-spoint>
-              <input class="inp text-[12px]" style="width:90px" placeholder="vine" data-meteo-scrop>
-              <input class="inp text-[12px]" style="width:110px" placeholder="24,72,120" data-meteo-shor>
-              <button class="btn btn-accent text-[12px]" data-meteo-sadd>+ подписка</button>
-            </div>
-          </div>
-        </div>
+        </details>
       </div>`;
 
-      const rows = (this.M.sources || []).map(s => `<div class="card-2 p-3 flex items-center gap-3">
-        <span style="color:${s.active ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
-        <span class="pill">${s.type}</span>
-        <div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">${this.esc(s.url || '')}${s.handle ? ' · ' + this.esc(s.handle) : ''}</div><div class="text-[12px]" style="color:var(--text-dim)">${s.active ? 'активен' : 'пауза'} ${(s.keywords||[]).map(k=>`<span class="pill text-[10px]">${this.esc(k)}</span>`).join('')}</div></div>
-        <button class="btn text-[12px]" data-src-scan="${s.id}">Проверить</button>
-        <button class="btn text-[12px]" data-src-toggle="${s.id}">${s.active ? 'Пауза' : 'Вкл'}</button>
-      </div>`).join('');
-      // §17.6 — живая лента наблюдений вместо мок-сигналов.
+      // П.1/П.3 доработки 24.09: события «Прогноз погоды» (MIA) и «Упоминание
+      // в интернете» (A1) выводятся в общую ленту «Результаты мониторинга»
+      // вместе с наблюдениями поставщиков. У события — тональность и ссылка.
+      if (!this.newsState.loaded) { this.newsLoad(); }
+      const evExtra = []
+        .concat((mws.items || []).filter(it => it.last_run).slice(0, 3).map(it => ({
+          kind: '🌤 Прогноз погоды', level: it.last_run.critical ? 'critical' : ((it.last_run.risks || []).length ? 'warning' : 'info'),
+          message: `Прогноз погоды · ${it.point_name || ('пункт ' + it.sub.point_id)} (${it.sub.crop_code}): ${((it.last_run.summary || '').split('\n')[0] || 'обновлён').slice(0, 140)}`,
+          tone: null, url: null, source: 'MIA · Open-Meteo', created_at: it.last_run.ran_at || '',
+        })))
+        .concat(((this.newsState.items || []).filter(n => n.status === 'new' || n.status === 'selected').slice(0, 5)).map(n => ({
+          kind: '🌐 Упоминание в интернете', level: 'info',
+          message: n.title, tone: n.tone || null, url: n.url || null,
+          source: 'A1 · медиа-мониторинг', created_at: n.fetched_at || '',
+        })));
+      // §17.6 + П.3: карточка результата — событие/упоминание бренда с
+      // тональностью и ссылкой на источник; показатели (цены, температура
+      // и пр.) не выводятся.
       const mst = this.monState;
       if (!mst.loaded) { this.monLoad(); }
       const L = this.MON_LEVEL_UI;
-      const fmtVal = (o) => (o.value === null || o.value === undefined)
-        ? '' : `${o.value}${o.unit ? ' ' + this.esc(o.unit) : ''}`;
-      const obsRows = mst.items.map(o => {
-        const ui = L[o.level] || { label: o.level || '—', col: 'var(--text-mute)' };
-        const focus = (o.matched_focus || [])
-          .map(f => `<span class="pill text-[10px]">${this.esc(f)}</span>`).join('');
-        const val = fmtVal(o);
+      const TONE_UI = { neg: { label: 'негатив', col: 'var(--err)' }, pos: { label: 'позитив', col: 'var(--ok)' }, neutral: { label: 'нейтрально', col: 'var(--text-dim)' } };
+      const extraVisible = (mst.offset === 0) ? evExtra.filter(e => !mst.level || e.level === mst.level) : [];
+      const evCard = (e) => {
+        const ui = L[e.level] || { label: e.level || '—', col: 'var(--text-mute)' };
+        const t = e.tone ? (TONE_UI[e.tone] || TONE_UI.neutral) : null;
         return `<div class="card-2 p-3 flex items-start gap-3">
           <span class="shrink-0" style="color:${ui.col}">●</span>
           <div class="flex-1 min-w-0">
-            <div class="text-sm">${this.esc(o.message || o.parameter || '')}</div>
-            <div class="text-[12px]" style="color:var(--text-dim)">${this.esc(o.source || '')}${o.parameter ? ' · ' + this.esc(o.parameter) : ''}${val ? ' · ' + val : ''} · ${(o.created_at || '').slice(0, 10)} ${focus}</div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="pill text-[10px]">${this.esc(e.kind)}</span>
+              ${t ? `<span class="pill text-[10px]" style="color:${t.col};border-color:${t.col}">тональность: ${t.label}</span>` : ''}
+            </div>
+            <div class="text-sm mt-1 leading-snug">${this.esc(e.message || '')}</div>
+            <div class="text-[12px] mt-0.5 flex items-center gap-2 flex-wrap" style="color:var(--text-dim)">
+              ${e.source ? this.esc(e.source) : ''} · ${(e.created_at || '').slice(0, 16).replace('T', ' ')}
+              ${e.url ? `<a href="${this.esc(e.url)}" target="_blank" rel="noopener" class="underline" style="color:var(--accent)">открыть источник →</a>` : ''}
+            </div>
           </div>
           <span class="pill whitespace-nowrap shrink-0" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span>
         </div>`;
-      }).join('') || this.empty();
+      };
+      const obsRows = extraVisible.map(evCard).join('')
+        + mst.items.map(o => evCard({
+          kind: o.category ? ('📡 ' + o.category) : '📡 Наблюдение',
+          level: o.level, message: o.message, tone: o.tone || null, url: o.url || null,
+          source: o.source, created_at: o.created_at,
+        })).join('') || this.empty();
+      const shownTotal = extraVisible.length + mst.items.length;
 
       const S = mst.stats.by_level || {};
       const lvlTab = (val, label, n) =>
@@ -4764,7 +4839,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         ${meteoBlock}
         <div class="card p-4">
           <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <div class="label">Наблюдения · ${mst.total}</div>
+            <div class="label">Результаты мониторинга · ${shownTotal}</div>
             <div class="flex flex-wrap gap-1">
               ${lvlTab('', 'Все', mst.stats.total)}${lvlTab('critical', 'Критично', S.critical)}${lvlTab('warning', 'Внимание', S.warning)}${lvlTab('info', 'Инфо', S.info)}${lvlTab('ok', 'Норма', S.ok)}
             </div>
@@ -4777,11 +4852,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <button class="btn text-[12px]" data-mon-page="1" ${mst.offset + mst.limit >= mst.total ? 'disabled' : ''}>Вперёд →</button>
           </div>
         </div>
-        <div class="card p-4">
-          <div class="flex items-center justify-between mb-3"><div class="label">Источники · ${this.M.sources.length}</div><button class="btn btn-accent text-[13px]" data-src-add>+ Источник</button></div>
-          <div class="flex flex-col gap-2">${rows}</div>
-        </div>
-        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Наблюдения приходят от внешних поставщиков (погода, NDVI, новости, цены) и доступны только на чтение. Пометки — совпадения с monitoring_focus задач стратегии. Кнопка «Проверить» у источника — задел под живой скан, пока не активна.</div>
+        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Результаты мониторинга: события прогнозов погоды (агент MIA) и упоминания в интернете (агент A1) + наблюдения внешних поставщиков. У каждого события — тональность и ссылка на первоисточник, если поставщик их отдаёт. Управление источниками перенесено в раздел «Медиа-мониторинг».</div>
       </div>`;
     },
     // §20.6 — экран «Медиа-мониторинг»: лента NewsItem + ручной скан
@@ -4832,7 +4903,19 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <button class="btn text-[12px]" data-src-add>+ Источник</button>
         <select id="newsSrcSelect" class="inp text-[12px]" style="width:auto;min-width:200px">${srcOpts || '<option value="">нет источников</option>'}</select>
         <button class="btn text-[12px]" data-src-del style="color:var(--err)">✕ Удалить источник (с новостями)</button>
+        <button class="btn text-[12px]" data-news-src-list>${st.srcOpen ? '▾' : '▸'} Источники · ${(this.M.sources || []).length}</button>
       </div>`;
+      // П.4 доработки 24.09: список источников перенесён из «Мониторинга», сворачивается
+      const srcRows = (this.M.sources || []).map(s => `<div class="card-2 p-3 flex items-center gap-3">
+        <span style="color:${s.active ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
+        <span class="pill">${this.esc(s.type)}</span>
+        <div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">${this.esc(s.url || '')}${s.handle ? ' · ' + this.esc(s.handle) : ''}</div><div class="text-[12px]" style="color:var(--text-dim)">${s.active ? 'активен' : 'пауза'} ${(s.keywords || []).map(k => `<span class="pill text-[10px]">${this.esc(k)}</span>`).join('')}</div></div>
+        <button class="btn text-[12px]" data-src-scan="${s.id}">Проверить</button>
+        <button class="btn text-[12px]" data-src-toggle="${s.id}">${s.active ? 'Пауза' : 'Вкл'}</button>
+      </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Источников нет</div>';
+      const srcList = st.srcOpen
+        ? `<div class="card-2 p-3 mb-2"><div class="label mb-2">Подключённые источники</div><div class="flex flex-col gap-2">${srcRows}</div></div>`
+        : '';
       const tab = (val, label) =>
         `<button class="btn text-[12px] ${st.status === val ? 'btn-accent' : ''}" data-news-filter="${val}">${label}</button>`;
       const from = st.total ? st.offset + 1 : 0;
@@ -4843,18 +4926,19 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <div class="label">Материалы · ${st.total}</div>
             <div class="flex flex-wrap gap-1">
               ${tab('new', 'Новые')}${tab('selected', 'В работе')}${tab('used', 'Использованные')}${tab('rejected', 'Отклонённые')}
-              <button class="btn text-[12px] ${st.help ? 'btn-accent' : ''}" data-news-help>📖 Справка</button>
+              <button class="btn text-[12px]" data-news-help>📖 Справка</button>
+              <button class="btn text-[12px]" data-news-archives>🗂 Архивы публикаций</button>
               <button class="btn btn-accent text-[12px]" data-news-scan ${st.scanning ? 'disabled' : ''}>${st.scanning ? 'Сканирую…' : 'Сканировать сейчас'}</button>
             </div>
           </div>
-          ${st.help ? this.vNewsHelp() : `
           ${srcToolbar}
+          ${srcList}
           <div class="flex flex-col gap-2 mt-2">${rows}</div>
           <div class="flex items-center gap-2 mt-2 text-[12px]">
             <span>${from}-${to} из ${st.total}</span>
             <button class="btn text-[12px]" data-news-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
             <button class="btn text-[12px]" data-news-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
-          </div>`}
+          </div>
         </div>
         <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Материалы собирает агент A1 из подключённых источников (телеграм-каналы, RSS, сайты) раз в час и оценивает релевантность по ключевым словам источника. «В работу» — материал попадает в очередь конвейера контента (A2). Удаление источника удаляет и все его материалы (решение владельца).</div>
       </div>`;
@@ -4985,18 +5069,12 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
 
     // ======== ОБЩИЙ МОДАЛ (используется в 2.3-2.5) ========
     _modalSave: null,
-    openModal(title, bodyHtml, onSave) {
-      this._modalSave = onSave;
-      let m = document.getElementById('appModal');
-      if (!m) { m = document.createElement('div'); m.id = 'appModal'; document.body.appendChild(m); }
-      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
-      m.style.background = 'rgba(0,0,0,.5)';
-      m.innerHTML = `<div class="card w-[440px] max-w-full"><div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:var(--border)"><div class="text-sm font-semibold">${this.esc(title)}</div><button class="btn text-[12px]" id="m_x">✕</button></div><div class="p-4">${bodyHtml}</div><div class="flex justify-end gap-2 px-4 py-3 border-t" style="border-color:var(--border)"><button class="btn text-[13px]" id="m_cancel">Отмена</button><button class="btn btn-accent text-[13px]" id="m_ok">Сохранить</button></div></div>`;
-      document.getElementById('m_x').onclick = () => this.closeModal();
-      document.getElementById('m_cancel').onclick = () => this.closeModal();
-      document.getElementById('m_ok').onclick = () => { if (this._modalSave && this._modalSave() !== false) this.closeModal(); };
+    openModal(title, bodyHtml, onSave, opts) {
+      // Reka UI Dialog (js/ui-reka.js) — фокус-трап, Esc, клик-вне, ARIA.
+      // opts: { wide, noFooter, saveText, cancelText, locked }
+      window.$modal.open({ title, bodyHtml, onSave, ...(opts || {}) });
     },
-    closeModal() { const m = document.getElementById('appModal'); if (m) m.remove(); this._modalSave = null; },
+    closeModal() { window.$modal.close(); },
 
     // ======== ЧАНК 3.2: ГЛОБАЛЬНЫЙ ПОИСК (палитра Ctrl/Cmd-K) ========
     paletteQuery: '',
@@ -5018,35 +5096,11 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.M.packages.forEach(p => { if (!q || p.name.toLowerCase().includes(q)) out.push({ icon: '📦', kind: 'Упаковка', title: p.name, sub: 'от ' + this.money(p.priceFrom), go: 'packages' }); });
       return out.slice(0, 12);
     },
-    paletteOpen() {
-      this.paletteQuery = '';
-      let m = document.getElementById('appPalette');
-      if (!m) { m = document.createElement('div'); m.id = 'appPalette'; document.body.appendChild(m); }
-      m.className = 'fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh]';
-      m.style.background = 'rgba(0,0,0,.5)';
-      m.onclick = (e) => { if (e.target === m) this.paletteClose(); };
-      this.paletteRender();
-      this.$nextTick(() => { const f = document.getElementById('palInput'); if (f) f.focus(); });
-    },
-    paletteRender() {
-      const m = document.getElementById('appPalette'); if (!m) return;
-      const rs = this.paletteResults();
-      const rows = rs.length ? rs.map(r => `<div class="card-2 p-2 flex items-center gap-3 cursor-pointer" ${r.act ? `data-pal-act="${r.act}"` : `data-pal-go="${r.go}"`}><span class="text-lg">${r.icon}</span><div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">${this.esc(r.title)}</div><div class="text-[12px]" style="color:var(--text-dim)">${this.esc(r.sub)}</div></div><span class="pill text-[11px]">${r.kind}</span></div>`).join('') : `<div class="text-[13px] p-3 text-center" style="color:var(--text-mute)">Ничего не найдено</div>`;
-      m.innerHTML = `<div class="card w-[560px] max-w-full">
-        <div class="p-3 border-b" style="border-color:var(--border)"><input id="palInput" class="input w-full" placeholder="Поиск по клиентам, сделкам, задачам, упаковкам…" value="${this.esc(this.paletteQuery)}" /></div>
-        <div class="p-2 flex flex-col gap-1 max-h-[55vh] overflow-y-auto">${rows}</div>
-        <div class="px-3 py-2 border-t text-[11px]" style="border-color:var(--border);color:var(--text-mute)">Enter — первый результат · Esc — закрыть</div>
-      </div>`;
-      const inp = document.getElementById('palInput');
-      inp.oninput = (e) => { this.paletteQuery = e.target.value; const pos = e.target.selectionStart; this.paletteRender(); this.$nextTick(() => { const f = document.getElementById('palInput'); if (f) { f.focus(); try { f.setSelectionRange(pos, pos); } catch (_) { } } }); };
-      inp.onkeydown = (e) => { if (e.key === 'Enter') { const first = this.paletteResults()[0]; if (first) { if (first.act) this.paletteAct(first.act); else this.paletteGo(first.go); } } };
-      m.querySelectorAll('[data-pal-go]').forEach(n => n.onclick = () => this.paletteGo(n.getAttribute('data-pal-go')));
-      m.querySelectorAll('[data-pal-act]').forEach(n => n.onclick = () => this.paletteAct(n.getAttribute('data-pal-act')));
-    },
+    // Рендер палитры — на Reka UI: cmdkShow()/paletteOpen() открывают $palette,
+    // результаты формирует paletteResults() + cmdkFetch().
     paletteGo(arg) { const [r, a] = arg.split(':'); this.paletteClose(); this.go(r, a); },
     paletteAct(act) { this.paletteClose(); if (typeof this[act] === 'function') this.$nextTick(() => this[act]()); },
     owlOpenFromPalette() { this.owl.open = true; this.$nextTick(() => this.owlRender()); },
-    paletteClose() { const m = document.getElementById('appPalette'); if (m) m.remove(); },
 
     // ======== ЧАНК 6.11: РАБОЧИЕ НАСТРОЙКИ (грейды ПЕТРУШКА, гриф приватности/hybrid LLM, команда, инфра) ========
     settingsSetGrade(id, grade) {
@@ -5137,7 +5191,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="text-2xl font-semibold">Стратегия</div>
           <button class="btn btn-accent text-[13px]" data-dir-add>+ Направление</button>
         </div>
-        <div class="card p-3 text-[12px]" style="color:var(--text-dim)">Цепочка: направления → цели (KPI с прогрессом ±) → маркетинг. Ключевые слова направления — фильтр релевантности медиа-мониторинга A1 для источников без своих слов.</div>
+        <div class="card p-3 text-[12px] flex items-center justify-between gap-2 flex-wrap" style="color:var(--text-dim)">Цепочка: направления → цели (KPI с прогрессом ±) → маркетинг. Ключевые слова направления — фильтр релевантности медиа-мониторинга A1 для источников без своих слов.
+          <button class="btn text-[12px]" data-seg-help>📖 Инструкция по направлениям и сегментам</button>
+        </div>
         ${dirCards || '<div class="card p-4" style="color:var(--text-mute)">Направлений пока нет</div>'}
         ${freeGoals.length ? `<div class="card p-4"><div class="label mb-2">Цели без направления</div><div class="flex flex-col gap-2">${freeGoals.map(goalCard).join('')}</div></div>` : ''}
         ${this.vStrategyTasksBlock()}
@@ -5365,6 +5421,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       // §37: справочник сегментов/рубрик
       const segAdd = el.querySelector('[data-seg-add]'); if (segAdd) segAdd.onclick = () => this.segAdd();
+      const segHelp = el.querySelector('[data-seg-help]'); if (segHelp) segHelp.onclick = () => this.segHelpShow();
       const rubAdd = el.querySelector('[data-rub-add]'); if (rubAdd) rubAdd.onclick = () => this.rubAdd();
       el.querySelectorAll('[data-seg-del]').forEach(n => {
         n.onclick = () => this.segDel(parseInt(n.getAttribute('data-seg-del'), 10));
@@ -5468,9 +5525,14 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-news-filter]').forEach(b => {
         b.onclick = () => this.newsFilter(b.getAttribute('data-news-filter'));
       });
-      // §38: вкладка «Справка» медиа-мониторинга
+      // §38: справка медиа-мониторинга — модальным окном, лента не блокируется
       const nhelp = el.querySelector('[data-news-help]');
-      if (nhelp) nhelp.onclick = () => { this.newsState.help = !this.newsState.help; this.render(); };
+      if (nhelp) nhelp.onclick = () => this.newsHelpShow();
+      // П.4: сворачивание списка источников; П.6: архивы публикаций
+      const nsrc = el.querySelector('[data-news-src-list]');
+      if (nsrc) nsrc.onclick = () => { this.newsState.srcOpen = !this.newsState.srcOpen; this.render(); };
+      const narc = el.querySelector('[data-news-archives]');
+      if (narc) narc.onclick = () => this.newsArchives();
       el.querySelectorAll('[data-news-page]').forEach(b => {
         b.onclick = () => this.newsPage(parseInt(b.getAttribute('data-news-page'), 10));
       });

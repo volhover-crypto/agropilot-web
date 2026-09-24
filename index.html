@@ -18,15 +18,12 @@
   })();
   </script>
   <script>
-  /* Auth guard: show login modal if no token — runs after DEV-BYPASS above */
+  /* Auth guard: show login dialog (Reka UI) if no token — runs after DEV-BYPASS above */
   function initAuthGuard() {
     try {
       var ls = window['local'+'Storage'];
       var tk = ls.getItem('agropilot_token');
-      if (!tk) {
-        var modal = document.getElementById('loginModal');
-        if (modal) modal.style.display = 'flex';
-      }
+      if (!tk && window.$login) window.$login.open();
     } catch(e) {}
   }
 
@@ -41,7 +38,7 @@
     try {
       await AGL.login(login, pwd);
       try { sessionStorage.setItem('jarvis_authed', '1'); } catch(e) {}
-      document.getElementById('loginModal').style.display = 'none';
+      if (window.$modal) window.$modal.close();
       window.location.reload();
     } catch(e) {
       errEl.textContent = e.message || 'Ошибка входа';
@@ -54,6 +51,7 @@
   </script>
   <script>(function(){try{var st=window['local'+'Storage'];var t=(st&&st.getItem('agropilot_theme'))||'light';var r=document.documentElement;r.classList.remove('dark','light');r.classList.add(t);}catch(e){}})();</script>
   <link rel="stylesheet" href="css/tailwind-scanned.css?v=1789602844" />
+  <link rel="stylesheet" href="css/reka-ui.css?v=20260924" />
   <style>
     [x-cloak]{ display:none !important; }
     .cmdk-item:hover{ background:var(--accent-soft,rgba(0,0,0,.05)); }
@@ -230,45 +228,15 @@
     </aside>
   </div>
 
-  <!-- Login modal -->
-  <div id="loginModal" class="fixed inset-0 z-[100] flex items-center justify-center" style="display:none;background:rgba(0,0,0,.6)" x-cloak>
-    <div class="card p-6 w-[360px] max-w-[90vw]">
-      <div class="flex items-center gap-2 mb-4">
-        <img src="assets/apilot_icon.jpg" class="w-8 h-8" />
-        <div>
-          <div class="font-semibold">AgroPILOT</div>
-          <div class="label">Вход в систему</div>
-        </div>
-      </div>
-      <div class="space-y-3">
-        <div>
-          <div class="label mb-1">Логин</div>
-          <input id="loginInput" class="input w-full" placeholder="Логин" />
-        </div>
-        <div>
-          <div class="label mb-1">Пароль</div>
-          <input id="loginPassword" type="password" class="input w-full" placeholder="••••••••" />
-        </div>
-        <div id="loginError" class="text-sm" style="color:var(--err)" x-cloak></div>
-        <button id="loginBtn" class="btn btn-accent w-full" onclick="doLogin()">Войти</button>
-        </div>
-    </div>
-  </div>
-
-  <!-- toasts -->
-  <div class="fixed bottom-4 right-4 flex flex-col gap-2 z-50">
-    <template x-for="t in toasts" :key="t.id">
-      <div class="card px-3 py-2 text-sm flex items-center gap-2" :style="`border-color:${t.color}`">
-        <span :style="`color:${t.color}`" x-text="t.icon"></span><span x-text="t.msg"></span>
-      </div>
-    </template>
-  </div>
+  <!-- Логин-окно и тосты рендерятся Vue-слоем на Reka UI (js/ui-reka.js): $login / $toast -->
 
   <!-- Scripts: app dependencies first, Alpine last — ensures appObjects() is defined before Alpine initialises -->
   <script>window.DEV_MOCK = false;</script>
-  <script src="js/mock.objects.js?v=1789616100"></script>
+  <script src="js/vendor/vue-reka.bundle.js?v=20260924"></script>
+  <script src="js/ui-reka.js?v=20260924"></script>
+  <script src="js/mock.objects.js?v=20260924"></script>
   <script src="js/api.js?v=1789616100"></script>
-  <script src="js/app.objects.js?v=1789616102"></script>
+  <script src="js/app.objects.js?v=20260924"></script>
   <script src="js/alpine.min.js?v=1789616100" defer></script>
   <script>document.addEventListener('DOMContentLoaded', initAuthGuard);</script>
 </body>
