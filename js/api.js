@@ -276,6 +276,9 @@ const AGL = {
   async createChannel(data) {
     return apiFetch('/v1/channels', { method: 'POST', data });
   },
+  async patchChannel(id, data) {
+    return apiFetch('/v1/channels/' + id, { method: 'PATCH', data });
+  },
   // §37: сегменты аудитории и рубрики
   async loadSegments() { return safeLoad('/v1/segments', []); },
   async createSegment(data) { return apiFetch('/v1/segments', { method: 'POST', data }); },

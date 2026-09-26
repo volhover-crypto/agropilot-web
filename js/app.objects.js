@@ -401,6 +401,7 @@ await this._loadAiLayer();
         skills: 'Навыки команды',
         monitoring: 'Мониторинг событий',
         medianews: 'Медиа-мониторинг',
+        channels: 'Каналы публикации',
         catalog: 'Справочник',
         client: 'Карточка клиента',
         deal: 'Карточка сделки',
@@ -477,6 +478,7 @@ await this._loadAiLayer();
         else if (this.route === 'medianews') html = this.vMedianews();
         else if (this.route === 'catalog') html = this.vCatalog();
         else if (this.route === 'content') html = this.vContent();
+        else if (this.route === 'channels') html = this.vChannels();
         else if (this.route === 'team') html = this.vTeam();
         else if (this.route === 'skills') html = this.vSkills();
         else if (this.route === 'graph') html = this.vGraph();
@@ -4449,9 +4451,141 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
 
     newsFilter(status) {
       const st = this.newsState;
-      st.status = (st.status === status) ? '' : (status || '');
+      st.status = (st.status === status) ? (status || '') : '';
       st.offset = 0; this.newsLoad();
     },
+
+    // ======== §39: КАНАЛЫ ПУБЛИКАЦИИ — стена фреймов текущих каналов ========
+    channelsState: { items: [], loading: false, loaded: false },
+
+    async channelsLoad() {
+      const st = this.channelsState;
+      st.loading = true; st.loaded = true; this.render();
+      try { st.items = (await window.AGL.loadChannels()) || []; }
+      catch (e) { st.items = []; }
+      // демо-режим (без BFF): примеры, чтобы страница не была пустой
+      if (!st.items.length && !this.apiMode) {
+        st.items = [
+          { id: 1, type: 'telegram', name: 'Основной Telegram-канал', connection: { username: 'telegram' }, active: true, segment_code: null },
+          { id: 2, type: 'site', name: 'Сайт компании · новости', connection: { url: 'https://example.com' }, active: true, segment_code: null },
+          { id: 3, type: 'instagram', name: 'Instagram компании', connection: { url: 'https://www.instagram.com/instagram/' }, active: false, segment_code: null },
+        ];
+      }
+      st.loading = false; this.render();
+    },
+
+    // URL для iframe: сайт — connection.url, telegram — веб-лента t.me/s/<username>
+    channelEmbedUrl(c) {
+      const conn = c.connection || {};
+      if (conn.url) return conn.url;
+      const un = String(conn.username || '').replace(/^@/, '').trim();
+      if (c.type === 'telegram' && un) return 'https://t.me/s/' + un;
+      return null;
+    },
+    // внешняя ссылка «открыть» — работает даже когда фрейм невозможен
+    channelOpenUrl(c) {
+      const conn = c.connection || {};
+      if (conn.url) return conn.url;
+      const un = String(conn.username || '').replace(/^@/, '').trim();
+      if (c.type === 'telegram' && un) return 'https://t.me/' + un;
+      return null;
+    },
+
+    vChannels() {
+      const st = this.channelsState;
+      if (!st.loaded) { this.channelsLoad(); }
+      const TYPE_UI = {
+        telegram: { label: 'Telegram', ico: '✈️' },
+        instagram: { label: 'Instagram', ico: '📸' },
+        site: { label: 'Сайт', ico: '🌐' },
+      };
+      if (st.loading && !st.items.length) return `<div class="card p-8 text-center" style="color:var(--text-mute)">Загружаю каналы…</div>`;
+      const cards = st.items.map(c => {
+        const t = TYPE_UI[c.type] || { label: c.type, ico: '📡' };
+        const conn = c.connection || {};
+        const embed = this.channelEmbedUrl(c);
+        const open = this.channelOpenUrl(c);
+        // Instagram отдаёт X-Frame-Options — фрейм всегда пустой, показываем карточку-заглушку
+        const blocked = c.type === 'instagram';
+        const head = `<div class="flex items-center gap-2 flex-wrap mb-2">
+          <span title="${c.active ? 'активен' : 'пауза'}" style="color:${c.active ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
+          <span class="text-sm font-semibold truncate">${t.ico} ${this.esc(c.name)}</span>
+          <span class="pill text-[11px]" style="color:var(--text-dim)">${this.esc(t.label)}</span>
+          ${c.segment_code ? `<span class="pill text-[11px]" style="color:var(--info);border-color:var(--info)" title="сегмент аудитории">${this.esc(c.segment_code)}</span>` : ''}
+          <span class="flex-1"></span>
+          ${open ? `<a class="btn text-[11px]" href="${this.esc(open)}" target="_blank" rel="noopener">↗ Открыть</a>` : ''}
+          <button class="btn text-[11px]" data-ch-link="${c.id}" title="Указать публичное имя или URL для встраивания">✎ Ссылка</button>
+        </div>`;
+        const metaBits = [
+          conn.chat_id ? 'chat_id: ' + this.esc(String(conn.chat_id)) : '',
+          conn.username ? '@' + this.esc(String(conn.username).replace(/^@/, '')) : '',
+          conn.url ? this.esc(String(conn.url)) : '',
+        ].filter(Boolean).join(' · ');
+        const meta = `<div class="text-[11px] mono mb-2 truncate" style="color:var(--text-mute)">${metaBits || '— без подключения —'}</div>`;
+        let body;
+        if (blocked) {
+          body = `<div class="card-2 p-4 text-center text-[12px]" style="color:var(--text-dim)">Instagram не разрешает встраивание своих страниц во фреймы.<br>${open ? `<a class="underline" href="${this.esc(open)}" target="_blank" rel="noopener">Открыть ленту в новой вкладке ↗</a>` : 'Укажите ссылку кнопкой «✎ Ссылка».'}</div>`;
+        } else if (embed) {
+          body = `<iframe src="${this.esc(embed)}" loading="lazy" title="${this.esc(c.name)}" style="width:100%;height:420px;border:1px solid var(--border);border-radius:4px;background:var(--bg)"></iframe>`;
+        } else {
+          body = `<div class="card-2 p-4 text-center text-[12px]" style="color:var(--text-dim)">
+            Нет ссылки для встраивания: Telegram-каналы показываются по публичному имени (t.me/имя), сайты — по URL. Приватные каналы (только chat_id) встроить нельзя.<br>
+            <button class="btn btn-accent text-[11px] mt-2" data-ch-link="${c.id}">Указать ссылку</button>
+          </div>`;
+        }
+        return `<div class="card p-3">${head}${meta}${body}</div>`;
+      }).join('');
+      const list = st.items.length
+        ? `<div class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">${cards}</div>`
+        : `<div class="card p-8 text-center" style="color:var(--text-mute)"><div class="mb-2">Каналов публикации пока нет.</div><div class="text-[12px]">Канал создаётся при первой отправке поста на TG-согласование: «Контент и соцсети» → 📤 На согласование.</div></div>`;
+      return `<div class="flex flex-col gap-4">
+        <div class="card p-4 flex items-center justify-between gap-2 flex-wrap">
+          <div class="label">Каналы публикации · ${st.items.length}${!this.apiMode && st.items.length ? ' (демо)' : ''}</div>
+          <div class="flex gap-1">
+            <button class="btn text-[12px]" data-ch-refresh>⟳ Обновить</button>
+            <button class="btn text-[12px]" data-go="content:">К контенту и соцсетям</button>
+          </div>
+        </div>
+        ${list}
+        <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Встраивание: Telegram — веб-лента канала t.me/s/имя, сайты — прямая ссылка из connection.url. Instagram и приватные каналы (только chat_id) во фреймах не отображаются — для них кнопка «↗ Открыть». Кнопка «✎ Ссылка» дополняет канал публичным именем или URL (PATCH /v1/channels/{id}).</div>
+      </div>`;
+    },
+
+    // §39: дополнить канал публичной ссылкой для встраивания (@username или URL)
+    channelLinkModal(id) {
+      const c = this.channelsState.items.find(x => String(x.id) === String(id)); if (!c) return;
+      const conn = c.connection || {};
+      const cur = conn.url || (conn.username ? '@' + conn.username : '') || '';
+      this.openModal('✎ Ссылка для встраивания · ' + c.name, `
+        <label class="label">Публичное имя или URL</label>
+        <input id="m_churl" class="input w-full mb-2" placeholder="${c.type === 'telegram' ? '@имя_канала' : 'https://…'}" value="${this.esc(cur)}" />
+        <div class="text-[12px]" style="color:var(--text-mute)">${c.type === 'telegram'
+          ? 'Публичное имя канала (t.me/имя) — по нему строится веб-лента t.me/s/имя. Приватные каналы (только chat_id) встроить нельзя.'
+          : 'Полный URL страницы (http…); для Telegram-канала можно указать @имя.'}</div>
+      `, async () => {
+        const inp = document.getElementById('m_churl');
+        const val = ((inp && inp.value) || '').trim();
+        if (!val) { this.toast('Ссылка не задана', 'err'); return false; }
+        const patch = { connection: { ...conn } };
+        if (c.type === 'telegram' && /^@?[a-zA-Z][a-zA-Z0-9_]{3,}$/.test(val)) {
+          patch.connection.username = val.replace(/^@/, '');
+        } else {
+          if (!/^https?:\/\//i.test(val)) { this.toast('Нужен URL (http…) или @имя канала', 'err'); return false; }
+          patch.connection.url = val;
+        }
+        try {
+          if (this.apiMode && window.AGL && window.AGL.patchChannel) await window.AGL.patchChannel(c.id, patch);
+          c.connection = patch.connection;
+          this.toast('Ссылка канала обновлена', 'ok');
+          this.render();
+          return true;
+        } catch (e) {
+          this.toast(e.message || 'Не удалось сохранить', 'err');
+          return false;
+        }
+      });
+    },
+
 
     // ======== §34: MIA — погода и агрорекомендации ========
     meteoState: { items: [], loaded: false, send: false, busy: false },
@@ -5538,6 +5672,13 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       });
       el.querySelectorAll('[data-news-status]').forEach(b => {
         b.onclick = () => this.newsSetStatus(parseInt(b.getAttribute('data-news-id'), 10), b.getAttribute('data-news-status'));
+      });
+      // §39: каналы публикации — обновление стены и правка ссылки встраивания
+      el.querySelectorAll('[data-ch-refresh]').forEach(b => {
+        b.onclick = () => { this.channelsState.loaded = false; this.channelsLoad(); };
+      });
+      el.querySelectorAll('[data-ch-link]').forEach(b => {
+        b.onclick = () => this.channelLinkModal(b.getAttribute('data-ch-link'));
       });
       el.querySelectorAll('[data-ctab]').forEach(b => {
         b.onclick = () => this.contentSwitchTab(b.getAttribute('data-ctab'));
