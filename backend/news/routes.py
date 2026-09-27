@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from backend.common.deps import get_db, get_current_user
 from backend.common.errors import NotFoundError, ValidationError
 from backend.connectors.registry import eligible_sources_stmt, fetch_for_source
-from backend.news.models import NewsItem, Source
+from backend.news.models import NewsItem
 from backend.team.models import TeamMember
 
 news_router = APIRouter(prefix="/news", tags=["news"])
