@@ -232,9 +232,16 @@ if (fresh.length) {
             title: a.name || a.title || 'Артефакт',
             kind: a.kind || '',
             ext: a.ext || '',
-            date: a.date || '',
+            date: (a.date || a.created_at || '').slice(0, 10),
             status: a.status || '',
+            folderId: a.folder_id === undefined ? null : a.folder_id,
+            filename: a.filename || '',
+            mime: a.mime || '',
+            size: a.size || 0,
+            body: a.body || '',
           }));
+          // файловый менеджер: персистентные папки из API (миграция 040)
+          this.artLoadFolders();
 
           this.M.content = (content || []).map(c => ({
             id: c.id,
@@ -4226,20 +4233,45 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         : `<a class="underline cursor-pointer" data-art-go="${f.id}">${this.esc(f.name)}</a>`).join('<span style="color:var(--text-mute)"> › </span>');
       return `<div class="text-[13px] flex flex-wrap items-center gap-1" style="color:var(--text-dim)">${root}${rest ? '<span style="color:var(--text-mute)"> › </span>' + rest : ''}</div>`;
     },
-    artFileIcon(ext) { return ({ docx: '📄', pdf: '📕', pptx: '📊', xlsx: '📗' })[ext] || '📎'; },
+    artFileIcon(ext) {
+      return ({
+        docx: '📄', doc: '📄', pdf: '📕', pptx: '📊', ppt: '📊',
+        xlsx: '📗', xls: '📗', csv: '📗', txt: '📃', zip: '🗜',
+        png: '🖼', jpg: '🖼', jpeg: '🖼', gif: '🖼', webp: '🖼',
+        mp4: '🎬', mov: '🎬', webm: '🎬',
+      })[(ext || '').toLowerCase()] || '📎';
+    },
     artNav(id) { this.artFolder = id || null; this.render(); },
     artUp() { const f = this.artFolder ? this.folderById(this.artFolder) : null; this.artFolder = f ? f.parent : null; this.render(); },
     artNewFolder() {
       const here = this.artFolder ? this.folderById(this.artFolder) : null;
-      this.openModal('Новая папка', `
-        <div class="text-[12px] mb-2" style="color:var(--text-dim)">Родитель: ${here ? this.esc(here.name) : 'Артефакты (корень)'}</div>
-        <input id="artFolderName" class="input w-full" placeholder="Имя папки" />`,
-        () => {
-          const i = document.getElementById('artFolderName'); const name = (i && i.value || '').trim();
-          if (!name) { this.toast('Укажите имя папки', 'warn'); return false; }
-          this.M.folders.push({ id: 'F' + Date.now(), parent: this.artFolder, name });
-          this.toast('Папка «' + name + '» создана', 'ok'); this.render();
-        });
+      if (this.apiMode && window.AGL && AGL.token) {
+        this.openModal('Новая папка', `
+          <div class="text-[12px] mb-2" style="color:var(--text-dim)">Родитель: ${here ? this.esc(here.name) : 'Артефакты (корень)'}</div>
+          <input id="artFolderName" class="input w-full" placeholder="Имя папки" />`,
+          async () => {
+            const i = document.getElementById('artFolderName'); const name = (i && i.value || '').trim();
+            if (!name) { this.toast('Укажите имя папки', 'warn'); return false; }
+            try {
+              const r = await AGL.createFolder(name, here ? here.id : null);
+              const nf = r && r.data ? r.data : r;
+              if (nf && nf.id) {
+                this.M.folders.push({ id: nf.id, parent: nf.parent_id ?? null, name: nf.name });
+                this.toast('Папка «' + name + '» создана', 'ok'); this.render();
+              }
+            } catch (e) { this.toast('Ошибка: ' + (e && e.message), 'warn'); return false; }
+          });
+      } else {
+        this.openModal('Новая папка', `
+          <div class="text-[12px] mb-2" style="color:var(--text-dim)">Родитель: ${here ? this.esc(here.name) : 'Артефакты (корень)'}</div>
+          <input id="artFolderName" class="input w-full" placeholder="Имя папки" />`,
+          () => {
+            const i = document.getElementById('artFolderName'); const name = (i && i.value || '').trim();
+            if (!name) { this.toast('Укажите имя папки', 'warn'); return false; }
+            this.M.folders.push({ id: 'F' + Date.now(), parent: this.artFolder, name });
+            this.toast('Папка «' + name + '» создана', 'ok'); this.render();
+          });
+      }
       this.$nextTick(() => { const i = document.getElementById('artFolderName'); if (i) i.focus(); });
     },
     artUpload() {
@@ -4255,10 +4287,12 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         fd.append('file', f);
         fd.append('kind', 'other');
         fd.append('title', f.name);
+        if (this.apiMode && this.artFolder) fd.append('folder_id', String(this.artFolder)); // загрузка в текущую папку
         try {
           const res = await AGL.uploadArtifact(fd);
           if (res && res.ok) {
             this.toast('Файл «' + f.name + '» загружен', 'ok');
+            if (this.apiMode) { await this.artRefresh(); return; }
             const list = await AGL.loadArtifacts();
             if (list && list.data) {
               const mapped = list.data.map(a => ({
@@ -4295,9 +4329,140 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       if (!a) return;
       if (a.blobUri) {
         window.open(a.blobUri, '_blank');
+      } else if (a.body) {
+        // сгенерированный артефакт A5 без файла -- предпросмотр текста
+        this.openModal(this.esc(a.title), `
+          <div class="text-[12px] mb-2" style="color:var(--text-dim)">${a.kind} · ${a.date} · статус: ${this.esc(a.status || '—')}</div>
+          <div class="card-2 p-3 text-[13px]" style="white-space:pre-wrap;max-height:50vh;overflow:auto">${this.esc(a.body)}</div>`);
       } else {
-        this.toast('Файл недоступен (нет blobUri)', 'warn');
+        this.toast('Файл недоступен (нет файла на диске)', 'warn');
       }
+    },
+    // ======== ФАЙЛОВЫЙ МЕНЕДЖЕР АРТЕФАКТОВ (API, миграция 040) ========
+    async artLoadFolders() {
+      if (!this.apiMode || !window.AGL || !AGL.token) return;
+      try {
+        const list = await AGL.loadFolders();
+        this.M.folders.splice(0, this.M.folders.length,
+          ...(list || []).map(f => ({ id: f.id, parent: f.parent_id ?? null, name: f.name })));
+      } catch (e) { console.warn('[AGL] loadFolders skipped:', e && e.message); }
+    },
+    async artRefresh() {
+      if (!this.apiMode || !window.AGL || !AGL.token) { this.render(); return; }
+      try {
+        const list = await AGL.loadArtifacts();
+        const items = (list && list.data) || list || [];
+        this.M.artifacts.splice(0, this.M.artifacts.length, ...items.map(a => ({
+          id: a.id,
+          blobUri: a.blob_uri || '',
+          type: a.type || '',
+          title: a.name || a.title || 'Артефакт',
+          kind: a.kind || '',
+          ext: a.ext || '',
+          date: (a.date || a.created_at || '').slice(0, 10),
+          status: a.status || '',
+          folderId: a.folder_id === undefined ? null : a.folder_id,
+          filename: a.filename || '',
+          mime: a.mime || '',
+          size: a.size || 0,
+          body: a.body || '',
+          dealId: a.deal_id || a.dealId || '',
+        })));
+        await this.artLoadFolders();
+      } catch (e) { this.toast('Не удалось обновить список: ' + (e && e.message), 'warn'); }
+      this.render();
+    },
+    fmtSize(b) {
+      if (!b) return '';
+      if (b < 1024) return b + ' Б';
+      if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' КБ';
+      return (b / 1024 / 1024).toFixed(1) + ' МБ';
+    },
+    artDownload(id) {
+      const a = this.M.artifacts.find(x => String(x.id) === String(id));
+      if (!a) return;
+      if (a.blobUri) { window.open(a.blobUri, '_blank'); return; }
+      this.toast('Файла нет на диске', 'warn');
+    },
+    artRename(id) {
+      const a = this.M.artifacts.find(x => String(x.id) === String(id));
+      if (!a) return;
+      if (!this.apiMode) { this.toast('В демо-режиме переименование недоступно', 'warn'); return; }
+      this.openModal('Переименовать', `
+        <input id="artRenameInput" class="input w-full" value="${this.esc(a.title)}" />`,
+        async () => {
+          const i = document.getElementById('artRenameInput');
+          const name = (i && i.value || '').trim();
+          if (!name) { this.toast('Укажите имя', 'warn'); return false; }
+          try {
+            await AGL.patchArtifact(a.id, { title: name });
+            this.toast('Переименовано', 'ok'); this.artRefresh();
+          } catch (e) { this.toast('Ошибка: ' + (e && e.message), 'warn'); return false; }
+        });
+      this.$nextTick(() => { const i = document.getElementById('artRenameInput'); if (i) { i.focus(); i.select(); } });
+    },
+    artMove(id) {
+      const a = this.M.artifacts.find(x => String(x.id) === String(id));
+      if (!a) return;
+      if (!this.apiMode) { this.toast('В демо-режиме перемещение недоступно', 'warn'); return; }
+      const opts = [{ id: null, name: '— Корень —' }]
+        .concat(this.M.folders.filter(f => f.id !== a.folderId))
+        .map(f => `<label class="card-2 p-2 flex items-center gap-2 cursor-pointer text-[13px]">
+          <input type="radio" name="artMoveDst" value="${f.id === null ? '' : f.id}" ${((a.folderId || null) === f.id) ? 'checked' : ''}>
+          <span>${f.id === null ? '🗂 Корень' : '📁 ' + this.esc(f.name)}</span></label>`).join('');
+      this.openModal('Переместить «' + this.esc(a.title) + '»', `<div class="flex flex-col gap-1">${opts}</div>`,
+        async () => {
+          const sel = document.querySelector('input[name="artMoveDst"]:checked');
+          if (!sel) { this.toast('Выберите папку', 'warn'); return false; }
+          const dst = sel.value === '' ? null : Number(sel.value);
+          try {
+            await AGL.patchArtifact(a.id, { folder_id: dst });
+            this.toast('Перемещено', 'ok'); this.artRefresh();
+          } catch (e) { this.toast('Ошибка: ' + (e && e.message), 'warn'); return false; }
+        });
+    },
+    artDelete(id) {
+      const a = this.M.artifacts.find(x => String(x.id) === String(id));
+      if (!a) return;
+      if (!this.apiMode) { this.toast('В демо-режиме удаление недоступно', 'warn'); return; }
+      this.openModal('Удалить файл?', `
+        <div class="text-[13px]">«${this.esc(a.title)}» будет удалён безвозвратно.</div>`,
+        async () => {
+          try {
+            await AGL.deleteArtifact(a.id);
+            this.toast('Удалено', 'ok'); this.artRefresh();
+          } catch (e) { this.toast('Ошибка: ' + (e && e.message), 'warn'); return false; }
+        });
+    },
+    artRenameFolder(id) {
+      const f = this.folderById(id); if (!f) return;
+      if (!this.apiMode) { this.toast('В демо-режиме недоступно', 'warn'); return; }
+      this.openModal('Переименовать папку', `
+        <input id="fdrRenameInput" class="input w-full" value="${this.esc(f.name)}" />`,
+        async () => {
+          const i = document.getElementById('fdrRenameInput');
+          const name = (i && i.value || '').trim();
+          if (!name) { this.toast('Укажите имя', 'warn'); return false; }
+          try {
+            await AGL.patchFolder(f.id, { name });
+            this.toast('Переименовано', 'ok'); this.artRefresh();
+          } catch (e) { this.toast('Ошибка: ' + (e && e.message), 'warn'); return false; }
+        });
+      this.$nextTick(() => { const i = document.getElementById('fdrRenameInput'); if ( i) { i.focus(); i.select(); } });
+    },
+    artDeleteFolder(id) {
+      const f = this.folderById(id); if (!f) return;
+      if (!this.apiMode) { this.toast('В демо-режиме недоступно', 'warn'); return; }
+      this.openModal('Удалить папку?', `
+        <div class="text-[13px]">Папка «${this.esc(f.name)}» будет удалена. Файлы и вложенные
+        папки НЕ удаляются -- они поднимутся на уровень выше.</div>`,
+        async () => {
+          try {
+            await AGL.deleteFolder(f.id);
+            if (this.artFolder === f.id) this.artFolder = f.parent || null;
+            this.toast('Папка удалена', 'ok'); this.artRefresh();
+          } catch (e) { this.toast('Ошибка: ' + (e && e.message), 'warn'); return false; }
+        });
     },
     // ======== ЧАНК 6.4: ГЕНЕРАЦИЯ / ВЫБОР АРТЕФАКТА ПЕТРУШКОЙ ИЗ КАРТОЧКИ СДЕЛКИ ========
     _artGenType: 'КП',
@@ -4356,24 +4521,34 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
     vArtifacts() {
       const M = this.M;
+      const api = this.apiMode && window.AGL && AGL.token;
       const subFolders = M.folders.filter(f => (f.parent || null) === this.artFolder);
       const files = M.artifacts.filter(a => (a.folderId || null) === this.artFolder);
       const folderCards = subFolders.map(f => {
         const cnt = M.artifacts.filter(a => a.folderId === f.id).length + M.folders.filter(x => x.parent === f.id).length;
-        return `<div class="card-2 p-3 flex items-center gap-3 cursor-pointer" data-art-open-folder="${f.id}">
-          <span class="text-2xl">📁</span>
-          <div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">${this.esc(f.name)}</div><div class="text-[11px]" style="color:var(--text-mute)">${cnt} эл.</div></div>
+        return `<div class="card-2 p-3 flex items-center gap-3">
+          <span class="text-2xl cursor-pointer" data-art-open-folder="${f.id}">📁</span>
+          <div class="flex-1 min-w-0 cursor-pointer" data-art-open-folder="${f.id}"><div class="text-sm font-medium truncate">${this.esc(f.name)}</div><div class="text-[11px]" style="color:var(--text-mute)">${cnt} эл.</div></div>
+          ${api ? `<button class="btn text-[12px] px-2" title="Переименовать" data-art-ren-folder="${f.id}">✎</button><button class="btn text-[12px] px-2" title="Удалить папку" data-art-del-folder="${f.id}">🗑</button>` : ''}
         </div>`;
       }).join('');
       const fileCards = files.map(a => {
         const d = a.dealId ? this.dealById(a.dealId) : null;
+        const meta = [a.kind, a.ext ? '.' + a.ext : '', a.date, this.fmtSize(a.size)].filter(Boolean).join(' · ');
+        const fileBtns = api
+          ? `<button class="btn text-[12px] px-2" title="Скачать/открыть" data-art-download="${a.id}">⬇</button>
+             <button class="btn text-[12px] px-2" title="Переименовать" data-art-rename="${a.id}">✎</button>
+             <button class="btn text-[12px] px-2" title="Переместить в папку" data-art-move="${a.id}">📁</button>
+             <button class="btn text-[12px] px-2" title="Удалить" data-art-del="${a.id}">🗑</button>`
+          : '';
         return `<div class="card-2 p-3 flex items-center gap-3 cursor-pointer" data-art-open-file="${a.id}">
           <span class="text-2xl">${this.artFileIcon(a.ext)}</span>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-medium truncate">${this.esc(a.title)}</div>
-            <div class="text-[11px] flex flex-wrap gap-2" style="color:var(--text-mute)"><span>${a.kind} · .${a.ext}</span><span>${a.date}</span>${d ? `<span>· ${this.esc(d.title)}</span>` : ''}</div>
+            <div class="text-[11px] flex flex-wrap gap-2" style="color:var(--text-mute)"><span>${this.esc(meta)}</span>${d ? `<span>· ${this.esc(d.title)}</span>` : ''}</div>
           </div>
-          <span class="pill text-[11px]">${a.status}</span>
+          ${a.status ? `<span class="pill text-[11px]">${this.esc(a.status)}</span>` : ''}
+          ${fileBtns}
         </div>`;
       }).join('');
       const items = folderCards + fileCards;
@@ -4384,10 +4559,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="flex gap-2">
             <button class="btn text-[13px]" data-art-up ${this.artFolder ? '' : 'disabled style="opacity:.4;cursor:default"'}>↑ Вверх</button>
             <button class="btn btn-accent text-[13px]" data-art-newfolder>+ Папка</button>
-        <button class="btn text-[13px]" data-art-upload>+ Файл</button>
+            <button class="btn text-[13px]" data-art-upload>⬆ Загрузить файл</button>
           </div>
         </div>
-        <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">${items || emptyMsg}</div>
+        <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${items || emptyMsg}</div>
       </div>`;
     },
     // ======== ЧАНК 1.5: ЕДИНАЯ КАРТОЧКА ОБЪЕКТА ========
@@ -5615,6 +5790,13 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-art-go]').forEach(n => n.onclick = () => this.artNav(n.getAttribute('data-art-go') || null));
       el.querySelectorAll('[data-art-open-folder]').forEach(n => n.onclick = () => this.artNav(n.getAttribute('data-art-open-folder')));
       el.querySelectorAll('[data-art-open-file]').forEach(n => n.onclick = () => this.artOpenFile(n.getAttribute('data-art-open-file')));
+      // файловый менеджер: действия над файлами и папками (API-режим)
+      el.querySelectorAll('[data-art-download]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.artDownload(n.getAttribute('data-art-download')); });
+      el.querySelectorAll('[data-art-rename]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.artRename(n.getAttribute('data-art-rename')); });
+      el.querySelectorAll('[data-art-move]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.artMove(n.getAttribute('data-art-move')); });
+      el.querySelectorAll('[data-art-del]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.artDelete(n.getAttribute('data-art-del')); });
+      el.querySelectorAll('[data-art-ren-folder]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.artRenameFolder(n.getAttribute('data-art-ren-folder')); });
+      el.querySelectorAll('[data-art-del-folder]').forEach(n => n.onclick = (e) => { e.stopPropagation(); this.artDeleteFolder(n.getAttribute('data-art-del-folder')); });
       const aup = el.querySelector('[data-art-up]'); if (aup && !aup.disabled) aup.onclick = () => this.artUp();
       const anf = el.querySelector('[data-art-newfolder]'); if (anf) anf.onclick = () => this.artNewFolder();
       const aupl = el.querySelector('[data-art-upload]'); if (aupl) aupl.onclick = () => this.artUpload();

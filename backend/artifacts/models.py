@@ -9,6 +9,25 @@ class Base(DeclarativeBase):
 VALID_KINDS = {"kp", "contract", "schema", "other"}
 
 
+class ArtifactFolder(Base):
+    """Папка файлового менеджера артефактов (миграция 040)."""
+
+    __tablename__ = "artifact_folders"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    parent_id  = Column(Integer, nullable=True)
+    name       = Column(String(200), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "parent_id": self.parent_id,
+            "name": self.name,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class Artifact(Base):
     __tablename__ = "artifacts"
 
@@ -28,6 +47,8 @@ class Artifact(Base):
     # §27/A5 (миграция 027)
     body       = Column(Text, nullable=True)
     client_id  = Column(String(16), nullable=True)
+    # файловый менеджер (миграция 040)
+    folder_id  = Column(Integer, nullable=True)
 
     def to_dict(self):
         return {
@@ -47,4 +68,5 @@ class Artifact(Base):
             "status": self.status,
             "body": self.body,
             "client_id": self.client_id,
+            "folder_id": self.folder_id,
         }

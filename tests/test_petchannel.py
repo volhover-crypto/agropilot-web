@@ -90,12 +90,15 @@ def test_webhook_unbound_chat_ignored():
 
 def test_webhook_bind_by_code_and_mask_toggle():
     async def scenario(session):
+        from datetime import datetime as dt
+
         from backend.petchannel.routes import handle_update
 
-        # 1) пользователь взял код в вебе
+        # 1) пользователь взял код в вебе (истекает от РЕАЛЬНОГО now --
+        # handle_update сравнивает с часами, не с константой теста)
         row = ChannelBinding(user_id="u1", channel="telegram",
                              bind_code="123456",
-                             bind_code_expires=NOW + timedelta(minutes=10))
+                             bind_code_expires=dt.now(timezone.utc) + timedelta(minutes=10))
         session.add(row)
         await session.commit()
         # 2) прислал его боту с чужого (своего) chat_id

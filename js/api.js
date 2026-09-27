@@ -406,10 +406,32 @@ const AGL = {
 
   // ─── Artifacts (safeLoad) ───
   async loadArtifacts() {
-    return safeLoad('/v1/artifacts?limit=100');
+    return safeLoad('/v1/artifacts?limit=200');
   },
   async createArtifact(data) {
     return apiFetch('/v1/artifacts', { method: 'POST', data });
+  },
+  // §43-фикс: файловый менеджер — папки и файловые действия
+  async loadFolders() {
+    return safeLoad('/v1/artifacts/folders', []);
+  },
+  async createFolder(name, parentId) {
+    return apiFetch('/v1/artifacts/folders', { method: 'POST', data: { name, parent_id: parentId || null } });
+  },
+  async patchFolder(id, data) {
+    return apiFetch('/v1/artifacts/folders/' + id, { method: 'PATCH', data });
+  },
+  async moveFolder(id, parentId) {
+    return apiFetch('/v1/artifacts/folders/' + id + '/move', { method: 'POST', data: { parent_id: parentId || null } });
+  },
+  async deleteFolder(id) {
+    return apiFetch('/v1/artifacts/folders/' + id, { method: 'DELETE' });
+  },
+  async patchArtifact(id, data) {
+    return apiFetch('/v1/artifacts/' + id, { method: 'PATCH', data });
+  },
+  async deleteArtifact(id) {
+    return apiFetch('/v1/artifacts/' + id, { method: 'DELETE' });
   },
   async uploadArtifact(formData) {
     const r = await fetch(API_BASE + '/v1/artifacts/upload', {
