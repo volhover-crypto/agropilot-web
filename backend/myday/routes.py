@@ -149,7 +149,15 @@ async def post_digest(
             summary = f"LLM недоступна ({str(e)[:100]}) — агрегат без сводки."
     sent = False
     if payload.send and summary:
-        sent = await send_telegram("☀️ AgroPILOT — сводка дня\n\n" + summary)
+        summary_text = "☀️ AgroPILOT — сводка дня\n\n" + summary
+        # §42 (О6): сначала -- подписчикам канала ПЕТРУШКИ (notify_mask)
+        from backend.petchannel.push import notify_mask
+
+        sent = (await notify_mask(db, "digest", summary_text)) > 0
+        if not sent:
+            # легаси-канал владельца (JARVIS_MONITOR) -- до миграции всех
+            # пользователей на канал ПЕТРУШКИ
+            sent = await send_telegram(summary_text)
         if not sent:
             raise ValidationError("сводка сформирована, но Telegram недоступен")
     return _ok({**day, "summary": summary, "telegram_sent": sent})

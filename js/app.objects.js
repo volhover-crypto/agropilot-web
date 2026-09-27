@@ -1377,6 +1377,19 @@ return { related, other };
         this.petCitToggle(i, ci);
       });
     },
+    // §42 (О6): привязка Telegram-канала ПЕТРУШКИ -- код показывается
+    // в чате, пользователь отправляет его боту (/start <код>)
+    async petBindTelegram() {
+      if (!this.apiMode || !window.AGL || !AGL.token) { this.toast('Работает после входа в API', 'warn'); return; }
+      try {
+        const d = await AGL.telegramBindcode();
+        this.owlChat.push({ role: 'owl', ts: this.petTs(), text:
+          '📲 Привязка Telegram:\n1) Откройте бота ' + (d.bot || '@PETRUHKA_A_bot') +
+          '\n2) Отправьте команду: ' + (d.instruction || '/start КОД') +
+          '\nКод действует 15 минут. Управление уведомлениями: /mask digest|questions|insights on|off' });
+        this.owlRender();
+      } catch (e) { this.toast('Не удалось получить код: ' + (e && e.message), 'warn'); }
+    },
     // §41 (О1): раскрыть/свернуть цитату, подтянуть полный чанк
     async petCitToggle(idx, ci) {
       const m = this.owlChat[idx];

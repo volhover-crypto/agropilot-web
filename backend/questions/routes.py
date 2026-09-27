@@ -133,6 +133,18 @@ async def create_question(
     db.add(q)
     await db.commit()
     await db.refresh(q)
+    # §42 (О6): push вопроса подписчикам (opt-in, mask 'questions');
+    # ответ -- в вебе или из TG командой /ans (единый лог)
+    try:
+        from backend.petchannel.push import notify_mask
+
+        await notify_mask(
+            db, "questions",
+            f"❓ Вопрос ПЕТРУШКИ (№{q.id}): {q.question[:1500]}\n\n"
+            f"Ответить: /ans {q.id} ваш ответ (или в вебе).",
+        )
+    except Exception as e:
+        print(f"[questions] push skipped: {e}", flush=True)
     return _ok(q.to_dict())
 
 

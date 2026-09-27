@@ -491,6 +491,16 @@ const AGL = {
   async knowledgeChunk(chunkId) {
     return safeLoad('/v1/knowledge/chunks/' + chunkId, null);
   },
+  // §42: Telegram-канал ПЕТРУШКИ (О6)
+  async telegramBindcode() {
+    return apiFetch('/v1/telegram/bindcode');
+  },
+  async telegramBindings(all) {
+    return safeLoad('/v1/telegram/bindings' + (all ? '?all=1' : ''), []);
+  },
+  async telegramPatchMask(id, notifyMask) {
+    return apiFetch('/v1/telegram/bindings/' + id, { method: 'PATCH', data: { notify_mask: notifyMask } });
+  },
   async aiContentTrends(contentId) {
     return apiFetch(`/v1/content/${contentId}/ai/trends`, { method: 'POST' });
   },
@@ -510,6 +520,10 @@ const AGL = {
   STRATEGY_TASKS_READY:  true,
   STRATEGY_VIEW_READY:   true,
   SOURCES_READY:         true,
+  // Этап-2 (интеграция Octop): контуры подняты, флаги-статусы
+  KNOWLEDGE_READY:       true,   // §41: /v1/knowledge/*, orchChat с citations
+  UX_READY:              true,   // §40: agent_questions (карточки в чате ПЕТРУШКИ)
+  TELEGRAM_READY:        true,   // §42: /v1/telegram/* (канал ПЕТРУШКИ)
   LEADS_READY:           true,   // GET/PATCH /v1/leads, POST /v1/leads/{id}/convert
   TEAM_RBAC_READY:      true,   // PATCH /v1/team/{id}
   MONITORING_READY:     true,

@@ -297,6 +297,7 @@ STRATEGY_READY:  false,  // true -> AGL.loadStrategy() активно
 SOURCES_READY:   false,  // true -> AGL.loadSources() активно (Этап-2, M10)
 KNOWLEDGE_READY: false,  // true -> AGL.knowledgeQuery() активно (Этап-2, M11)
 UX_READY:        false,  // true -> AGL.loadInsights()/loadAgentQuestions() активно (Этап-2, M12)
+TELEGRAM_READY:  false,  // true -> /v1/telegram/* активно (О6, §42)
 ```
 В `app.objects.js` вызовы обёрнуты в `if (window.AGL.CALENDAR_READY) { ... }`.
 При `DEV_MOCK=false` + флаг=false ни один запрос не уходит на backend, кнопки/секции не рендерятся.
@@ -2108,3 +2109,45 @@ failed(no_text) / failed(parse) / пустой текст), идемпотент
 при успехе, кодировки utf-8/cp1251, docx/xlsx/csv. Прогон с реальным
 fastembed+Qdrant и тестовым корпусом из 5 файлов — на сервере при вводе
 в прод (до перевода — проверка полноты ответов, риск ТЗ §6).
+
+## §42. Telegram-канал ПЕТРУШКИ (О6 ТЗ_ИНТЕГРАЦИЯ_OCTOP, после M12)
+
+Исходящий/входящий чат-канал по образцу octop-gateway (привязка канала к
+агенту и пользователю). ОТДЕЛЬНЫЙ бот (webhook), не JARVIS_MONITOR (polling,
+входящие A4/§35 — их не трогаем) и не SMM-мониторинг (§20/§34).
+Реализация: backend/petchannel/, миграция 039.
+
+### 42.1. Привязка channel_bindings
+{user_id, channel='telegram', chat_id, verified_at, notify_mask}.
+Привязка: пользователь получает код в вебе (GET /v1/telegram/bindcode,
+кнопка TG у чата ПЕТРУШКИ; код 6 цифр, живёт 15 минут, одноразовый) и
+отправляет боту `/start <код>` — chat_id закрепляется за user_id
+(UNIQUE(channel, chat_id)). Непривязанные chat_id игнорируются с журрованием
+(stdout сервиса) — текст в orchChat не попадает (DoD О6-2).
+
+### 42.2. Webhook и входящие
+POST /v1/telegram/webhook: обязательный заголовок
+X-Telegram-Bot-Api-Secret-Token == PETRUSHKA_TG_WEBHOOK_SECRET (403 иначе).
+Команды: /start <код> — привязка; /ans <id> <текст> — ответ на вопрос
+агента из Telegram (в ту же таблицу agent_questions §40 — контур единый с
+вебом; истёкший вопрос отклоняется с переводом в expired); /mask
+[digest|questions|insights [on|off]] — подписки; любой другой текст —
+orchChat от имени пользователя с session-ключом `<user_id>:telegram:<chat_id>`
+(§41.3; отдельная нить, не пересекается с веб-чатом). Webhook всегда 200.
+
+### 42.3. Исходящие push (opt-in, строго по notify_mask)
+notify_mask ⊆ {digest, questions, insights}. Доставки:
+- digest: myday-digest — сначала подписчикам канала ПЕТРУШКИ
+  (backend/petchannel/push.py::notify_mask), при нуше доставок —
+  легаси-канал владельца (TELEGRAM_CHAT_ID);
+- questions: создание agent_questions (§40) пушится с подсказкой
+  «/ans <id> ответ»;
+- insights: точка подключения M12 (принятие insight).
+Недоставка не валит источник: повтор в следующем цикле (digest не теряется).
+
+### 42.4. Эндпоинты и конфигурация
+GET /v1/telegram/bindcode · GET /v1/telegram/bindings[?all=1] ·
+PATCH /v1/telegram/bindings/{id} {notify_mask} · POST /v1/telegram/webhook.
+Флаг §6: TELEGRAM_READY. Env: PETRUSHKA_TG_BOT_TOKEN (только .env сервера),
+PETRUSHKA_TG_BOT_NAME, PETRUSHKA_TG_WEBHOOK_SECRET. Ввод в строй (сервер):
+setWebhook с secret_token на https://<host>/agropilot/api/v1/telegram/webhook.

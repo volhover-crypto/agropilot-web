@@ -232,6 +232,7 @@
       <div class="px-4 py-2 border-b" style="border-color:var(--border); background:var(--surface-2)">
         <div class="flex items-center gap-2 mb-2">
           <input id="owlInput" class="input flex-1 text-[13px]" placeholder="Спросить ПЕТРУШКУ…" @keydown.enter="owlAsk()" />
+          <button class="btn text-[12px]" title="Привязать Telegram-канал ПЕТРУШКИ (§42)" @click="petBindTelegram()">TG</button>
           <button class="btn btn-accent text-[13px]" @click="owlAsk()">↑</button>
         </div>
         <div class="flex flex-wrap gap-1">

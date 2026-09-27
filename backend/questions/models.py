@@ -29,9 +29,21 @@ def compute_expires(now: datetime, ttl_hours: Optional[int] = None) -> datetime:
     return now + timedelta(hours=ttl_hours or question_ttl_hours())
 
 
+def _aware(dt: datetime) -> datetime:
+    """Наивное время из БД/входа трактуется как DEFAULT_TZ (О4), не зона хоста."""
+    if dt is not None and dt.tzinfo is None:
+        from backend.common.tz import DEFAULT_TZ
+
+        return dt.replace(tzinfo=DEFAULT_TZ)
+    return dt
+
+
 def can_answer(q, now: datetime) -> bool:
     """Отложенный ответ из лога валиден, пока вопрос не expired (§10.2/§40.4)."""
-    return q is not None and q.status in ("asked", "deferred") and q.expires_at > now
+    if q is None or q.status not in ("asked", "deferred"):
+        return False
+    exp = _aware(q.expires_at)
+    return exp is not None and exp > now
 
 
 def is_learning_signal(q) -> bool:
@@ -39,7 +51,7 @@ def is_learning_signal(q) -> bool:
     Просроченный (expired) вопрос в сигналы НЕ попадает (DoD О3-2)."""
     if q is None or q.status != "answered" or q.answered_at is None:
         return False
-    return q.answered_at <= q.expires_at
+    return _aware(q.answered_at) <= _aware(q.expires_at)
 
 
 class AgentQuestion(Base):
