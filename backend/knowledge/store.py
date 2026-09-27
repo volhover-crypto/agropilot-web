@@ -118,11 +118,11 @@ class QdrantStore:
 
     def search(self, vector: list[float], limit: int = 5,
                kb_ids: Optional[list[int]] = None) -> list[dict]:
-        from qdrant_client.models import FieldCondition, Filter, MatchValue
+        from qdrant_client.models import FieldCondition, Filter, MatchAny
 
         flt = None
         if kb_ids:
-            flt = Filter(must=[FieldCondition(key="kb_id", match=MatchValue(any=kb_ids))])
+            flt = Filter(must=[FieldCondition(key="kb_id", match=MatchAny(any=kb_ids))])
         hits = self._get().query_points(
             collection_name=_COLLECTION, query=vector, limit=limit, query_filter=flt
         ).points
