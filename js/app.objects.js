@@ -4245,7 +4245,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         zip: '#7F8C8D', txt: '#6B7A8F', md: '#6B7A8F',
       };
       const col = isFolder ? '#B8860B' : (palette[(ext || '').toLowerCase()] || '#6B7A8F');
-      const label = isFolder ? 'DIR' : ((ext || 'file').toUpperCase().slice(0, 4));
+      const label = isFolder ? 'DIR' : ((ext || '').toUpperCase().slice(0, 4) || 'DOC');
       return `<div style="width:54px;height:62px;border:2px solid ${col};border-radius:10px;background:${col}14;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
         <span style="font-weight:800;font-size:12.5px;color:${col};letter-spacing:.4px">${this.esc(label)}</span>
         ${isFolder ? '' : `<span style="font-size:8px;color:${col};opacity:.7;margin-top:2px">ФАЙЛ</span>`}
@@ -4365,7 +4365,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
     // ======== ФАЙЛОВЫЙ МЕНЕДЖЕР АРТЕФАКТОВ (API, миграция 040) ========
     async artLoadFolders() {
-      if (!this.apiMode || !window.AGL || !AGL.token) return;
+      // guard только по токену: apiMode выставляется в loadFromAPI ПОЗЖЕ
+      // этого вызова -- проверка apiMode здесь вырезала папки при старте
+      if (!window.AGL || !AGL.token) return;
       try {
         const list = await AGL.loadFolders();
         this.M.folders.splice(0, this.M.folders.length,
