@@ -15,6 +15,6 @@ pypdf==6.19.0
 python-docx==1.2.0
 openpyxl==3.1.5
 aiosqlite==0.22.1
-# heavy-зависимости сервера (D4/D5): версию зафиксировать при установке на mdked
-fastembed>=0.7.0
-rapidocr-onnxruntime>=0.3.0
+# heavy-зависимости сервера (D4/D5): версии зафиксированы по установке на mdked 27.09.2026
+fastembed==0.8.1
+rapidocr-onnxruntime==1.4.4

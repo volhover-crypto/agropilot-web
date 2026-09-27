@@ -12,6 +12,7 @@
 # только статусы и чанки.
 
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -244,7 +245,9 @@ async def run_pipeline(
         rows.append(row)
     await db.flush()  # chunk.id для point_id
     for row, vec in zip(rows, vectors):
-        point_id = f"doc{doc.id}:c{row.id}"
+        # Qdrant принимает только UUID/int ID: детерминированный uuid5 из
+        # doc_id/chunk_id (стабилен при переиндексации, валиден для Qdrant)
+        point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"agropilot:doc{doc.id}:c{row.id}"))
         row.qdrant_point_id = point_id
         points.append({
             "id": point_id,

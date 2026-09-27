@@ -74,11 +74,24 @@ class QdrantStore:
     def upsert(self, points: list[dict]) -> None:
         from qdrant_client.models import PointStruct
 
+        def _pid(p):
+            # Qdrant: только UUID/int; произвольная строка -> детерминированный uuid5
+            pid = str(p["id"])
+            try:
+                import uuid as _uuid
+
+                _uuid.UUID(pid)
+                return pid
+            except (ValueError, AttributeError):
+                import uuid as _uuid
+
+                return str(_uuid.uuid5(_uuid.NAMESPACE_URL, f"agropilot:{pid}"))
+
         self._get().upsert(
             collection_name=_COLLECTION,
             points=[
                 PointStruct(
-                    id=p["id"], vector=p["vector"],
+                    id=_pid(p), vector=p["vector"],
                     payload=dict(p.get("payload") or {}),
                 )
                 for p in points

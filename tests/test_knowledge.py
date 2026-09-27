@@ -224,3 +224,21 @@ def test_validate_citations():
     assert validate_citations("ссылка [9] вне диапазона", 3) == []   # unverified
     assert validate_citations("без ссылок вообще", 3) == []          # unverified
     assert validate_citations("", 3) == []
+
+
+def test_point_ids_are_uuid_for_qdrant():
+    """Qdrant принимает только UUID/int ID: qdrant_point_id обязан быть
+    валидным UUID (детерминированный uuid5, стабильный при переиндексации)."""
+    import uuid
+
+    async def scenario(session):
+        kb, doc = await _new_doc(session, "полив.txt")
+        doc = await run_pipeline(session, doc, LONG_TEXT.encode("utf-8"),
+                                 store=MemoryStore(), embedder=FakeEmbedder())
+        from sqlalchemy import select as sa_select
+
+        chunks = (await session.execute(sa_select(KnowledgeChunk))).scalars().all()
+        return [c.qdrant_point_id for c in chunks]
+
+    pids = _run_with_session(scenario)
+    assert pids and all(str(uuid.UUID(p)) == p for p in pids)
