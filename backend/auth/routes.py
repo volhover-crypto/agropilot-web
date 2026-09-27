@@ -22,6 +22,8 @@ from backend.auth.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
+    needs_rehash,
     verify_password,
 )
 from backend.common.deps import get_db
@@ -71,6 +73,10 @@ async def _authenticate(db: AsyncSession, login: str, password: str) -> TeamMemb
 @auth_router.post("/login")
 async def login(body: LoginBody, db: AsyncSession = Depends(get_db)):
     member = await _authenticate(db, body.login, body.password)
+    # Прозрачная миграция хэша: bcrypt -> argon2id при успешном входе (О7).
+    if needs_rehash(member.password_hash):
+        member.password_hash = hash_password(body.password)
+        await db.commit()
     return _ok({
         "access_token": create_access_token(member.id, member.name),
         "refresh_token": create_refresh_token(member.id, member.name),

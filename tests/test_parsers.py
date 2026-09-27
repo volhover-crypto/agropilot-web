@@ -129,12 +129,13 @@ def test_mia_analyze_levels():
     assert items and items[0]["level"] == "ok"
 
 
-# ---------- security: password hashing ----------
+# ---------- security: password hashing (argon2id, О7) ----------
 
 def test_bcrypt_roundtrip():
+    # Обновлено при миграции на argon2id: раундтрип + формат argon2
     from backend.auth.security import hash_password, verify_password
     h = hash_password("secret123")
-    assert h != "secret123" and h.startswith("$2")
+    assert h != "secret123" and h.startswith("$argon2id$")
     assert verify_password("secret123", h)
     assert not verify_password("wrong", h)
 

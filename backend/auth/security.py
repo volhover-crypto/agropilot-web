@@ -12,20 +12,52 @@ from typing import Optional
 
 import bcrypt
 import jwt
+from argon2 import PasswordHasher
+from argon2.exceptions import Argon2Error
 
 # ---------------------------------------------------------------------------
-# Пароли: bcrypt (библиотека используется напрямую, без passlib --
-# у passlib 1.7.4 конфликт версий с bcrypt >= 4.1)
+# Пароли: argon2id (новые хэши); legacy-bcrypt проверяется и прозрачно
+# перехэшируется при успешном логине (О7 ТЗ_ИНТЕГРАЦИЯ_OCTOP).
+# bcrypt напрямую, без passlib (у passlib 1.7.4 конфликт с bcrypt >= 4.1).
 # ---------------------------------------------------------------------------
+
+_ph = PasswordHasher()  # argon2id, параметры по умолчанию argon2-cffi
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
+    return _ph.hash(password)
+
+
+def is_argon2(password_hash: str) -> bool:
+    return bool(password_hash) and password_hash.startswith("$argon2")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    if not password_hash:
+        return False
+    if is_argon2(password_hash):
+        try:
+            return _ph.verify(password_hash, password)
+        except Argon2Error:
+            return False
+        except Exception:
+            return False
+    # legacy bcrypt
     try:
         return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("ascii"))
+    except Exception:
+        return False
+
+
+def needs_rehash(password_hash: str) -> bool:
+    """True, если хэш надо обновить до текущих параметров argon2id
+    (старый bcrypt-хэш или устаревшие параметры argon2)."""
+    if not password_hash:
+        return False
+    if not is_argon2(password_hash):
+        return True
+    try:
+        return _ph.check_needs_rehash(password_hash)
     except Exception:
         return False
 
