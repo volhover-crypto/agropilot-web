@@ -86,6 +86,17 @@ def test_folder_delete_lifts_content_to_parent():
     assert arts["b.txt"] is not None            # b.txt остался в leaf
 
 
+def test_safe_name_keeps_cyrillic():
+    """Регрессия: «Отчёт по поливу.docx» не должен превращаться в подчёркивания."""
+    from backend.artifacts.routes import _safe_name
+
+    assert _safe_name("Отчёт по поливу.docx") == "Отчёт_по_поливу.docx"
+    assert _safe_name("../../etc/passwd") == "passwd"          # путь отсечён
+    assert _safe_name("file<>:name.txt") == "file___name.txt" # опасные -> _
+    assert _safe_name("") == "file"
+    assert _safe_name("менеджер.txt") == "менеджер.txt"
+
+
 def test_folder_move_cycle_rejected():
     """Папку нельзя переместить внутрь её собственного потомка."""
     async def scenario(s):

@@ -21,12 +21,16 @@ ALLOWED_EXT = {
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv",
     "png", "jpg", "jpeg", "gif", "webp", "mp4", "mov", "webm", "zip",
 }
-_SAFE = re.compile(r"[^A-Za-z0-9._-]")
+_SAFE = re.compile(r"[^A-Za-z0-9А-Яа-яЁё._ -]", re.UNICODE)
 
 
 def _safe_name(name: str) -> str:
-    name = os.path.basename(name or "file")
-    return _SAFE.sub("_", name)[:200] or "file"
+    """Имя файла для диска/ссылки: путь отсечён, небезопасные символы
+    заменены; кириллица СОХРАНЯЕТСЯ (иначе «Отчёт.docx» превращался в
+    «_______.docx»). Пробелы -> '_' (URL-friendly)."""
+    name = os.path.basename((name or "file").replace("\\", "/"))
+    name = _SAFE.sub("_", name).strip().replace(" ", "_")
+    return name[:200] or "file"
 
 
 # ---------------------------------------------------------------------------
