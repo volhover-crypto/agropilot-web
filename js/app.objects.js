@@ -4241,7 +4241,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         return `<div style="width:54px;height:62px;border:2px solid #B8860B;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;flex-shrink:0">
           <div style="height:33%;background:#161616"></div>
           <div style="flex:1;background:#B8860B14;display:flex;align-items:center;justify-content:center">
-            <span style="width:22px;height:22px;border-radius:999px;background:#161616;display:block"></span>
+            <span style="width:16px;height:16px;border-radius:999px;background:#161616;display:block"></span>
           </div>
         </div>`;
       }
