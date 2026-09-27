@@ -1,0 +1,10 @@
+# §40: ежечасно (МСК) -- ленивое истечение в API подстраховано джобой
+[Unit]
+Description=AgroPILOT — вопросы агента: TTL-истечение (ежечасно)
+
+[Timer]
+OnCalendar=*-*-* *:01:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

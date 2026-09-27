@@ -477,6 +477,16 @@ const AGL = {
   async orchChat(message) {
     return apiFetch('/v1/orchestrator/chat', { method: 'POST', data: { message } });
   },
+  // §40: вопросы агента ПЕТРУШКИ (О3)
+  async petrushkaQuestions(all) {
+    return safeLoad('/v1/petrushka/questions' + (all ? '?all=1' : ''), { items: [], all: false });
+  },
+  async answerQuestion(id, answer) {
+    return apiFetch('/v1/petrushka/questions/' + id, { method: 'PATCH', data: { answer } });
+  },
+  async deferQuestion(id) {
+    return apiFetch('/v1/petrushka/questions/' + id, { method: 'PATCH', data: { defer: true } });
+  },
   async aiContentTrends(contentId) {
     return apiFetch(`/v1/content/${contentId}/ai/trends`, { method: 'POST' });
   },

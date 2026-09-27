@@ -2006,3 +2006,44 @@ POST /v1/news/scan). proposed/disabled/rejected наблюдений не пос
 (тесты tests/test_connectors.py); 2) источник в статусе proposed не отдаёт
 данные в мониторинг (правило 39.2, тест is_eligible); 3) новый rss-источник
 добавляется строкой в sources без правок кода.
+
+## §40. Вопросы агента: TTL, идемпотентность, гашение раундов (О3 ТЗ_ИНТЕГРАЦИЯ_OCTOP, веха M12)
+
+Раскрывает §10.1/§10.2 (паттерны HITL-фиксов Octop: TTL, pending→expired,
+идемпотентность повторного показа). Реализация: backend/questions/,
+миграция 037, systemd agropilot-questions-expire.timer.
+
+### 40.1. TTL и истечение
+`AGENT_QUESTION_TTL` (default 72 ч, env BFF). `expires_at = ts + TTL`
+(колонка миграции 037). Истечение asked→expired — двумя механизмами:
+(а) лениво при чтении лога GET /v1/petrushka/questions;
+(б) джобой POST /v1/petrushka/questions/expire (systemd-таймер
+agropilot-questions-expire.timer, ежечасно Europe/Moscow; скрипт
+backend/questions/expire_job.py, сервисная учётка u7).
+Просроченный вопрос НЕ является «принятым» и НЕ попадает в обучающие
+сигналы Q-метрик M9 (is_learning_signal: только answered с answered_at
+≤ expires_at — см. RFC_MAILBOX §4).
+
+### 40.2. Идемпотентность показа
+Два слоя: сервер помечает `presented_at` при первом фетче fresh-вопросов;
+фронт дедуплицирует по question.id через localStorage
+(`agp_shown_questions`, ключи последних 200). Повторное внедрение вопроса
+в чат после рестарта/переключения сессии запрещено. Отрисовка — карточка
+«ВОПРОС АГЕНТА» в чате ПЕТРУШКИ (js/app.objects.js, petQAnswer/petQDefer).
+
+### 40.3. Гашение при новом раунде
+Раунд ПЕТРУШКИ идентифицируется `round_id` (предложение: цикл
+myday-digest). Старт нового раунда гасит оставшиеся asked предыдущих
+раундов (→ expired): автоматически при POST вопроса с новым round_id
+(для того же user_id) и явно — POST /v1/petrushka/questions/close_round.
+
+### 40.4. Отложенный ответ из лога (§10.2 сохраняется)
+PATCH /v1/petrushka/questions/{id} ({answer} | {defer:true}): валидация
+«не expired» (409 Conflict при истёкшем TTL); answering rights — адресат
+или менеджер. GET ?all=1 — все вопросы (isManager), иначе свои.
+
+### 40.5. Эндпоинты
+GET /v1/petrushka/questions[?all=1&limit] · POST /v1/petrushka/questions
+(менеджер/сервис; {user_id, question, context_ref?, round_id?, ttl_hours?})
+· PATCH /v1/petrushka/questions/{id} · POST .../expire (сервис)
+· POST .../close_round ({round_id, user_id?}).

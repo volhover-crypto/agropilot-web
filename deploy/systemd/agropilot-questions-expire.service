@@ -1,0 +1,10 @@
+# §40: TTL agent_questions -- массовый перевод asked->expired
+[Unit]
+Description=AgroPILOT — expire джоба вопросов агента (TTL 72ч)
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/opt/agropilot-web/.env
+WorkingDirectory=/opt/agropilot-web
+ExecStart=/opt/agropilot-web/venv/bin/python -m backend.questions.expire_job

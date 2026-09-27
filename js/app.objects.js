@@ -70,6 +70,24 @@ source: 'ai',
 }));
 }
 } catch (e) { console.warn('[AGL] aiRecommendations skipped:', e && e.message); }
+// §40 (О3): вопросы агента -- показываются ОДИН раз (дедуп по id на рестарте
+// сессии через localStorage + серверная пометка presented_at при GET)
+try {
+const qres = await window.AGL.petrushkaQuestions();
+let shown = [];
+try { shown = JSON.parse(localStorage.getItem('agp_shown_questions') || '[]'); } catch (e2) { shown = []; }
+const shownSet = new Set(shown);
+const fresh = ((qres && qres.items) || []).filter(q =>
+  (q.status === 'asked' || q.status === 'deferred') && !shownSet.has(q.id));
+for (const q of fresh) {
+  this.owlChat.push({ role: 'owl', question: true, qid: q.id, text: q.question, grade: 'CONFIRM', ts: this.petTs() });
+  shownSet.add(q.id);
+}
+if (fresh.length) {
+  localStorage.setItem('agp_shown_questions', JSON.stringify(Array.from(shownSet).slice(-200)));
+  this.owlRender();
+}
+} catch (e) { console.warn('[AGL] petrushka questions skipped:', e && e.message); }
 },
 
     async loadFromAPI() {
@@ -1280,6 +1298,25 @@ return { related, other };
                 <div class="flex items-center gap-2"><span style="font-size:14px">${this.petIco(15)}</span><span class="text-[13px]" style="color:var(--text-mute)">${this.esc(m.text)}</span></div>
               </div>`;
           }
+          // §40 (О3): карточка вопроса агента (ответ/отложено/истёк)
+          if (m.question) {
+            let qBody, qBtns = '';
+            if (m.qdone === 'answered') {
+              qBody = `<div class="text-[12px] mt-1" style="color:var(--ok)">✓ ответ записан</div><div class="text-[12px] mt-1" style="white-space:pre-wrap;color:var(--text-dim)">${this.esc(m.qanswer || '')}</div>`;
+            } else if (m.qdone === 'deferred') {
+              qBody = `<div class="text-[12px] mt-1" style="color:var(--text-mute)">⏳ отложено — ответ можно дать из лога вопросов позже</div>`;
+            } else if (m.qdone === 'expired') {
+              qBody = `<div class="text-[12px] mt-1" style="color:var(--text-mute)">вопрос истёк (TTL) — ответ не принят</div>`;
+            } else {
+              qBody = `<input id="owlQ-${idx}" class="input w-full text-[13px] mt-1" placeholder="Ваш ответ…" />`;
+              qBtns = `<div class="flex gap-2 mt-2"><button class="btn btn-accent text-[12px]" data-pet-qans="${idx}">Ответить</button><button class="btn text-[12px]" data-pet-qdef="${idx}">Позже</button></div>`;
+            }
+            return `<div class="card-2 p-2.5 mb-2" style="border-color:var(--accent)">
+              <div class="flex items-center gap-2 mb-1"><span style="font-size:14px">${this.petIco(15)}</span><span class="pill text-[10px]" style="color:var(--accent);border-color:var(--accent)">ВОПРОС АГЕНТА</span>${m.ts ? `<span class="text-[10px] ml-auto" style="color:var(--text-mute)">${m.ts}</span>` : ''}</div>
+              <div class="text-[13px]" style="white-space:pre-wrap">${this.esc(m.text)}</div>
+              ${qBody}${qBtns}
+            </div>`;
+          }
           // ответ ПЕТРУШКИ с грифом и действиями
           const gr = m.grade || 'HINT';
           const grCol = this.gradeColor(gr);
@@ -1312,6 +1349,42 @@ return { related, other };
       b.querySelectorAll('[data-pet-ok2]').forEach(n => n.onclick = () => this.petAct(+n.getAttribute('data-pet-ok2'), 'ok'));
       b.querySelectorAll('[data-pet-nav]').forEach(n => n.onclick = () => this.petAct(+n.getAttribute('data-pet-nav'), 'nav'));
       b.querySelectorAll('[data-pet-quick]').forEach(n => n.onclick = () => this.petQuick(n.getAttribute('data-pet-quick')));
+      // §40 (О3): кнопки карточки вопроса агента
+      b.querySelectorAll('[data-pet-qans]').forEach(n => n.onclick = () => this.petQAnswer(+n.getAttribute('data-pet-qans')));
+      b.querySelectorAll('[data-pet-qdef]').forEach(n => n.onclick = () => this.petQDefer(+n.getAttribute('data-pet-qdef')));
+      b.querySelectorAll('[id^="owlQ-"]').forEach(n => n.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); this.petQAnswer(+n.id.slice(5)); }
+      }));
+    },
+    // §40 (О3): ответ на вопрос агента из карточки в чате
+    async petQAnswer(idx) {
+      const m = this.owlChat[idx];
+      if (!m || !m.question || m.qdone) return;
+      const inp = document.getElementById('owlQ-' + idx);
+      const val = inp && inp.value.trim();
+      if (!val) { this.toast('Введите ответ', 'warn'); return; }
+      try {
+        await AGL.answerQuestion(m.qid, val);
+        m.qdone = 'answered'; m.qanswer = val;
+        this.toast('Ответ записан', 'ok');
+      } catch (e) {
+        m.qdone = (String(e && e.message || '').indexOf('истёк') >= 0) ? 'expired' : m.qdone;
+        if (m.qdone !== 'expired') { this.toast('Ошибка ответа: ' + (e && e.message), 'warn'); return; }
+      }
+      this.owlRender();
+    },
+    // §40 (О3): отложить ответ (deferred -- ответить можно из лога позже)
+    async petQDefer(idx) {
+      const m = this.owlChat[idx];
+      if (!m || !m.question || m.qdone) return;
+      try {
+        await AGL.deferQuestion(m.qid);
+        m.qdone = 'deferred';
+      } catch (e) {
+        m.qdone = (String(e && e.message || '').indexOf('истёк') >= 0) ? 'expired' : m.qdone;
+        if (m.qdone !== 'expired') { this.toast('Ошибка: ' + (e && e.message), 'warn'); return; }
+      }
+      this.owlRender();
     },
     // 6.15: обработка кнопок сообщения ПЕТРУШКИ (Принять/Отклонить/Понятно/Перейти)
     petAct(idx, kind) {
