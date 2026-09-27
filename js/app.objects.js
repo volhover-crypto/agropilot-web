@@ -4222,7 +4222,10 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
 
     // ======== ЧАНК 6.3: АРТЕФАКТЫ — ПРОВОДНИК (папки+файлы, в стиле Windows Explorer) ========
     artFolder: null, // текущая папка (null = корень)
-    folderById(id) { return this.M.folders.find(f => f.id === id) || null; },
+    // id папок из API -- числа, из data-атрибутов DOM -- строки: единое
+    // строковое сравнение (у мока id строковые 'F*', у API числовые)
+    artKey(v) { return String(v ?? ''); },
+    folderById(id) { return this.M.folders.find(f => this.artKey(f.id) === this.artKey(id)) || null; },
     artBreadcrumb() {
       const chain = [];
       let cur = this.artFolder;
@@ -4496,7 +4499,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         async () => {
           try {
             await AGL.deleteFolder(f.id);
-            if (this.artFolder === f.id) this.artFolder = f.parent || null;
+            if (this.artKey(this.artFolder) === this.artKey(f.id)) this.artFolder = f.parent || null;
             this.toast('Папка удалена', 'ok'); this.artRefresh();
           } catch (e) { this.toast('Ошибка: ' + (e && e.message), 'warn'); return false; }
         });
@@ -4559,8 +4562,9 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     vArtifacts() {
       const M = this.M;
       const api = this.apiMode && window.AGL && AGL.token;
-      const subFolders = M.folders.filter(f => (f.parent || null) === this.artFolder);
-      const files = M.artifacts.filter(a => (a.folderId || null) === this.artFolder);
+      const hereKey = this.artKey(this.artFolder);
+      const subFolders = M.folders.filter(f => this.artKey(f.parent) === hereKey);
+      const files = M.artifacts.filter(a => this.artKey(a.folderId) === hereKey);
       // строки на всю ширину (по эталону «правильно»): при любом масштабе
       // строка остаётся целой, имя усекается, кнопки прижаты к правому краю
       const folderCards = subFolders.map(f => {
