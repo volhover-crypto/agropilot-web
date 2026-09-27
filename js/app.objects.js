@@ -4233,6 +4233,31 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         : `<a class="underline cursor-pointer" data-art-go="${f.id}">${this.esc(f.name)}</a>`).join('<span style="color:var(--text-mute)"> › </span>');
       return `<div class="text-[13px] flex flex-wrap items-center gap-1" style="color:var(--text-dim)">${root}${rest ? '<span style="color:var(--text-mute)"> › </span>' + rest : ''}</div>`;
     },
+    artFormatBadge(ext, isFolder) {
+      // графический фрейм с КРУПНЫМ форматом файла (эмодзи-иконки убраны
+      // по требованию владельца 27.09); цвет -- по семейству формата
+      const palette = {
+        pdf: '#C0392B', doc: '#2E6DB4', docx: '#2E6DB4',
+        xls: '#27AE60', xlsx: '#27AE60', csv: '#27AE60',
+        ppt: '#E67E22', pptx: '#E67E22',
+        png: '#8E44AD', jpg: '#8E44AD', jpeg: '#8E44AD', gif: '#8E44AD', webp: '#8E44AD',
+        mp4: '#16A085', mov: '#16A085', webm: '#16A085',
+        zip: '#7F8C8D', txt: '#6B7A8F', md: '#6B7A8F',
+      };
+      const col = isFolder ? '#B8860B' : (palette[(ext || '').toLowerCase()] || '#6B7A8F');
+      const label = isFolder ? 'DIR' : ((ext || 'file').toUpperCase().slice(0, 4));
+      return `<div style="width:54px;height:62px;border:2px solid ${col};border-radius:10px;background:${col}14;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
+        <span style="font-weight:800;font-size:12.5px;color:${col};letter-spacing:.4px">${this.esc(label)}</span>
+        ${isFolder ? '' : `<span style="font-size:8px;color:${col};opacity:.7;margin-top:2px">ФАЙЛ</span>`}
+      </div>`;
+    },
+    artActionBtn(attr, title, glyph, danger) {
+      // круглые контрастные кнопки действий на правом краю карточки
+      const bg = danger ? 'var(--err, #C0392B)' : 'var(--accent)';
+      return `<button class="btn" title="${title}" ${attr}
+        style="width:34px;height:34px;border-radius:999px;background:${bg};color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;flex-shrink:0">${glyph}</button>`;
+    },
+    // эмодзи-иконка остаётся для карточки сделки (вкладка «Артефакты»)
     artFileIcon(ext) {
       return ({
         docx: '📄', doc: '📄', pdf: '📕', pptx: '📊', ppt: '📊',
@@ -4345,6 +4370,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         const list = await AGL.loadFolders();
         this.M.folders.splice(0, this.M.folders.length,
           ...(list || []).map(f => ({ id: f.id, parent: f.parent_id ?? null, name: f.name })));
+        this.render(); // ответ приходит ПОСЛЕ основного рендера загрузки -- без этого папки не видны
       } catch (e) { console.warn('[AGL] loadFolders skipped:', e && e.message); }
     },
     async artRefresh() {
@@ -4524,31 +4550,38 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       const api = this.apiMode && window.AGL && AGL.token;
       const subFolders = M.folders.filter(f => (f.parent || null) === this.artFolder);
       const files = M.artifacts.filter(a => (a.folderId || null) === this.artFolder);
+      // строки на всю ширину (по эталону «правильно»): при любом масштабе
+      // строка остаётся целой, имя усекается, кнопки прижаты к правому краю
       const folderCards = subFolders.map(f => {
         const cnt = M.artifacts.filter(a => a.folderId === f.id).length + M.folders.filter(x => x.parent === f.id).length;
         return `<div class="card-2 p-3 flex items-center gap-3">
-          <span class="text-2xl cursor-pointer" data-art-open-folder="${f.id}">📁</span>
-          <div class="flex-1 min-w-0 cursor-pointer" data-art-open-folder="${f.id}"><div class="text-sm font-medium truncate">${this.esc(f.name)}</div><div class="text-[11px]" style="color:var(--text-mute)">${cnt} эл.</div></div>
-          ${api ? `<button class="btn text-[12px] px-2" title="Переименовать" data-art-ren-folder="${f.id}">✎</button><button class="btn text-[12px] px-2" title="Удалить папку" data-art-del-folder="${f.id}">🗑</button>` : ''}
+          <span style="cursor:pointer" data-art-open-folder="${f.id}">${this.artFormatBadge('', true)}</span>
+          <div class="flex-1 min-w-0 cursor-pointer" data-art-open-folder="${f.id}">
+            <div class="text-sm font-semibold truncate">${this.esc(f.name)}</div>
+            <div class="text-[11px]" style="color:var(--text-mute)">папка · ${cnt} эл.</div>
+          </div>
+          ${api ? `<div class="flex gap-2 items-center flex-shrink-0">
+            ${this.artActionBtn(`data-art-ren-folder="${f.id}"`, 'Переименовать', '✎')}
+            ${this.artActionBtn(`data-art-del-folder="${f.id}"`, 'Удалить папку', '🗑', true)}
+          </div>` : ''}
         </div>`;
       }).join('');
       const fileCards = files.map(a => {
         const d = a.dealId ? this.dealById(a.dealId) : null;
-        const meta = [a.kind, a.ext ? '.' + a.ext : '', a.date, this.fmtSize(a.size)].filter(Boolean).join(' · ');
-        const fileBtns = api
-          ? `<button class="btn text-[12px] px-2" title="Скачать/открыть" data-art-download="${a.id}">⬇</button>
-             <button class="btn text-[12px] px-2" title="Переименовать" data-art-rename="${a.id}">✎</button>
-             <button class="btn text-[12px] px-2" title="Переместить в папку" data-art-move="${a.id}">📁</button>
-             <button class="btn text-[12px] px-2" title="Удалить" data-art-del="${a.id}">🗑</button>`
-          : '';
+        const meta = [a.kind, a.date, this.fmtSize(a.size)].filter(Boolean).join(' · ');
         return `<div class="card-2 p-3 flex items-center gap-3 cursor-pointer" data-art-open-file="${a.id}">
-          <span class="text-2xl">${this.artFileIcon(a.ext)}</span>
+          ${this.artFormatBadge(a.ext, false)}
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium truncate">${this.esc(a.title)}</div>
-            <div class="text-[11px] flex flex-wrap gap-2" style="color:var(--text-mute)"><span>${this.esc(meta)}</span>${d ? `<span>· ${this.esc(d.title)}</span>` : ''}</div>
+            <div class="text-sm font-semibold truncate">${this.esc(a.title)}</div>
+            <div class="text-[11px] flex flex-wrap gap-x-2" style="color:var(--text-mute)"><span>${this.esc(meta)}</span>${d ? `<span>· сделка: ${this.esc(d.title)}</span>` : ''}</div>
           </div>
-          ${a.status ? `<span class="pill text-[11px]">${this.esc(a.status)}</span>` : ''}
-          ${fileBtns}
+          ${a.status ? `<span class="pill text-[11px] flex-shrink-0">${this.esc(a.status)}</span>` : ''}
+          ${api ? `<div class="flex gap-2 items-center flex-shrink-0">
+            ${this.artActionBtn(`data-art-download="${a.id}"`, 'Скачать/открыть', '⬇')}
+            ${this.artActionBtn(`data-art-rename="${a.id}"`, 'Переименовать', '✎')}
+            ${this.artActionBtn(`data-art-move="${a.id}"`, 'Переместить в папку', '⇄')}
+            ${this.artActionBtn(`data-art-del="${a.id}"`, 'Удалить', '🗑', true)}
+          </div>` : ''}
         </div>`;
       }).join('');
       const items = folderCards + fileCards;
@@ -4562,7 +4595,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <button class="btn text-[13px]" data-art-upload>⬆ Загрузить файл</button>
           </div>
         </div>
-        <div class="grid gap-2" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))">${items || emptyMsg}</div>
+        <div class="flex flex-col gap-2">${items || emptyMsg}</div>
       </div>`;
     },
     // ======== ЧАНК 1.5: ЕДИНАЯ КАРТОЧКА ОБЪЕКТА ========
