@@ -4235,7 +4235,14 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     },
     artFormatBadge(ext, isFolder) {
       // графический фрейм с КРУПНЫМ форматом файла (эмодзи-иконки убраны
-      // по требованию владельца 27.09); цвет -- по семейству формата
+      // по требованию владельца 27.09); цвет -- по семейству формата.
+      // Папка: тот же фрейм БЕЗ надписи, верхняя треть чёрная (клапан).
+      if (isFolder) {
+        return `<div style="width:54px;height:62px;border:2px solid #B8860B;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;flex-shrink:0">
+          <div style="height:33%;background:#161616"></div>
+          <div style="flex:1;background:#B8860B14"></div>
+        </div>`;
+      }
       const palette = {
         pdf: '#C0392B', doc: '#2E6DB4', docx: '#2E6DB4',
         xls: '#27AE60', xlsx: '#27AE60', csv: '#27AE60',
@@ -4244,11 +4251,11 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         mp4: '#16A085', mov: '#16A085', webm: '#16A085',
         zip: '#7F8C8D', txt: '#6B7A8F', md: '#6B7A8F',
       };
-      const col = isFolder ? '#B8860B' : (palette[(ext || '').toLowerCase()] || '#6B7A8F');
-      const label = isFolder ? 'DIR' : ((ext || '').toUpperCase().slice(0, 4) || 'DOC');
+      const col = palette[(ext || '').toLowerCase()] || '#6B7A8F';
+      const label = ((ext || '').toUpperCase().slice(0, 4) || 'DOC');
       return `<div style="width:54px;height:62px;border:2px solid ${col};border-radius:10px;background:${col}14;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">
         <span style="font-weight:800;font-size:12.5px;color:${col};letter-spacing:.4px">${this.esc(label)}</span>
-        ${isFolder ? '' : `<span style="font-size:8px;color:${col};opacity:.7;margin-top:2px">ФАЙЛ</span>`}
+        <span style="font-size:8px;color:${col};opacity:.7;margin-top:2px">ФАЙЛ</span>
       </div>`;
     },
     artActionBtn(attr, title, glyph, danger) {
