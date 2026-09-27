@@ -1961,3 +1961,48 @@ sources:approve, agents:manage, inbound:convert...). Роутеры провер
 наращивается по мере появления блоков. Сервисные вызовы агентов (n8n) —
 JWT служебной учётки U7, лимит: только whitelist эндпоинтов
 (POST /v1/news/scan и т.п.), при расширении — ревизия контракта.
+
+## §39. Коннекторный слой источников (О2 ТЗ_ИНТЕГРАЦИЯ_OCTOP, веха M10)
+
+Интеграция механики коннекторов Octop (паттерны, не код). Расширяет §13.1/§20;
+существующие таблицы и эндпоинты sources/news не меняются. Реализация:
+backend/connectors/, миграция 036.
+
+### 39.1. Реестр и интерфейс коннектора
+Коннектор — модуль `backend/connectors/<name>.py`, класс-наследник
+`Connector` с полями `key` (ключ реестра), `kind` (rss|api|web|kb — класс
+механики), `auth` (none|apikey|oauth — у одного источника может быть оба
+варианта доступа, паттерн 企查查) и методами `fetch(source) -> материалы[]`
+и `normalize(raw, source) -> наблюдение`.
+
+Наблюдение ВСЕГДА несёт `source_id` (см. 39.2). Реестр:
+`REGISTRY = {rss, telegram-web, site, arxiv, cyberleninka}`.
+
+Выбор коннектора для источника: явная колонка `sources.connector`
+(миграция 036, ключ реестра; NULL → эвристика по type/url — паритет
+news/collectors.py). Новый источник = строка в `sources` (POST /v1/sources
+принимает `connector`), правок кода не требуется; нестандартная механика —
+новый модуль + строка в реестре.
+
+Типы `sources.type` (миграция 036, объединение 012×017):
+news, telegram, site, rss, supplier, competitor, market, tech.
+«Смысловая» роль (supplier/…) — тип; механика сбора — connector/kind.
+
+### 39.2. Правило поставки данных (verified-only, адаптация к §13.1)
+ТЗ О2 формулирует правило через §8-статусы verified/revoked; фактическая
+статусная модель проекта — §13.1. Соответствие: данные поставляют ТОЛЬКО
+источники с `status='active' AND active=true` (единая точка —
+`backend/connectors/registry.py::eligible_sources_stmt`, используется
+POST /v1/news/scan). proposed/disabled/rejected наблюдений не поставляют.
+
+### 39.3. OAuth-коннекторы (PKCE)
+Для источников с auth=apikey|oauth: код-обмен только с PKCE S256
+(`backend/connectors/oauth.py`), callback — только точное совпадение с
+явным списком redirect-uri (фикс-паттерн Octop «OAuth 回调安全加固»).
+В M10 oauth-источников в реестре нет — модуль готов к подключению.
+
+### 39.4. Верификация (DoD О2)
+1) arXiv-коннектор возвращает нормализованные наблюдения с source_id
+(тесты tests/test_connectors.py); 2) источник в статусе proposed не отдаёт
+данные в мониторинг (правило 39.2, тест is_eligible); 3) новый rss-источник
+добавляется строкой в sources без правок кода.

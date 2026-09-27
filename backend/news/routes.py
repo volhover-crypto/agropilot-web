@@ -18,8 +18,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.common.deps import get_db, get_current_user
 from backend.common.errors import NotFoundError, ValidationError
+from backend.connectors.registry import eligible_sources_stmt, fetch_for_source
 from backend.news.models import NewsItem, Source
-from backend.news.collectors import collect
 from backend.team.models import TeamMember
 
 news_router = APIRouter(prefix="/news", tags=["news"])
@@ -107,7 +107,8 @@ async def scan_sources(
     db: AsyncSession = Depends(get_db),
     user              = Depends(get_current_user),
 ):
-    """Обход активных источников, дедуп: UNIQUE(source_id, url) + pre-check в сессии."""
+    """Обход активных источников через реестр коннекторов (§39),
+    дедуп: UNIQUE(source_id, url) + pre-check в сессии."""
     if not await _can_moderate(db, user):
         raise ValidationError(
             "запуск сканирования доступен менеджерам/админам и A1-сервису (U7)"
@@ -122,14 +123,13 @@ async def scan_sources(
     except Exception:
         pass
     now = datetime.now(timezone.utc)
-    sources = (await db.execute(
-        select(Source).where(Source.active.is_(True), Source.status == "active")
-    )).scalars().all()
+    # §39.2: единая точка правила «данные только от активных источников»
+    sources = (await db.execute(eligible_sources_stmt())).scalars().all()
 
     stats = {"sources": len(sources), "collected": 0, "inserted": 0, "errors": []}
     for src in sources:
         try:
-            materials = collect(src.type, src.url)
+            materials = fetch_for_source(src)
         except Exception as e:
             stats["errors"].append({"source_id": src.id, "error": str(e)[:200]})
             continue
@@ -151,12 +151,20 @@ async def scan_sources(
                     continue
             text_for_relevance = " ".join(filter(None, [mat["title"], mat.get("summary")]))
             rel, reason = _relevance(text_for_relevance, keywords)
+            published_at = None
+            if mat.get("published_at"):
+                try:
+                    from backend.common.tz import parse_dt
+                    published_at = parse_dt(mat["published_at"])
+                except ValueError:
+                    published_at = None
             db.add(NewsItem(
                 source_id=src.id,
                 title=mat["title"],
                 summary=mat.get("summary"),
                 url=url or None,
                 fetched_at=now,
+                published_at=published_at,  # §39: коннекторы могут нести дату
                 relevance=rel,
                 relevance_reason=reason,
                 agent_run_id=run_id,

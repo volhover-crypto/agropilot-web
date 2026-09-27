@@ -29,6 +29,7 @@ class Source(Base):
     routing_reason:       Mapped[Optional[str]]  = mapped_column(String(16), nullable=True)
     created_at:           Mapped[datetime]       = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     segment_code:         Mapped[Optional[str]]  = mapped_column(Text, nullable=True)  # §37
+    connector:            Mapped[Optional[str]]  = mapped_column(String(48), nullable=True)  # §39.1
 
     def to_dict(self) -> dict:
         return {
@@ -38,6 +39,7 @@ class Source(Base):
             "handle":               self.handle,
             "keywords":             self.keywords or [],
             "segment_code":         self.segment_code,
+            "connector":            self.connector,  # §39.1
             "active":               self.active,
             "status":               self.status,
             "linked_strategy_task": self.linked_strategy_task,

@@ -61,3 +61,4 @@ class Source(Base):
     active:           Mapped[bool]     = mapped_column(Boolean)
     status:           Mapped[str]      = mapped_column(String(16))
     check_period_min: Mapped[int]      = mapped_column(Integer)
+    connector:        Mapped[Optional[str]] = mapped_column(String(48), nullable=True)  # §39.1

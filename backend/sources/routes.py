@@ -19,9 +19,21 @@ from backend.common.deps import get_db, get_current_user
 
 sources_router = APIRouter(prefix="/sources", tags=["sources"])
 
-VALID_TYPES = {"news", "supplier", "competitor", "market", "tech"}
+VALID_TYPES = {
+    # §39.1 (миграция 036): объединение множеств кода (012) и БД (017)
+    "news", "telegram", "site", "rss", "supplier", "competitor", "market", "tech",
+}
 VALID_STATUS = {"active", "proposed", "disabled", "rejected"}
 _MANAGER_ROLE_KEYS = {"manager", "admin"}
+
+def _validate_connector(c):
+    # §39.1: ключ должен существовать в реестре коннекторов
+    if c is None:
+        return None
+    from backend.connectors.registry import REGISTRY
+    if c not in REGISTRY:
+        raise ValidationError(f"connector must be one of {sorted(REGISTRY)}")
+    return c
 
 def _ok(data):
     return {"ok": True, "data": data}
@@ -100,6 +112,7 @@ class SourceCreate(BaseModel):
     added_by: Optional[str] = None
     linked_strategy_task: Optional[str] = None
     segment_code: Optional[str] = None  # §37: сегмент аудитории источника
+    connector: Optional[str] = None  # §39.1: ключ реестра коннекторов
 
 
 class SourceUpdate(BaseModel):
@@ -110,6 +123,7 @@ class SourceUpdate(BaseModel):
     status: Optional[str] = None
     linked_strategy_task: Optional[str] = None
     segment_code: Optional[str] = None
+    connector: Optional[str] = None  # §39.1
 
 
 @sources_router.get("")
@@ -168,6 +182,7 @@ async def create_source(
         added_by=payload.added_by,
         linked_strategy_task=payload.linked_strategy_task,
         segment_code=payload.segment_code or None,  # §37
+        connector=_validate_connector(payload.connector),  # §39.1
     )
     if status == "proposed":
         await _route_proposed(db, src)
@@ -240,6 +255,8 @@ async def update_source(
         src.linked_strategy_task = payload.linked_strategy_task
     if payload.segment_code is not None:  # §37: сегмент аудитории источника
         src.segment_code = payload.segment_code or None
+    if payload.connector is not None:  # §39.1
+        src.connector = _validate_connector(payload.connector)
     if payload.status is not None:
         _validate_status(payload.status)
         src.status = payload.status
