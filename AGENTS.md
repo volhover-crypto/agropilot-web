@@ -22,7 +22,21 @@
 - `myday/`, `assistant/`, `agents/` — «Мой день», чат-ассистент A7, реестр агентов и run_logs.
 - `meteo/` — МИА-метео (запуск systemd-таймерами `deploy/systemd/agropilot-meteo@*.timer`).
 - `connectors/` — слой коннекторов источников (§39): реестр, rss/arxiv/cyberleninka, PKCE.
+- `questions/` — вопросы агента ПЕТРУШКИ (§40): TTL, идемпотентность, гашение раундов; expire-джоба systemd.
+- `knowledge/` — RAG-контур M11 (§41): конвейер документов, чанкинг, эмбеддинги, Qdrant/Memory-стор.
+- `orchestrator/` — orchChat (§41.3): knowledge-aware чат с citations и unverified-деградацией.
+- `petchannel/` — Telegram-канал ПЕТРУШКИ (§42): webhook, привязка, notify_mask.
 - `migrations/` — нумерованные SQL-миграции (следующий свободный номер — в имени файла).
+
+## Ввод контуров О1/О6 на сервере (после подтверждения заказчика)
+1. `venv/bin/pip install -r requirements.txt` (+ зафиксировать версии
+   fastembed/rapidocr-onnxruntime из вывода pip freeze).
+2. Qdrant: docker-контейнер, порт 6333; `QDRANT_URL=http://127.0.0.1:6333` в .env.
+3. Миграции 036–039 (psql), systemd: `agropilot-questions-expire.timer`.
+4. Telegram (§42): в .env — `PETRUSHKA_TG_BOT_TOKEN`, `PETRUSHKA_TG_WEBHOOK_SECRET`
+   (произвольная длинная строка); setWebhook:
+   `curl "https://api.telegram.org/bot<TOKEN>/setWebhook" -d "url=https://<host>/agropilot/api/v1/telegram/webhook" -d "secret_token=<SECRET>"`.
+   Модель fastembed (мультиязычная MiniLM) скачается при первом эмбеддинге.
 
 ## Запреты
 1. **Не править `js/mock.objects.js` в прод-режиме** (`DEV_MOCK=false` в
