@@ -101,14 +101,20 @@ class QdrantStore:
     def delete_by_doc(self, doc_id: int) -> int:
         from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-        res = self._get().delete(
-            collection_name=_COLLECTION,
-            points_selector=Filter(
-                must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))]
-            ),
-            wait=True,
-        )
-        return 1 if getattr(res, "status", None) else 0
+        try:
+            res = self._get().delete(
+                collection_name=_COLLECTION,
+                points_selector=Filter(
+                    must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))]
+                ),
+                wait=True,
+            )
+            return 1 if getattr(res, "status", None) else 0
+        except Exception as e:
+            # коллекции ещё нет -- нечего удалять (идемпотентность)
+            if "404" in str(e) or "doesn't exist" in str(e) or "Not found" in str(e):
+                return 0
+            raise
 
     def search(self, vector: list[float], limit: int = 5,
                kb_ids: Optional[list[int]] = None) -> list[dict]:

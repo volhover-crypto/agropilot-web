@@ -227,12 +227,14 @@ async def run_pipeline(
     await db.commit()
 
     # 3) идемпотентная очистка прежней индексации этого doc_id
+    # (коллекция создаётся ДО очистки: delete_by_doc по несуществующей
+    # коллекции Qdrant возвращает 404)
+    store.ensure_collection(embedder.dim())
     await db.execute(sa_delete(KnowledgeChunk).where(KnowledgeChunk.doc_id == doc.id))
     store.delete_by_doc(doc.id)
 
     # 4) embed + index
     vectors = embedder.embed([c["text"] for c in chunks])
-    store.ensure_collection(embedder.dim())
     rows = []
     points = []
     for c, vec in zip(chunks, vectors):
