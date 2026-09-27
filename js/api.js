@@ -487,6 +487,10 @@ const AGL = {
   async deferQuestion(id) {
     return apiFetch('/v1/petrushka/questions/' + id, { method: 'PATCH', data: { defer: true } });
   },
+  // §41: базы знаний (О1) — чанк для подсветки цитаты в чате
+  async knowledgeChunk(chunkId) {
+    return safeLoad('/v1/knowledge/chunks/' + chunkId, null);
+  },
   async aiContentTrends(contentId) {
     return apiFetch(`/v1/content/${contentId}/ai/trends`, { method: 'POST' });
   },

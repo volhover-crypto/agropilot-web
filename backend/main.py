@@ -37,6 +37,9 @@ from backend.strategy.directions import directions_router
 from backend.channels.routes import channels_router
 # §40 — вопросы агента ПЕТРУШКИ (О3)
 from backend.questions.routes import questions_router
+# §41 — базы знаний / RAG (О1)
+from backend.knowledge.routes import knowledge_router
+from backend.orchestrator.routes import orchestrator_router
 
 # -----------------------------------------------------------------------
 # Application factory
@@ -120,6 +123,10 @@ app.include_router(channels_router, prefix="/agropilot/api/v1")
 
 # §40 — вопросы агента ПЕТРУШКИ (О3)
 app.include_router(questions_router, prefix="/agropilot/api/v1")
+
+# §41 — базы знаний / RAG + orchChat (О1)
+app.include_router(knowledge_router, prefix="/agropilot/api/v1")
+app.include_router(orchestrator_router, prefix="/agropilot/api/v1")
 
 # §19 — Auth (JWT login/refresh/logout)
 app.include_router(auth_router, prefix="/agropilot/api/v1")

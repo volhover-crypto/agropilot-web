@@ -947,7 +947,9 @@ vSkillsMy() {
           const resp = await AGL.orchChat(q);
           // Remove typing indicator
           this.owlChat = this.owlChat.filter(m => !m.typing);
-          this.owlChat.push({ role: 'owl', text: resp.reply || resp.text || resp.message || '(пусто)', ts: this.petTs() });
+          // §41 (О1): knowledge-ответ несёт citations[]; без валидных
+          // цитат knowledge=false -- значок «знание» не показывается
+          this.owlChat.push({ role: 'owl', text: resp.reply || resp.text || resp.message || '(пусто)', ts: this.petTs(), knowledge: !!resp.knowledge, citations: resp.citations || [], citOpen: -1 });
           this.owlRender();
           this.$nextTick(() => { const b = document.getElementById('owlBody'); if (b) b.scrollTop = b.scrollHeight; });
           return;
@@ -1320,6 +1322,19 @@ return { related, other };
           // ответ ПЕТРУШКИ с грифом и действиями
           const gr = m.grade || 'HINT';
           const grCol = this.gradeColor(gr);
+          // §41 (О1): значок «знание» + кликабельные источники
+          let knowBadge = '', citBlock = '';
+          if (m.knowledge && m.citations && m.citations.length) {
+            knowBadge = `<span class="pill text-[10px]" style="color:var(--accent);border-color:var(--accent)">ЗНАНИЕ</span>`;
+            citBlock = `<div class="mt-2 pt-2" style="border-top:1px dashed var(--line)">` +
+              m.citations.map((c, ci) => {
+                const open = m.citOpen === ci;
+                const body = open
+                  ? `<div class="card-2 p-2 mt-1 text-[12px]" style="white-space:pre-wrap;background:var(--accent-soft)">${this.esc(m.citTitle ? m.citTitle + '\n---\n' : '')}${this.esc(m.citText || c.quote || '')}</div>`
+                  : '';
+                return `<div class="mt-1"><a class="text-[11px] underline cursor-pointer" style="color:var(--accent)" data-pet-cit="${idx}:${ci}">[${ci + 1}] ${this.esc(c.title)}</a>${body}</div>`;
+              }).join('') + `</div>`;
+          }
           let actBtns = '';
           if (m.done) {
             actBtns = `<div class="text-[12px] mt-1" style="color:${m.done === 'ok' ? 'var(--ok)' : 'var(--text-mute)'}">${m.done === 'ok' ? '✓ принято' : '✕ отклонено'}</div>`;
@@ -1331,8 +1346,9 @@ return { related, other };
             actBtns = `<div class="mt-1"><button class="btn text-[12px]" data-pet-ok2="${idx}">Понятно</button></div>`;
           }
           return `<div class="card-2 p-2.5 mb-2">
-              <div class="flex items-center gap-2 mb-1"><span style="font-size:14px">${this.petIco(15)}</span><span class="pill text-[10px]" style="color:${grCol};border-color:${grCol}">${this.gradeLabel(gr)}</span>${m.ts ? `<span class="text-[10px] ml-auto" style="color:var(--text-mute)">${m.ts}</span>` : ''}</div>
+              <div class="flex items-center gap-2 mb-1"><span style="font-size:14px">${this.petIco(15)}</span><span class="pill text-[10px]" style="color:${grCol};border-color:${grCol}">${this.gradeLabel(gr)}</span>${knowBadge}${m.ts ? `<span class="text-[10px] ml-auto" style="color:var(--text-mute)">${m.ts}</span>` : ''}</div>
               <div class="text-[13px]" style="white-space:pre-wrap">${this.esc(m.text)}</div>
+              ${citBlock}
               ${actBtns}
             </div>`;
         }).join('')
@@ -1355,6 +1371,28 @@ return { related, other };
       b.querySelectorAll('[id^="owlQ-"]').forEach(n => n.addEventListener('keydown', e => {
         if (e.key === 'Enter') { e.preventDefault(); this.petQAnswer(+n.id.slice(5)); }
       }));
+      // §41 (О1): клик по источнику -> раскрыть чанк (doc -> chunk -> quote)
+      b.querySelectorAll('[data-pet-cit]').forEach(n => n.onclick = () => {
+        const [i, ci] = n.getAttribute('data-pet-cit').split(':').map(Number);
+        this.petCitToggle(i, ci);
+      });
+    },
+    // §41 (О1): раскрыть/свернуть цитату, подтянуть полный чанк
+    async petCitToggle(idx, ci) {
+      const m = this.owlChat[idx];
+      if (!m || !m.citations || !m.citations[ci]) return;
+      m.citOpen = (m.citOpen === ci) ? -1 : ci;
+      if (m.citOpen === ci && !m.citText) {
+        try {
+          const c = await AGL.knowledgeChunk(m.citations[ci].chunk_id);
+          m.citText = c.text;
+          m.citTitle = c.doc_title ? `«${c.doc_title}», фрагмент ${c.ord + 1}` : null;
+        } catch (e) {
+          m.citText = m.citations[ci].quote || '(фрагмент недоступен)';
+          m.citTitle = null;
+        }
+      }
+      this.owlRender();
     },
     // §40 (О3): ответ на вопрос агента из карточки в чате
     async petQAnswer(idx) {

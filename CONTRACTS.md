@@ -2047,3 +2047,64 @@ GET /v1/petrushka/questions[?all=1&limit] · POST /v1/petrushka/questions
 (менеджер/сервис; {user_id, question, context_ref?, round_id?, ttl_hours?})
 · PATCH /v1/petrushka/questions/{id} · POST .../expire (сервис)
 · POST .../close_round ({round_id, user_id?}).
+
+## §41. Базы знаний / RAG (О1 ТЗ_ИНТЕГРАЦИЯ_OCTOP, веха M11)
+
+Интеграция ingestion-механик Octop (fallback-кодировки, OCR-отказы,
+обязательные цитаты). Расширяет §9.1/§9.2. Реализация: backend/knowledge/,
+backend/orchestrator/, миграция 038. Решения D4/D5 (заказчик, 27.09.2026):
+эмбеддинги — локальный fastembed (без ключей), Qdrant + rapidocr на сервере.
+
+### 41.1. Конвейер документа (идемпотентный)
+Статусы knowledge_docs: `uploaded → parsed → chunked → indexed → ready |
+failed(reason)`. Причины: `encoding` (utf-8→cp1251 фолбэк не спас),
+`no_text` (PDF без текстового слоя и без изображений / OCR не дал текста —
+фикс-паттерн Octop: НЕ ready с пустым корпусом), `ocr_unavailable`
+(rapidocr не установлен), `parse` (битый файл), `empty`.
+Повторный запуск по doc_id (POST .../docs/{id}/reindex) идемпотентен:
+точки векторного хранилища и строки чанков документа удаляются перед
+переиндексацией — дублей нет. corpus_version инкрементируется при каждом
+успешном изменении корпуса (§9.1, принцип версий M9).
+Чанкинг: CHUNK_SIZE=1000 симв., CHUNK_OVERLAP=15% (env BFF); чанк хранит
+ord, quote-диапазон [start,end) в тексте документа, qdrant_point_id.
+Форматы: pdf (pypdf; без текстового слоя — OCR картинок страниц rapidocr),
+docx (python-docx), xlsx/csv (openpyxl/stdlib), md/txt.
+Файлы: KNOWLEDGE_FILES_DIR/<doc_id>__<safe-name>.
+
+### 41.2. Эндпоинты knowledge
+GET /v1/knowledge · POST /v1/knowledge {title} (менеджер) ·
+GET /v1/knowledge/{id}/docs · POST /v1/knowledge/{id}/docs
+{filename, content_b64} (менеджер; ≤25 МБ, конвейер синхронно) ·
+POST /v1/knowledge/{id}/docs/{doc_id}/reindex (менеджер) ·
+GET /v1/knowledge/chunks/{chunk_id} (текст+диапазон — подсветка цитаты) ·
+POST /v1/knowledge/{id}/query {question} — §9.2: ответ ОБЯЗАН содержать
+citations[] (пустой = unverified: знаний по вопросу нет).
+
+### 41.3. orchChat и цитирование (ужесточение §9.2)
+POST /v1/orchestrator/chat {message, kb_id?, session_key?}:
+ретрив по активным KB (EMBED_PROVIDER, QDRANT_URL, RETRIEVE_MIN_SCORE=0.30)
+→ LLM-ответ с обязательной разметкой утверждений [n].
+Ответ с валидными citations[] = {doc_id, title, chunk_id, quote, score}
+→ `knowledge: true` (значок «ЗНАНИЕ» в UI; источник кликабелен:
+doc → chunk → подсветка quote — js/app.objects.js petCitToggle).
+Пустой ретрив ИЛИ ответ без валидных [n] → `unverified`-деградация:
+`knowledge: false`, citations [], значок не показывается, контекст —
+обычный срез системы (assistant build_context).
+corpus_version и session_key фиксируются в meta run_logs (агент a7).
+Ключ сессии: `<user_id>:web` или `<user_id>:telegram:<chat_id>` (§42).
+
+### 41.4. Конфигурация
+EMBED_PROVIDER=fastembed|fake · QDRANT_URL (пусто — MemoryStore, только
+разработка) · CHUNK_SIZE / CHUNK_OVERLAP · RETRIEVE_MIN_SCORE ·
+KNOWLEDGE_FILES_DIR. Модель fastembed:
+sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (dim 384),
+скачивается при первом запуске.
+
+### 41.5. Верификация (DoD О1)
+Юнит-тесты tests/test_knowledge.py (sqlite+aiosqlite, FakeEmbedder,
+MemoryStore): все исходы конвейера (ready / failed(encoding) /
+failed(no_text) / failed(parse) / пустой текст), идемпотентность
+переиндексации (нет дублей чанков и точек), corpus_version растёт только
+при успехе, кодировки utf-8/cp1251, docx/xlsx/csv. Прогон с реальным
+fastembed+Qdrant и тестовым корпусом из 5 файлов — на сервере при вводе
+в прод (до перевода — проверка полноты ответов, риск ТЗ §6).
