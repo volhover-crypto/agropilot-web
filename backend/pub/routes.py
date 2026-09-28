@@ -9,7 +9,12 @@
 # (bot_token | vk_token), наружу никогда не возвращается. Заморозка вместо
 # удаления: история pub_post_channels остаётся (FK, §46.1).
 
+import asyncio
+import json as _json
+import os
 import re
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends
@@ -19,10 +24,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.common.deps import get_current_user, get_db
 from backend.common.errors import (ConflictError, ForbiddenError, NotFoundError,
                                    ValidationError)
-from backend.pub.models import PubChannel
+from backend.pub.models import PubChannel, PubPost, PubPostChannel
 from backend.team.models import TeamMember
 
 router = APIRouter(prefix="/pub", tags=["pub"])
+
+# §46.7 (Ф3): публикация через n8n; файлы артефактов отдаёт nginx публично,
+# относительные /agropilot/files/... достраиваем до абсолютных (для Bot API/n8n)
+PUB_PUBLIC_BASE = os.getenv("PUB_PUBLIC_BASE", "https://mdked.hlab.kz").rstrip("/")
+PUB_ENGINE_URL = os.getenv("PUB_ENGINE_URL",
+                           "https://mdked.hlab.kz/n8n/webhook/pub-publish")
+PUB_ENGINE_TOKEN = os.getenv("PUB_ENGINE_TOKEN", "")
+PUBLISH_ROLES = ("admin", "manager")  # создание/правка/публикация постов
 
 # платформы, доступные для создания в Ф2; instagram ждёт бизнес-аккаунт (Ф6)
 PLATFORMS = ("telegram", "vk", "dzen")
@@ -186,3 +199,251 @@ async def update_channel(channel_id: int, payload: dict = Body(...),
     await db.commit()
     await db.refresh(ch)
     return _ok(_payload(ch))
+
+
+# =========================================================================
+# §46.7 (Ф3): посты публикаций + публикация «сейчас» (через n8n §46.2)
+# =========================================================================
+
+async def _require_role(db: AsyncSession, user, roles) -> None:
+    m = await db.get(TeamMember, user.id)
+    if m is None or (m.role_key or "") not in roles:
+        raise ForbiddenError(
+            "публикации: требуется роль " + " или ".join(roles))
+
+
+def _abs_media(media) -> list:
+    """media[]: [{type:'photo', url}] ≤10; относительный /agropilot/files/…
+    достраиваем до абсолютного — URL качают Bot API и n8n."""
+    if media is None:
+        return []
+    if not isinstance(media, (list, tuple)) or len(media) > 10:
+        raise ValidationError("media: список до 10 элементов")
+    out = []
+    for m in media:
+        if not isinstance(m, dict) or m.get("type") != "photo":
+            raise ValidationError("media[]: только {type:'photo', url}")
+        url = (m.get("url") or "").strip()
+        if url.startswith("/agropilot/files/"):
+            url = PUB_PUBLIC_BASE + url
+        if not re.match(r"^https?://", url) or len(url) > 1024:
+            raise ValidationError("media[].url: http(s)-ссылка или /agropilot/files/…")
+        out.append({"type": "photo", "url": url})
+    return out
+
+
+async def _load_active_channels(db: AsyncSession) -> dict:
+    rows = (await db.execute(
+        select(PubChannel).where(PubChannel.status == "active")
+    )).scalars().all()
+    return {ch.id: ch for ch in rows}
+
+
+async def _sync_post_channels(db, post: PubPost, channel_ids, overrides) -> list:
+    """Привязать каналы к посту (для draft: пересоздание набора;
+    overrides пишем в body_override). Возвращает список активных каналов."""
+    channels = await _load_active_channels(db)
+    seen = set()
+    for cid in channel_ids:
+        if not isinstance(cid, int) or cid in seen:
+            raise ValidationError("channel_ids: список id активных каналов")
+        seen.add(cid)
+        if cid not in channels:
+            raise ValidationError(f"канал {cid} не найден или заморожен")
+    # чистим привязки, которых больше нет (каскада нет: PK post+channel)
+    from sqlalchemy import delete
+    await db.execute(
+        delete(PubPostChannel).where(
+            PubPostChannel.post_id == post.id,
+            PubPostChannel.channel_id.not_in(seen) if seen else True))
+    if not seen:
+        return []
+    ov = overrides or {}
+    if not isinstance(ov, dict):
+        raise ValidationError("overrides: {channel_id: текст}")
+    for cid in seen:
+        row = await db.get(PubPostChannel, (post.id, cid))
+        if row is None:
+            row = PubPostChannel(post_id=post.id, channel_id=cid, status="pending")
+            db.add(row)
+        bo = ov.get(str(cid))
+        if bo is not None:
+            if not isinstance(bo, str) or len(bo) > 4096:
+                raise ValidationError(f"overrides[{cid}]: строка до 4096 символов")
+            row.body_override = bo or None
+    return [channels[cid] for cid in sorted(seen)]
+
+
+def _post_payload(post, rows, channels_by_id) -> dict:
+    chans = []
+    for pc, ch in rows:
+        chans.append({
+            "channel_id": pc.channel_id,
+            "name": ch.name if ch else "?",
+            "platform": ch.platform if ch else "?",
+            "status": pc.status,
+            "platform_post_id": pc.platform_post_id,
+            "error": pc.error,
+            "body_override": pc.body_override,
+            "published_at": pc.published_at.isoformat() if pc.published_at else None,
+        })
+    return {
+        "id": post.id,
+        "body_md": post.body_md,
+        "media": post.media or [],
+        "status": post.status,
+        "scheduled_at": post.scheduled_at.isoformat() if post.scheduled_at else None,
+        "last_error": post.last_error,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+        "channels": chans,
+    }
+
+
+async def _post_or_404(db, post_id: int) -> PubPost:
+    post = await db.get(PubPost, post_id)
+    if post is None:
+        raise NotFoundError(f"пост {post_id} не найден")
+    return post
+
+
+async def _post_with_channels(db, post) -> dict:
+    rows = (await db.execute(
+        select(PubPostChannel, PubChannel)
+        .outerjoin(PubChannel, PubChannel.id == PubPostChannel.channel_id)
+        .where(PubPostChannel.post_id == post.id)
+        .order_by(PubPostChannel.channel_id))).all()
+    return _post_payload(post, rows, None)
+
+
+@router.get("/posts")
+async def list_posts(limit: int = 50, db: AsyncSession = Depends(get_db),
+                     user=Depends(get_current_user)):
+    limit = max(1, min(limit, 200))
+    posts = (await db.execute(
+        select(PubPost).order_by(PubPost.id.desc()).limit(limit))).scalars().all()
+    out = []
+    for post in posts:
+        out.append(await _post_with_channels(db, post))
+    return _ok(out)
+
+
+@router.post("/posts")
+async def create_post(payload: dict = Body(...),
+                      db: AsyncSession = Depends(get_db),
+                      user=Depends(get_current_user)):
+    """Черновик публикации (admin|manager). Медиа — фото артефактов/URL."""
+    await _require_role(db, user, PUBLISH_ROLES)
+    body_md = payload.get("body_md")
+    if not isinstance(body_md, str) or not 1 <= len(body_md.strip()) <= 20000:
+        raise ValidationError("body_md: 1..20000 символов")
+    media = _abs_media(payload.get("media"))
+    post = PubPost(body_md=body_md, media=media, status="draft",
+                   created_by=user.id,
+                   created_at=datetime.now(timezone.utc),
+                   updated_at=datetime.now(timezone.utc))
+    db.add(post)
+    await db.flush()
+    channels = await _sync_post_channels(db, post, payload.get("channel_ids") or [],
+                                         payload.get("overrides"))
+    if not channels:
+        # пост без каналов хранить можно (дозаполнится в PATCH), но предупреждаем
+        pass
+    await db.commit()
+    await db.refresh(post)
+    return _ok(await _post_with_channels(db, post))
+
+
+@router.get("/posts/{post_id}")
+async def get_post(post_id: int, db: AsyncSession = Depends(get_db),
+                   user=Depends(get_current_user)):
+    post = await _post_or_404(db, post_id)
+    return _ok(await _post_with_channels(db, post))
+
+
+@router.patch("/posts/{post_id}")
+async def update_post(post_id: int, payload: dict = Body(...),
+                      db: AsyncSession = Depends(get_db),
+                      user=Depends(get_current_user)):
+    """Правка черновика (только status=draft): текст/медиа/каналы/overrides."""
+    await _require_role(db, user, PUBLISH_ROLES)
+    post = await _post_or_404(db, post_id)
+    if post.status != "draft":
+        raise ConflictError(f"правка доступна только черновику (статус {post.status})")
+    if "body_md" in payload:
+        body_md = payload.get("body_md")
+        if not isinstance(body_md, str) or not 1 <= len(body_md.strip()) <= 20000:
+            raise ValidationError("body_md: 1..20000 символов")
+        post.body_md = body_md
+    if "media" in payload:
+        post.media = _abs_media(payload.get("media"))
+    if "channel_ids" in payload:
+        await _sync_post_channels(db, post, payload.get("channel_ids") or [],
+                                  payload.get("overrides"))
+    elif "overrides" in payload:
+        bound = (await db.execute(
+            select(PubPostChannel).where(PubPostChannel.post_id == post.id))
+            ).scalars().all()
+        await _sync_post_channels(db, post,
+                                  [pc.channel_id for pc in bound],
+                                  payload.get("overrides"))
+    post.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(post)
+    return _ok(await _post_with_channels(db, post))
+
+
+@router.delete("/posts/{post_id}")
+async def delete_post(post_id: int, db: AsyncSession = Depends(get_db),
+                      user=Depends(get_current_user)):
+    """Удаление только черновика (строки каналов — каскадом)."""
+    await _require_role(db, user, PUBLISH_ROLES)
+    post = await _post_or_404(db, post_id)
+    if post.status != "draft":
+        raise ConflictError(f"удаление доступно только черновику (статус {post.status})")
+    await db.delete(post)
+    await db.commit()
+    return _ok({"deleted": post_id})
+
+
+@router.post("/posts/{post_id}/publish")
+async def publish_post(post_id: int, payload: dict = Body(default={}),
+                       db: AsyncSession = Depends(get_db),
+                       user=Depends(get_current_user)):
+    """Публиковать «сейчас»: каналы → pending, затем синхронный вызов n8n
+    (§46.2) с проксированием его ответа. Повтор для failed/partial."""
+    await _require_role(db, user, PUBLISH_ROLES)
+    post = await _post_or_404(db, post_id)
+    if post.status == "publishing":
+        raise ConflictError("пост уже публикуется")
+    channel_ids = payload.get("channel_ids")
+    if channel_ids is None:
+        bound = (await db.execute(
+            select(PubPostChannel).where(PubPostChannel.post_id == post.id))
+            ).scalars().all()
+        channel_ids = [pc.channel_id for pc in bound]
+    channels = await _sync_post_channels(db, post, channel_ids or [],
+                                         payload.get("overrides"))
+    if not channels:
+        raise ValidationError("нет активных каналов: выберите каналы или разморозьте")
+    await db.commit()
+
+    body = _json.dumps({"post_id": post.id}).encode()
+    req = urllib.request.Request(
+        PUB_ENGINE_URL, data=body, method="POST",
+        headers={"Content-Type": "application/json", "X-PUB-TOKEN": PUB_ENGINE_TOKEN})
+    try:
+        # to_thread: urllib синхронный, не блокируем event loop
+        with await asyncio.to_thread(urllib.request.urlopen, req, timeout=150) as resp:
+            return _json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            return _json.loads(e.read())  # 400/404 от webhook — проксируем телом
+        except Exception:
+            raise ConflictError(f"движок публикаций вернул HTTP {e.code}")
+    except urllib.error.URLError as e:
+        post = await _post_or_404(db, post_id)
+        post.status = "failed"
+        post.last_error = f"движок недоступен: {e.reason}"
+        post.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        raise ConflictError(f"движок публикаций недоступен: {e.reason}")

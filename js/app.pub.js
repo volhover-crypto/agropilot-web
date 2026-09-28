@@ -15,11 +15,20 @@
 
       // ---- состояние раздела «Публикации» (§46) ----
       pubState: {
-        tab: 'channels',            // Ф2: только 'channels'
+        tab: 'channels',            // 'channels' | 'editor' | 'list'
         channels: [], loaded: false, loading: false, err: null,
         drawer: {                   // форма добавления/правки (паттерн §45.7)
           open: false, mode: 'create', id: null,
           form: {}, err: null, saving: false,
+        },
+        posts: [], postsLoading: false,
+        editor: {                   // Ф3: редактор публикации
+          open: false, id: null,          // id поста при правке
+          body_md: '', media: [],         // [{type:'photo', url}]
+          sel: new Set(),                 // channel_id выбранных
+          overrides: {},                  // channel_id -> текст
+          previewTab: null,               // channel_id активного превью
+          err: null, busy: false,
         },
       },
 
@@ -27,6 +36,11 @@
         const uid = this.currentUserId();
         const u = (this.M.team || []).find(t => String(t.id) === String(uid));
         return !!(u && u.role_key === 'admin');
+      },
+      pubCanPublish() {
+        const uid = this.currentUserId();
+        const u = (this.M.team || []).find(t => String(t.id) === String(uid));
+        return !!(u && (u.role_key === 'admin' || u.role_key === 'manager'));
       },
 
       // ---- загрузка ----
@@ -136,17 +150,21 @@
         const tabs = `
           <div class="flex gap-2 mb-4 flex-wrap">
             <button class="btn ${st.tab === 'channels' ? 'btn-accent' : ''}" data-pub-tab="channels">Каналы</button>
-            <span class="btn" style="opacity:.45;cursor:default" title="Ф3">✍️ Редактор (Ф3)</span>
+            <button class="btn ${st.tab === 'editor' ? 'btn-accent' : ''}" data-pub-tab="editor">✍️ Редактор</button>
+            <button class="btn ${st.tab === 'list' ? 'btn-accent' : ''}" data-pub-tab="list">📚 Список публикаций</button>
             <span class="btn" style="opacity:.45;cursor:default" title="Ф4">🕓 Отложка (Ф4)</span>
           </div>`;
-        const body = st.tab === 'channels' ? this.vPubChannels() : '';
+        let body = '';
+        if (st.tab === 'channels') body = this.vPubChannels();
+        else if (st.tab === 'editor') body = this.vPubEditor();
+        else if (st.tab === 'list') body = this.vPubPostsList();
         return `
         <div class="mb-4 flex items-center justify-between flex-wrap gap-2">
           <div>
             <div class="text-2xl font-semibold">Публикации</div>
             <div class="text-sm" style="color:var(--text-mute)">Кросспостинг: одна публикация → все каналы, формат под каждую платформу (§46)</div>
           </div>
-          ${this.pubCanEdit() ? '<button class="btn btn-accent" data-pub-add>+ Добавить канал</button>' : ''}
+          ${this.pubCanEdit() && st.tab === 'channels' ? '<button class="btn btn-accent" data-pub-add>+ Добавить канал</button>' : ''}
         </div>
         ${tabs}
         ${body}
@@ -273,6 +291,345 @@
         </div>`;
       },
 
+      // =================================================================
+      // Ф3: форматтеры (дубль Code-узлов n8n §46.3 — править синхронно!)
+      // =================================================================
+      pubEscHtml(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      },
+      pubFmtTg(md) {
+        let h = this.pubEscHtml(md);
+        h = h.replace(/\*\*(.+?)\*\*/gs, '<b>$1</b>');
+        h = h.replace(/(^|\s)\*(?!\s)(.+?)\*(?=\s|$)/gs, '$1<i>$2</i>');
+        h = h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" style="color:#5aa9e6">$1</a>');
+        return h.length > 4096 ? h.slice(0, 4090) + '\n…' : h;
+      },
+      pubFmtVk(md) {
+        let t = String(md || '')
+          .replace(/\*\*(.+?)\*\*/gs, '$1')
+          .replace(/(^|\s)\*(?!\s)(.+?)\*(?=\s|$)/gs, '$1$2')
+          .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '$1 ($2)');
+        return t.length > 4096 ? t.slice(0, 4090) + '\n…' : t;
+      },
+      pubFmtDzen(md) {
+        const s = String(md || '');
+        const nl = s.indexOf('\n');
+        const title = (nl > 0 ? s.slice(0, nl) : s).replace(/^#+\s*/, '').slice(0, 120);
+        return { title, body: nl > 0 ? s.slice(nl + 1) : '' };
+      },
+      pubPreviewText(ch) {
+        const ed = this.pubState.editor;
+        return ed.overrides[ch.id] != null && ed.overrides[ch.id] !== ''
+          ? ed.overrides[ch.id] : ed.body_md;
+      },
+
+      // ---- мокапы превью (нативные карточки платформ) ----
+      pubPreviewHtml(ch) {
+        const meta = this.pubPlatMeta();
+        const ed = this.pubState.editor;
+        const photo = (ed.media || [])[0];
+        const ph = photo
+          ? `<div style="border-radius:8px 8px 0 0;background:#2a3b4d url('${this.esc(photo.url)}') center/cover;height:150px"></div>` : '';
+        const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        if (ch.platform === 'telegram') {
+          return `
+          <div style="background:#0e1621;border-radius:12px;padding:14px;max-width:360px">
+            <div style="background:#182533;border-radius:10px;overflow:hidden;color:#e8edf2;font-size:13.5px;line-height:1.45">
+              ${ph}
+              <div style="padding:10px 12px">
+                <div style="color:#6ab3f3;font-weight:600;font-size:13px">${this.esc(ch.name)}</div>
+                <div style="margin-top:2px">${this.pubFmtTg(this.pubPreviewText(ch))}</div>
+                <div style="color:#7f91a4;font-size:11px;text-align:right">${time} ✓✓</div>
+              </div>
+            </div>
+          </div>`;
+        }
+        if (ch.platform === 'vk') {
+          const initial = (ch.name || '?').trim().charAt(0).toUpperCase();
+          return `
+          <div style="background:#fff;border:1px solid #e7e8ec;border-radius:12px;padding:12px;max-width:360px;color:#000;font-size:13.5px">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+              <div style="width:36px;height:36px;border-radius:50%;background:#0077ff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${this.esc(initial)}</div>
+              <div><div style="font-weight:600">${this.esc(ch.name)}</div>
+                   <div style="color:#99a2ad;font-size:12px">только что</div></div>
+            </div>
+            ${photo ? `<div style="border-radius:8px;background:#f0f2f5 url('${this.esc(photo.url)}') center/cover;height:160px;margin:8px 0"></div>` : ''}
+            <div style="white-space:pre-wrap;line-height:1.45">${this.pubEscHtml(this.pubFmtVk(this.pubPreviewText(ch)))}</div>
+            <div style="display:flex;gap:18px;color:#99a2ad;font-size:20px;margin-top:10px;border-top:1px solid #e7e8ec;padding-top:8px">❤ 💬 ↻</div>
+          </div>`;
+        }
+        if (ch.platform === 'dzen') {
+          const d = this.pubFmtDzen(this.pubPreviewText(ch));
+          return `
+          <div style="background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:14px;max-width:360px;color:#000">
+            ${photo ? `<div style="border-radius:8px;background:#eee url('${this.esc(photo.url)}') center/cover;height:120px;margin-bottom:10px"></div>` : ''}
+            <div style="font-size:17px;font-weight:700;line-height:1.3">${this.esc(d.title || 'Заголовок (первая строка)')}</div>
+            <div style="font-size:13.5px;color:#555;margin-top:8px;max-height:150px;overflow:hidden;white-space:pre-wrap">${this.pubEscHtml(d.body)}</div>
+            <div style="color:#999;font-size:12px;margin-top:10px">${this.esc(ch.name)} · Дзен</div>
+          </div>`;
+        }
+        // instagram (Ф6) — карточка-заглушка
+        return `
+        <div style="background:#fff;border:1px solid #dbdbdb;border-radius:12px;max-width:360px;color:#000">
+          <div style="display:flex;gap:8px;align-items:center;padding:10px 12px">
+            <div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)"></div>
+            <b style="font-size:13px">${this.esc(ch.name)}</b>
+          </div>
+          <div style="background:repeating-linear-gradient(45deg,#fafafa,#fafafa 12px,#f0f0f0 12px,#f0f0f0 24px);height:200px;display:flex;align-items:center;justify-content:center;color:#a5a5a5;font-size:13px">📸 подключение в Ф6</div>
+          <div style="padding:8px 12px;font-size:12px;color:#8e8e8e">${this.pubEscHtml(meta.instagram.hint)}</div>
+        </div>`;
+      },
+
+      // ---- редактор ----
+      pubOpenEditor(post) {
+        this.pubState.tab = 'editor';
+        const ed = this.pubState.editor;
+        ed.err = null; ed.busy = false;
+        if (post) {
+          ed.id = post.id;
+          ed.body_md = post.body_md || '';
+          ed.media = (post.media || []).slice();
+          ed.sel = new Set((post.channels || []).map(c => c.channel_id));
+          ed.overrides = {};
+          (post.channels || []).forEach(c => { if (c.body_override) ed.overrides[c.channel_id] = c.body_override; });
+          ed.previewTab = ((post.channels || [])[0] || {}).channel_id || null;
+        } else {
+          ed.id = null; ed.body_md = ''; ed.media = []; ed.sel = new Set(); ed.overrides = {};
+          ed.previewTab = null;
+        }
+        this.render();
+      },
+      pubEditorCount() {
+        const ed = this.pubState.editor;
+        const ch = [...ed.sel].length ? [...ed.sel][0] : null;
+        const v = ed.body_md || '';
+        return `${v.length} симв.`;
+      },
+      async pubEditorUpload(input) {
+        const ed = this.pubState.editor;
+        const file = input.files && input.files[0];
+        if (!file) return;
+        ed.busy = true; this.render();
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('kind', 'other');
+          fd.append('title', 'pub_' + file.name);
+          const res = await AGL.uploadArtifact(fd);
+          const d = (res && res.data) || res;
+          if (!d || !d.blob_uri) throw new Error('upload: нет blob_uri');
+          ed.media.push({ type: 'photo', url: d.blob_uri });
+          this.toast('Фото добавлено');
+        } catch (e) {
+          this.toast('Загрузка не удалась: ' + (e.message || ''), 'err');
+        } finally {
+          ed.busy = false;
+          this.render();
+        }
+      },
+      pubEditorRemoveMedia(i) {
+        this.pubState.editor.media.splice(i, 1);
+        this.render();
+      },
+      pubEditorToggle(ch) {
+        const ed = this.pubState.editor;
+        if (ed.sel.has(ch.id)) { ed.sel.delete(ch.id); if (ed.previewTab === ch.id) ed.previewTab = null; }
+        else { ed.sel.add(ch.id); if (!ed.previewTab) ed.previewTab = ch.id; }
+        this.render();
+      },
+      _pubEditorPayload() {
+        const ed = this.pubState.editor;
+        const overrides = {};
+        Object.entries(ed.overrides).forEach(([k, v]) => { if (v && v.trim()) overrides[k] = v.trim(); });
+        return {
+          body_md: ed.body_md,
+          media: ed.media,
+          channel_ids: [...ed.sel],
+          overrides,
+        };
+      },
+      async pubEditorSave() {
+        const ed = this.pubState.editor;
+        if (!(ed.body_md || '').trim()) { ed.err = 'Текст публикации обязателен'; this.render(); return; }
+        if (!ed.sel.size) { ed.err = 'Выберите хотя бы один канал'; this.render(); return; }
+        ed.busy = true; this.render();
+        try {
+          const payload = this._pubEditorPayload();
+          if (ed.id) await AGL.pubPostUpdate(ed.id, payload);
+          else ed.id = ((await AGL.pubPostCreate(payload)).data || {}).id;
+          this.toast('Черновик сохранён');
+          await this.pubLoadPosts();
+        } catch (e) {
+          ed.err = (e && (e.error && e.error.message || e.message)) || 'Ошибка сохранения';
+        } finally {
+          ed.busy = false;
+          this.render();
+        }
+      },
+      async pubEditorPublish() {
+        const ed = this.pubState.editor;
+        if (!(ed.body_md || '').trim()) { ed.err = 'Текст публикации обязателен'; this.render(); return; }
+        if (!ed.sel.size) { ed.err = 'Выберите хотя бы один канал'; this.render(); return; }
+        ed.busy = true; this.render();
+        try {
+          const payload = this._pubEditorPayload();
+          let id = ed.id;
+          if (id) await AGL.pubPostUpdate(id, payload);
+          else id = ((await AGL.pubPostCreate(payload)).data || {}).id;
+          const res = await AGL.pubPostPublish(id);
+          ed.id = id;
+          await this.pubLoadPosts();
+          const d = (res && res.data) || {};
+          if (d.skipped) this.toast('Нет активных каналов: ' + (d.reason || ''), 'err');
+          else {
+            const okN = (d.results || []).filter(r => r.status === 'ok').length;
+            this.toast(`Опубликовано: ${okN}/${(d.results || []).length} каналов (${d.post_status})`,
+                       d.post_status === 'done' ? 'ok' : 'info');
+          }
+        } catch (e) {
+          ed.err = (e && (e.error && e.error.message || e.message)) || 'Ошибка публикации';
+          this.toast(ed.err, 'err');
+        } finally {
+          ed.busy = false;
+          this.render();
+        }
+      },
+      vPubEditor() {
+        const st = this.pubState, ed = st.editor;
+        const canPub = this.pubCanPublish();
+        const chans = (st.channels || []).filter(c => c.status === 'active');
+        const sel = [...ed.sel];
+        const activeCh = sel.map(id => chans.find(c => c.id === id)).filter(Boolean);
+        const tab = ed.previewTab != null && activeCh.some(c => c.id === ed.previewTab)
+          ? ed.previewTab : (activeCh[0] || {}).id ?? null;
+        const curCh = activeCh.find(c => c.id === tab) || null;
+        ed._curCh = curCh; // для live-обновления превью без полного render()
+        const inp = 'class="input"';
+        const chBoxes = chans.length ? chans.map(ch => {
+          const on = ed.sel.has(ch.id);
+          const meta = this.pubPlatMeta()[ch.platform] || { ico: '❔', label: ch.platform };
+          return `<label class="card" style="display:flex;gap:8px;align-items:center;padding:8px 10px;margin-bottom:6px;cursor:pointer;${on ? 'border-color:var(--accent)' : ''}">
+            <input type="checkbox" data-pub-ch="${ch.id}" ${on ? 'checked' : ''}>
+            <span>${meta.ico}</span><span style="font-size:13px">${this.esc(ch.name)}</span>
+            ${ch.has_token ? '' : '<span class="pill text-[10px]" style="background:#fff4e0;color:#a15c00">нет токена</span>'}
+          </label>`;
+        }).join('') : '<div class="text-sm" style="color:var(--text-mute)">Нет активных каналов — добавьте во вкладке «Каналы»</div>';
+        return `
+        <div class="flex gap-4 flex-wrap" style="align-items:flex-start">
+          <div style="flex:1 1 380px;min-width:340px">
+            <div class="card p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="font-semibold">${ed.id ? 'Публикация #' + ed.id : 'Новая публикация'}</div>
+                <span class="text-[12px]" style="color:var(--text-mute)">${this.pubEditorCount()}</span>
+              </div>
+              <textarea ${inp} rows="10" data-pub-ed-body placeholder="Текст (markdown-lite: **жирный**, *курсив*, [ссылка](url); первая строка = заголовок Дзена)">${this.esc(ed.body_md)}</textarea>
+              <div class="flex gap-2 items-center mt-2 flex-wrap">
+                <label class="btn" style="cursor:pointer">📷 Фото<input type="file" accept="image/*" data-pub-ed-photo hidden></label>
+                ${(ed.media || []).map((m, i) => `
+                  <span style="display:inline-flex;gap:6px;align-items:center;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:12px">
+                    🖼 ${this.esc((m.url || '').split('/').pop().slice(0, 18))}
+                    <a href="#" data-pub-ed-rmphoto="${i}" style="color:var(--err)">✕</a>
+                  </span>`).join('')}
+              </div>
+              ${ed.err ? `<div class="mt-2 text-sm" style="color:var(--err)">${this.esc(ed.err)}</div>` : ''}
+              <div class="flex gap-2 mt-3 flex-wrap">
+                <button class="btn" data-pub-ed-save ${ed.busy || !canPub ? 'disabled' : ''}>💾 Черновик</button>
+                <button class="btn btn-accent" data-pub-ed-pub ${ed.busy || !canPub ? 'disabled' : ''}>🚀 Опубликовать сейчас</button>
+                ${ed.id ? '<button class="btn" data-pub-ed-new>✨ Новый</button>' : ''}
+              </div>
+            </div>
+            <div class="card p-4 mt-3">
+              <div class="font-semibold mb-2">Каналы публикации</div>
+              ${chBoxes}
+            </div>
+          </div>
+          <div style="flex:1 1 380px;min-width:340px">
+            <div class="card p-4">
+              <div class="flex gap-2 mb-3 flex-wrap">
+                ${activeCh.length ? activeCh.map(ch => `
+                  <button class="btn ${tab === ch.id ? 'btn-accent' : ''}" data-pub-prev-tab="${ch.id}"
+                          title="${this.esc(ch.name)}">${(this.pubPlatMeta()[ch.platform] || { ico: '❔' }).ico} ${this.esc(ch.name)}</button>`).join('')
+                  : '<span class="text-sm" style="color:var(--text-mute)">Выберите каналы — появится нативное превью</span>'}
+              </div>
+              ${curCh ? `<div id="pubPreviewBox">${this.pubPreviewHtml(curCh)}</div>` : ''}
+              ${curCh ? `
+                <div class="label mt-3 mb-1">Переопределить текст для «${this.esc(curCh.name)}»</div>
+                <textarea ${inp} rows="3" data-pub-ed-override="${curCh.id}"
+                  placeholder="Пусто — автоформат по шаблону канала">${this.esc(ed.overrides[curCh.id] || '')}</textarea>
+                <div class="text-[11px] mt-1" style="color:var(--text-dim)">Опубликуется этот текст вместо основного, только в этом канале</div>` : ''}
+            </div>
+          </div>
+        </div>`;
+      },
+
+      // ---- список публикаций ----
+      async pubLoadPosts() {
+        const st = this.pubState;
+        st.postsLoading = true;
+        try {
+          st.posts = await AGL.pubPosts();
+        } catch (e) {
+          st.posts = [];
+        } finally {
+          st.postsLoading = false;
+          if (st.tab === 'list') this.render();
+        }
+      },
+      _pubStatusPill(s) {
+        const map = {
+          draft:    ['черновик', '#eef1f4', '#5a6b7b'],
+          scheduled:['⏱ запланирован', '#e8f0fe', '#1a56c4'],
+          publishing:['публикуется…', '#fff4e0', '#a15c00'],
+          done:     ['✓ опубликован', '#e6f4ea', '#1a7f37'],
+          partial:  ['⚠ частично', '#fff4e0', '#a15c00'],
+          failed:   ['✗ ошибка', '#fde8e8', '#b3261e'],
+        };
+        const m = map[s] || [s, '#eef1f4', '#5a6b7b'];
+        return `<span class="pill text-[11px]" style="background:${m[1]};color:${m[2]}">${m[0]}</span>`;
+      },
+      vPubPostsList() {
+        const st = this.pubState;
+        this.pubLoadPosts();
+        if (st.postsLoading && !st.posts.length) {
+          return '<div class="card p-6 text-center" style="color:var(--text-mute)">Загрузка…</div>';
+        }
+        if (!st.posts.length) {
+          return `<div class="card p-8 text-center" style="color:var(--text-mute)">
+            <div class="text-lg mb-2">Публикаций пока нет</div>
+            <button class="btn btn-accent" data-pub-new>✍️ Написать публикацию</button>
+          </div>`;
+        }
+        const canPub = this.pubCanPublish();
+        const rows = st.posts.map(p => {
+          const chans = (p.channels || []).map(c => {
+            const st = { ok: '✅', failed: '❌', pending: '⏳', skipped: '⏭', publishing: '⏳' }[c.status] || '•';
+            const meta = this.pubPlatMeta()[c.platform] || { ico: '' };
+            return `<span class="pill text-[11px]" title="${this.esc(c.error || c.status)}">${meta.ico} ${st}</span>`;
+          }).join(' ');
+          const retry = canPub && ['failed', 'partial'].includes(p.status)
+            ? `<button class="btn" data-pub-republish="${p.id}" title="Повторить публикацию упавших каналов">↻ Повторить</button>` : '';
+          const del = canPub && p.status === 'draft'
+            ? `<button class="btn" data-pub-del="${p.id}" title="Удалить черновик">🗑</button>` : '';
+          return `
+          <div class="card p-3 mb-2 flex items-center gap-3 flex-wrap">
+            <div class="flex-1 min-width-200" style="min-width:220px">
+              <div class="text-sm" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${this.esc((p.body_md || '').replace(/\n/g, ' ').slice(0, 90))}</div>
+              <div class="text-[11px] mt-1" style="color:var(--text-mute)">${this.esc((p.created_at || '').replace('T', ' ').slice(0, 16))} · ${(p.media || []).length} 📷</div>
+            </div>
+            <div>${chans}</div>
+            ${this._pubStatusPill(p.status)}
+            <div class="flex gap-2">
+              <button class="btn" data-pub-open="${p.id}">Открыть</button>
+              ${retry}${del}
+            </div>
+            ${p.last_error ? `<div class="text-[11px] w-full" style="color:var(--err)">${this.esc(p.last_error)}</div>` : ''}
+          </div>`;
+        }).join('');
+        return `
+        <div class="flex justify-end mb-2"><button class="btn btn-accent" data-pub-new>✍️ Новая публикация</button></div>
+        ${rows}`;
+      },
+
       // ---- привязки после innerHTML ----
       pubBind(root) {
         root.querySelectorAll('[data-pub-tab]').forEach(b => {
@@ -305,6 +662,83 @@
           };
           if (el.tagName === 'SELECT' || el.type === 'number') el.onchange = handler;
           el.oninput = (e) => { this.pubState.drawer.form[k] = e.target.value; };
+        });
+
+        // ---- редактор (Ф3) ----
+        const ed = this.pubState.editor;
+        const body = root.querySelector('[data-pub-ed-body]');
+        if (body) {
+          body.oninput = () => {
+            ed.body_md = body.value;
+            // live-превью: точечно обновляем только мокап (полный render()
+            // пересоздал бы textarea и сбрасывал фокус)
+            const box = root.querySelector('#pubPreviewBox');
+            if (box && ed._curCh) box.innerHTML = this.pubPreviewHtml(ed._curCh);
+          };
+        }
+        root.querySelectorAll('[data-pub-ed-photo]').forEach(inp => {
+          inp.onchange = () => this.pubEditorUpload(inp);
+        });
+        root.querySelectorAll('[data-pub-ed-rmphoto]').forEach(a => {
+          a.onclick = (e) => { e.preventDefault(); this.pubEditorRemoveMedia(Number(a.getAttribute('data-pub-ed-rmphoto'))); };
+        });
+        root.querySelectorAll('[data-pub-ch]').forEach(cb => {
+          cb.onchange = () => {
+            const id = Number(cb.getAttribute('data-pub-ch'));
+            const ch = (this.pubState.channels || []).find(c => c.id === id);
+            if (ch) { this.pubEditorToggle(ch); } // toggle + render (checkbox уже в DOM)
+          };
+        });
+        root.querySelectorAll('[data-pub-prev-tab]').forEach(b => {
+          b.onclick = () => { ed.previewTab = Number(b.getAttribute('data-pub-prev-tab')); this.render(); };
+        });
+        root.querySelectorAll('[data-pub-ed-override]').forEach(t => {
+          t.oninput = () => {
+            const id = Number(t.getAttribute('data-pub-ed-override'));
+            ed.overrides[id] = t.value;
+            const box = root.querySelector('#pubPreviewBox');
+            if (box && ed._curCh && ed._curCh.id === id) box.innerHTML = this.pubPreviewHtml(ed._curCh);
+          };
+        });
+        root.querySelectorAll('[data-pub-ed-save]').forEach(b => { b.onclick = () => this.pubEditorSave(); });
+        root.querySelectorAll('[data-pub-ed-pub]').forEach(b => { b.onclick = () => this.pubEditorPublish(); });
+        root.querySelectorAll('[data-pub-ed-new]').forEach(b => { b.onclick = () => this.pubOpenEditor(null); });
+
+        // ---- список публикаций (Ф3) ----
+        root.querySelectorAll('[data-pub-new]').forEach(b => { b.onclick = () => this.pubOpenEditor(null); });
+        root.querySelectorAll('[data-pub-open]').forEach(b => {
+          b.onclick = () => {
+            const id = Number(b.getAttribute('data-pub-open'));
+            const p = (this.pubState.posts || []).find(x => x.id === id);
+            if (p) this.pubOpenEditor(p);
+          };
+        });
+        root.querySelectorAll('[data-pub-republish]').forEach(b => {
+          b.onclick = async () => {
+            const id = Number(b.getAttribute('data-pub-republish'));
+            b.disabled = true;
+            try {
+              const res = await AGL.pubPostPublish(id);
+              const d = (res && res.data) || {};
+              this.toast(d.skipped ? 'Пропуск: ' + (d.reason || '') : 'Повторная публикация выполнена', 'info');
+              await this.pubLoadPosts();
+            } catch (e) {
+              this.toast((e && e.error && e.error.message) || 'Ошибка публикации', 'err');
+              b.disabled = false;
+            }
+          };
+        });
+        root.querySelectorAll('[data-pub-del]').forEach(b => {
+          b.onclick = async () => {
+            const id = Number(b.getAttribute('data-pub-del'));
+            try {
+              await AGL.pubPostDelete(id);
+              this.toast('Черновик удалён');
+              await this.pubLoadPosts();
+            } catch (e) {
+              this.toast((e && e.error && e.error.message) || 'Ошибка удаления', 'err');
+            }
+          };
         });
       },
     };

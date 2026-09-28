@@ -258,6 +258,25 @@ const AGL = {
   async pubChannelUpdate(id, data) {
     return apiFetch('/v1/pub/channels/' + id, { method: 'PATCH', data });
   },
+  // §46.7 (Ф3): посты публикаций
+  async pubPosts(limit = 50) {
+    return safeLoad('/v1/pub/posts?limit=' + limit, []);
+  },
+  async pubPostCreate(data) {
+    return apiFetch('/v1/pub/posts', { method: 'POST', data });
+  },
+  async pubPostGet(id) {
+    return apiFetch('/v1/pub/posts/' + id);
+  },
+  async pubPostUpdate(id, data) {
+    return apiFetch('/v1/pub/posts/' + id, { method: 'PATCH', data });
+  },
+  async pubPostDelete(id) {
+    return apiFetch('/v1/pub/posts/' + id, { method: 'DELETE' });
+  },
+  async pubPostPublish(id, data = {}) {
+    return apiFetch('/v1/pub/posts/' + id + '/publish', { method: 'POST', data });
+  },
 
   // §45.10: управление типами справочников (admin, фаза 1d)
   async catalogTypeCreate(data) {

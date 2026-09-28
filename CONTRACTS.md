@@ -2409,3 +2409,38 @@ agropilot-backend + agropilot-bff); на проде проверено: GET [] �
 401 / с JWT ок, POST от admin (sub регистрозависим: U7, не u7) создаёт
 канал без утечки секрета, PATCH заморозка/ротация, instagram 409, DELETE
 405. Тестовый канал удалён из БД.
+
+### 46.7. Ф3 — редактор публикаций + нативные превью + публикация
+Backend (backend/pub/routes.py, продолжение §46.6; конверт §0):
+- POST /v1/pub/posts {body_md, media[], channel_ids[], overrides?{channel_id:text}}
+  → черновик (status=draft). media[]: [{type:'photo', url}] — относительный
+  /agropilot/files/… бэк достраивает до абсолютного (PUB_PUBLIC_BASE,
+  default https://mdked.hlab.kz; файлы артефактов отдаёт nginx публично —
+  их качают Bot API и n8n). Права: admin|manager.
+- GET /v1/pub/posts?limit=50 → [{id, body_md, media, status, last_error,
+  created_at, channels:[{channel_id, name, platform, status,
+  platform_post_id, error, body_override}]}] — новые сверху.
+- GET /v1/pub/posts/{id}, PATCH /{id} (текст/медиа/каналы/overrides —
+  только draft), DELETE /{id} (только draft, каскад строк).
+- POST /v1/pub/posts/{id}/publish {channel_ids?} (admin|manager):
+  для каждого активного выбранного канала UPSERT pub_post_channels в
+  pending (body_override не трогаем — override живёт в этой же строке),
+  затем синхронный urllib-вызов n8n webhook pub-publish (PUB_ENGINE_URL +
+  PUB_ENGINE_TOKEN из .env, таймаут 150с) и проксирование его ответа.
+  Повторная публикация failed/partial — тот же эндпоинт.
+Фронт (js/app.pub.js): вкладка «Редактор» — markdown-lite textarea со
+счётчиком, загрузка фото (POST /v1/artifacts/upload kind=other) с
+миниатюрами, выбор каналов (замороженные — неактивны с подписью), справа
+таб-превью ПО КАНАЛАМ с нативными мокапами (TG-пузырь тёмный, карточка
+VK, статья Дзена, квадрат IG 1:1) и полем «переопределить текст»;
+кнопки «Сохранить черновик»/«Опубликовать». Вкладка «Список публикаций»:
+строки со статусами по каналам (пилюли), повтор для failed/partial,
+удаление draft. Форматтеры JS (pubFmtTg/Vk/Dzen) дублируют Code-узлы
+n8n §46.3 — правило синхронности: правка только в двух местах сразу
+(чеклист deploy/n8n/README.md).
+n8n (ревизия 6): ветка VK при наличии фото — цепочка
+photos.getWallUploadServer → download binary → multipart upload →
+photos.saveWallPhoto → wall.post c attachments (group_id = |target|).
+DoD Ф3: pytest, node --check; на проде — создание черновика, превью всех
+платформ, публикация с skipped-результатами (без токенов) и живой пост
+при их появлении; деплой — по подтверждению заказчика.

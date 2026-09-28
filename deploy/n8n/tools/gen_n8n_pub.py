@@ -16,7 +16,7 @@ __CRED_TOK_ID__ заменяются на сервере после импорт
 """
 import json, os
 
-OUT = os.path.join(os.path.dirname(__file__), "agropilot-web", "deploy", "n8n")
+OUT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # ---------- Code-узлы publish-core ----------
 
@@ -100,7 +100,8 @@ return [{ json: {
 """
 
 js_format_vk = r"""// formatVK (§46.3): markdown снимается (plain), хэштеги остаются,
-// лимит 4096; wall.post от имени сообщества. Фото VK — Ф3 (multipart).
+// лимит 4096; wall.post от имени сообщества. photo_url — первое фото поста
+// (есть → ветка multipart-загрузки VK, ревизия 6).
 const { post, channel } = $input.first().json;
 function stripMd(s) {
   return s
@@ -113,13 +114,32 @@ let text = stripMd(src);
 if (text.length > 4096) text = text.slice(0, 4090) + '\n…';
 const tok = (channel.secrets || {}).vk_token;
 if (!tok) throw new Error('vk channel without vk_token: ' + channel.name);
+const photo = (post.media || []).filter(m => m && m.type === 'photo' && m.url)[0] || null;
 return [{ json: {
   post_id: post.post_id, channel_id: channel.channel_id, channel_name: channel.name,
+  photo_url: photo ? photo.url : null,
+  vk: {
+    owner_id: channel.target,
+    group_id: String(Math.abs(Number(channel.target))),
+    token: tok,
+  },
   http: {
     url: 'https://api.vk.com/method/wall.post', method: 'POST',
     body: { owner_id: channel.target, from_group: 1, message: text, v: '5.199', access_token: tok },
   },
 } }];
+"""
+
+js_vk_attach = r"""// VK: собрать attachments из сохранённого фото + исходный wall.post body
+const it = $('formatVK').first().json;
+const saved = $input.first().json.response && $input.first().json.response[0];
+const body = { ...it.http.body };
+if (saved && saved.owner_id != null && saved.id != null) {
+  body.attachments = 'photo' + saved.owner_id + '_' + saved.id;
+} else {
+  throw new Error('VK saveWallPhoto: пустой ответ');
+}
+return [{ json: { ...it, http: { ...it.http, body } } }];
 """
 
 def result_code(fmt_node):
@@ -256,12 +276,44 @@ core_nodes = [
    "typeVersion": 2, "position": [1100, -180], "parameters": {"jsCode": result_code('formatTG')}},
   {"id": "n10", "name": "formatVK", "type": "n8n-nodes-base.code",
    "typeVersion": 2, "position": [660, 0], "parameters": {"jsCode": js_format_vk}},
+  {"id": "n22", "name": "VK: фото?", "type": "n8n-nodes-base.if", "typeVersion": 2.2,
+   "position": [760, 0],
+   "parameters": {"conditions": {"options": {"caseSensitive": True, "leftValue": "", "typeValidation": "loose"},
+     "conditions": [{"leftValue": "={{ $json.photo_url }}",
+       "operator": {"type": "string", "operation": "notEmpty", "singleValue": True}}],
+     "combinator": "and"}}},
+  # --- ветка с фото: upload-сервер → download → multipart → save → attach ---
+  {"id": "n23", "name": "VK upload URL", "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2, "position": [880, 80], "onError": "continueRegularOutput",
+   "parameters": {"method": "POST", "url": "https://api.vk.com/method/photos.getWallUploadServer",
+     "sendBody": True, "specifyBody": "json",
+     "jsonBody": "={{ JSON.stringify({group_id: Number($('formatVK').first().json.vk.group_id), v: '5.199', access_token: $('formatVK').first().json.vk.token}) }}",
+     "options": {}}},
+  {"id": "n24", "name": "VK download photo", "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2, "position": [1060, 80], "onError": "continueRegularOutput",
+   "parameters": {"method": "GET", "url": "={{ $('formatVK').first().json.photo_url }}",
+     "options": {"response": {"response": {"responseFormat": "file", "outputPropertyName": "photo"}}}}},
+  {"id": "n25", "name": "VK upload photo", "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2, "position": [1240, 80], "onError": "continueRegularOutput",
+   "parameters": {"method": "POST", "url": "={{ $('VK upload URL').first().json.response.upload_url }}",
+     "sendBody": True, "contentType": "multipart-form-data",
+     "bodyParameters": {"parameters": [
+       {"parameterType": "formBinaryData", "name": "photo", "inputDataFieldName": "photo"}]},
+     "options": {}}},
+  {"id": "n26", "name": "VK save photo", "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2, "position": [1420, 80], "onError": "continueRegularOutput",
+   "parameters": {"method": "POST", "url": "https://api.vk.com/method/photos.saveWallPhoto",
+     "sendBody": True, "specifyBody": "json",
+     "jsonBody": "={{ JSON.stringify({group_id: Number($('formatVK').first().json.vk.group_id), server: $json.server, photo: $json.photo, hash: $json.hash, v: '5.199', access_token: $('formatVK').first().json.vk.token}) }}",
+     "options": {}}},
+  {"id": "n27", "name": "VK attach", "type": "n8n-nodes-base.code",
+   "typeVersion": 2, "position": [1600, 80], "parameters": {"jsCode": js_vk_attach}},
   {"id": "n11", "name": "VK API", "type": "n8n-nodes-base.httpRequest",
-   "typeVersion": 4.2, "position": [880, 0], "onError": "continueRegularOutput",
+   "typeVersion": 4.2, "position": [880, -80], "onError": "continueRegularOutput",
    "parameters": {"method": "POST", "url": "={{ $json.http.url }}", "sendBody": True,
      "specifyBody": "json", "jsonBody": "={{ JSON.stringify($json.http.body) }}", "options": {}}},
   {"id": "n12", "name": "vkResult", "type": "n8n-nodes-base.code",
-   "typeVersion": 2, "position": [1100, 0], "parameters": {"jsCode": result_code('formatVK')}},
+   "typeVersion": 2, "position": [1820, 0], "parameters": {"jsCode": result_code('formatVK')}},
   {"id": "n13", "name": "Skip: no channels", "type": "n8n-nodes-base.noOp",
    "typeVersion": 1, "position": [660, 180], "parameters": {}},
   {"id": "n19", "name": "Respond skipped", "type": "n8n-nodes-base.respondToWebhook",
@@ -303,7 +355,16 @@ core_connections = {
   "formatTG": {"main": [[{"node": "TG API", "type": "main", "index": 0}]]},
   "TG API": {"main": [[{"node": "tgResult", "type": "main", "index": 0}]]},
   "tgResult": {"main": [[{"node": "Merge results", "type": "main", "index": 0}]]},
-  "formatVK": {"main": [[{"node": "VK API", "type": "main", "index": 0}]]},
+  "formatVK": {"main": [[{"node": "VK: фото?", "type": "main", "index": 0}]]},
+  "VK: фото?": {"main": [
+      [{"node": "VK API", "type": "main", "index": 0}],          # без фото — сразу wall.post
+      [{"node": "VK upload URL", "type": "main", "index": 0}],   # с фото — цепочка
+  ]},
+  "VK upload URL": {"main": [[{"node": "VK download photo", "type": "main", "index": 0}]]},
+  "VK download photo": {"main": [[{"node": "VK upload photo", "type": "main", "index": 0}]]},
+  "VK upload photo": {"main": [[{"node": "VK save photo", "type": "main", "index": 0}]]},
+  "VK save photo": {"main": [[{"node": "VK attach", "type": "main", "index": 0}]]},
+  "VK attach": {"main": [[{"node": "VK API", "type": "main", "index": 0}]]},
   "VK API": {"main": [[{"node": "vkResult", "type": "main", "index": 0}]]},
   "vkResult": {"main": [[{"node": "Merge results", "type": "main", "index": 1}]]},
   "Skip: no channels": {"main": [[{"node": "Respond skipped", "type": "main", "index": 0}]]},
