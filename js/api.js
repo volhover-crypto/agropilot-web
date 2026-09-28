@@ -248,6 +248,22 @@ const AGL = {
   async catalogSpecs() {
     return safeLoad('/v1/catalogs', []);
   },
+  // §45.10: управление типами справочников (admin, фаза 1d)
+  async catalogTypeCreate(data) {
+    return apiFetch('/v1/catalogs-types', { method: 'POST', data });
+  },
+  async catalogTypeUpdate(id, data) {
+    return apiFetch('/v1/catalogs-types/' + id, { method: 'PATCH', data });
+  },
+  async catalogTypeArchive(id) {
+    return apiFetch('/v1/catalogs-types/' + id + '/archive', { method: 'POST' });
+  },
+  async catalogTypeRestore(id) {
+    return apiFetch('/v1/catalogs-types/' + id + '/restore', { method: 'POST' });
+  },
+  async catalogTypeHistory(id) {
+    return safeLoad('/v1/catalogs-types/' + id + '/history', { items: [] });
+  },
   async catalogList(type, params = {}) {
     const qs = new URLSearchParams();
     if (params.q) qs.set('q', params.q);

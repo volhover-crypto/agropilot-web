@@ -2259,3 +2259,48 @@ ref-поля — select с опциями целевого справочник�
 TestClient 5/5; node --check OK. Два новах поведения важно знать: Decimal в
 diff аудита санитизируется (_jsonable — иначе json.dumps падает и на проде);
 NUMERIC на sqlite через TypeDecorator с float-конвертацией бинда.
+
+### 45.10. Фаза 1d (реализована 28.09.2026): пользовательские справочники + иерархия контрагентов
+
+**Миграция 045_user_catalogs.sql**: `catalog_types` (реестр пользовательских
+справочников: key UNIQUE, title, group_name, icon, hierarchical, code_prefix,
+fields_schema JSONB, status) + `nsi_user_items` (generic-таблица записей:
+catalog_id FK RESTRICT, code — уникален парой (catalog_id, code), parent_id
+self-FK RESTRICT, is_group, значения пользовательских полей в attrs JSONB,
+trgm по name) + `nsi_contractors` получают parent_id/is_group (подразделы-
+группы: виноградники/сады/…, element_fields = все бизнес-поля, у групп —
+только код+имя). Решение владельца: реестр в БД + generic-таблица, БЕЗ
+CREATE TABLE на лету; статические справочники остаются физическими таблицами.
+
+**Движок**: `resolve_spec(db, key)` объединяет статические SPEC и динамические
+типы (user_spec: code/name — колонки, прочие поля — attrs; unique-проверки
+значений — в Python по каталогу; автокод скоупится catalog_id). Записи
+архивированного типа — только чтение (мутации → 409). Аудит типов — тот же
+`catalog_audit`, entity='catalog_type'.
+
+**Эндпоинты управления типами** (`/v1/catalogs-types`, только role_key=admin):
+`POST ""` (title*, key=slug(авто, латиница), group, icon≤4, hierarchical
+[дефолт true], code_prefix [1–6 A-Z], fields[]), `GET /{id}`,
+`PATCH /{id}` (метаданные; fields — только добавление новых, удаление/смена
+типа/required существующего при наличии записей → 409; при пустом каталоге
+схема заменяется целиком), `POST /{id}/archive|restore` (архивный тип скрыт
+из дерева, записи не редактируются), `GET /{id}/history`. GET `/v1/catalogs`
+теперь возвращает и пользовательские типы (managed:true, type_id, code_prefix,
+status) + статические (managed:false, status:'active').
+
+**Схема полей типов**: key (латиница, с буквы, не code/name/parent_id/is_group/
+id/status), type ∈ string|int|decimal|enum|ref (ref — только на статические
+справочники), label, required, grid, width, options (enum: список или
+value→label). Валидация в engine._validate_fields_schema.
+
+**UI**: у админа — «＋ Добавить справочник» внизу дерева (модалка: название,
+группа, иконка, префикс, подразделы ✓, редактор полей), на тулбаре таблицы
+управляемого справочника — круглые кнопки ✎/⟳/🗄 (стиль артефактов,
+artActionBtn): изменить / история (таймлайн catalog_type) / в архив; в дереве
+блок «Архив справочников» с ↩ восстановлением. Права на кнопки —
+nsiIsAdmin() (role_key==='admin' из M.team), сервер — источник правды.
+
+**Валидация 1d**: pytest 89/89 (+7: админ-only на создание типа, жизненный
+цикл типа с группой/элементом/attrs, конфликт ключа со статикой, append-only
+полей, архив блочит мутации, иерархия контрагентов, коды уникальны в пределах
+справочника); node --check OK.

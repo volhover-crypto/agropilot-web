@@ -82,7 +82,9 @@ CATALOGS: dict = {
         "group": "Партнёры",
         "icon": "🤝",
         "model": "Contractor",
-        "hierarchical": False,
+        # фаза 1d (045): подразделы — группы-папки (виноградники/сады/…)
+        "hierarchical": True,
+        "group_items": True,
         "code_prefix": "KON",
         "form": "drawer",                  # 7+ полей — боковая панель, не модалка
         "delete_roles": ("admin", "manager"),
@@ -104,6 +106,9 @@ CATALOGS: dict = {
             {"key": "comment",       "type": "string", "label": "Комментарий"},
         ],
         "dup_fields": ("name", "bin_iin"),
+        # поля, применимые только к элементам (группы-подразделы — только код+имя)
+        "element_fields": ["name_full", "kind", "bin_iin", "region_id", "phone", "email",
+                           "website", "bank_name", "bic_iban", "account", "legal_address", "comment"],
         # refs для merge (фаза 1c+): когда появятся ссылки из клиентов/документов
     },
     "nomenclature": {

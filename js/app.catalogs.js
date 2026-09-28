@@ -106,7 +106,7 @@
         return `<div class="flex items-center gap-2 mb-3">
           ${tab('nsi', '📚 Справочники')}
           ${tab('nav', '🧭 Навигатор')}
-          <span class="pill text-[11px]" style="color:var(--text-mute)">НСИ · фаза 1a</span>
+          <span class="pill text-[11px]" style="color:var(--text-mute)">НСИ</span>
         </div>${body}`;
       },
 
@@ -127,18 +127,32 @@
             <button class="btn" data-nsi-retry>Повторить</button></div>`;
         }
 
+        const admin = this.nsiIsAdmin();
+        const active = (st.specs || []).filter(s => s.status !== 'archived');
+        const archived = admin ? (st.specs || []).filter(s => s.status === 'archived') : [];
         const groups = {};
-        (st.specs || []).forEach(s => { const g = s.group || 'Прочие'; (groups[g] = groups[g] || []).push(s); });
+        active.forEach(s => { const g = s.group || 'Прочие'; (groups[g] = groups[g] || []).push(s); });
         const tree = Object.entries(groups).map(([g, list]) =>
           `<div class="label px-1 mt-2 mb-1">${e(g)}</div>` +
           list.map(s => `<div class="nav-item ${s.key === st.type ? 'active' : ''}" data-nsi-type="${e(s.key)}">
-            <span>${s.icon || '📁'}</span><span class="flex-1">${e(s.title)}</span></div>`).join('')
+            <span>${s.icon || '📁'}</span><span class="flex-1">${e(s.title)}</span>
+            ${s.managed ? '<span class="pill text-[9px]" title="Создан администратором">моё</span>' : ''}</div>`).join('')
         ).join('');
+        const archBlock = archived.length ? `
+          <div class="label px-1 mt-3 mb-1" style="color:var(--text-mute)">Архив справочников</div>
+          ${archived.map(s => `<div class="nav-item" style="color:var(--text-mute)">
+            <span>${s.icon || '📁'}</span><span class="flex-1 truncate">${e(s.title)}</span>
+            ${this.artActionBtn(`data-nsi-type-restore="${s.type_id}"`, 'Восстановить справочник', '↩')}
+          </div>`).join('')}` : '';
+        const addBtn = admin
+          ? `<button class="btn text-[11px] w-full mt-2" data-nsi-type-add>＋ Добавить справочник</button>` : '';
 
         return `<div class="flex gap-4 items-start flex-wrap">
           <div class="card p-2" style="flex:0 0 220px; min-width:200px">
             <div class="label px-2 pt-1 pb-2">Справочники</div>
             ${tree}
+            ${archBlock}
+            ${addBtn}
           </div>
           <div class="card p-3" style="flex:1 1 620px; min-width:480px">${this.nsiTable()}</div>
         </div>`;
@@ -167,6 +181,13 @@
         const cols = spec.fields.filter(f => f.grid);
         const canDel = this.isManager();
         const selCount = st.sel.size;
+        // §45.10: управление самим справочником — админ, кнопки как у артефактов
+        const typeBtns = (spec.managed && this.nsiIsAdmin()) ? `
+          <span class="inline-flex items-center gap-1 ml-1" title="Действия со справочником">
+            ${this.artActionBtn(`data-nsi-type-edit="${spec.type_id}"`, 'Изменить справочник (название, поля, иконка)', '✎')}
+            ${this.artActionBtn(`data-nsi-type-hist="${spec.type_id}"`, 'История справочника', '⟳')}
+            ${this.artActionBtn(`data-nsi-type-arch="${spec.type_id}"`, 'Справочник в архив', '🗄', true)}
+          </span>` : '';
 
         const from = st.total ? st.offset + 1 : 0;
         const to = Math.min(st.offset + st.limit, st.total);
@@ -225,6 +246,7 @@
             <div class="flex-1"></div>
             ${bulk}
             <button class="btn btn-accent" data-nsi-add>＋ Добавить</button>
+            ${typeBtns}
           </div>
           <div class="flex items-stretch" style="min-width:0">
             ${this.nsiGroupsHtml()}
@@ -607,6 +629,215 @@
           });
       },
 
+      // ---- §45.10: управление типами справочников (admin, фаза 1d) ----
+
+      nsiIsAdmin() {
+        const uid = this.currentUserId();
+        const u = (this.M.team || []).find(t => String(t.id) === String(uid));
+        return !!(u && u.role_key === 'admin');
+      },
+
+      // транслитерация RU→EN для автоключа/префикса
+      nsiSlug(text) {
+        const TR = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',
+          н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'ts',ч:'ch',ш:'sh',щ:'sch',ъ:'',
+          ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
+        const s = String(text || '').trim().toLowerCase().split('')
+          .map(ch => TR[ch] !== undefined ? TR[ch] : ch).join('')
+          .replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+        return s.slice(0, 32);
+      },
+
+      nsiResetSpecs(selectKey) {
+        const st = this.nsiState;
+        st.loaded = false; st.loadingSpecs = false; st.specs = []; st.err = null;
+        if (selectKey) st.type = selectKey;
+        this.nsiInit();
+      },
+
+      // строка редактора полей типа: label | ключ | тип | обяз. | в таблице | варианты | ✕
+      nsiTypeFieldRow(f) {
+        const e = v => this.esc(v == null ? '' : String(v));
+        f = f || {};
+        const types = [['string', 'строка'], ['int', 'целое'], ['decimal', 'число'], ['enum', 'перечисление']];
+        return `<div class="nsi-tf-row card-2 p-2 mb-1 flex flex-wrap items-center gap-1">
+          <input class="input text-[12px]" data-tf="label" placeholder="Название поля" style="width:150px" value="${e(f.label || '')}">
+          <input class="input text-[12px] mono" data-tf="key" placeholder="ключ (авто)" style="width:120px" value="${e(f.key || '')}">
+          <select class="input text-[12px]" data-tf="type" style="width:130px">
+            ${types.map(([v, l]) => `<option value="${v}" ${f.type === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+          <label class="text-[11px] flex items-center gap-1 cursor-pointer" title="Обязательное"><input type="checkbox" data-tf="required" ${f.required ? 'checked' : ''}>обяз.</label>
+          <label class="text-[11px] flex items-center gap-1 cursor-pointer" title="Показывать колонку в таблице"><input type="checkbox" data-tf="grid" ${f.grid !== false ? 'checked' : ''}>таблица</label>
+          <input class="input text-[12px]" data-tf="options" placeholder="варианты через ," style="width:160px" value="${e(f.options && Array.isArray(f.options) ? f.options.join(',') : (f.options ? Object.keys(f.options).join(',') : ''))}" title="Только для типа «перечисление»">
+          <button class="btn text-[11px] py-0.5" data-tf-del title="Убрать поле">✕</button>
+        </div>`;
+      },
+
+      nsiTypeCollectFields() {
+        const rows = [...document.querySelectorAll('.nsi-tf-row')];
+        const fields = [];
+        for (const r of rows) {
+          const get = k => r.querySelector(`[data-tf="${k}"]`);
+          const label = (get('label').value || '').trim();
+          let key = (get('key').value || '').trim();
+          if (!label && !key) continue;               // пустая строка — пропускаем
+          if (!key) key = this.nsiSlug(label);
+          const type = get('type').value;
+          const f = { key, type, label: label || key };
+          if (get('required').checked) f.required = true;
+          if (get('grid').checked) f.grid = true;
+          const opts = (get('options').value || '').trim();
+          if (type === 'enum') {
+            if (!opts) throw new Error(`Поле «${label || key}» (перечисление): задайте варианты через запятую`);
+            f.options = opts.split(',').map(x => x.trim()).filter(Boolean);
+          }
+          fields.push(f);
+        }
+        const seen = new Set();
+        for (const f of fields) {
+          if (seen.has(f.key)) throw new Error(`Ключ поля «${f.key}» повторяется`);
+          seen.add(f.key);
+        }
+        return fields;
+      },
+
+      // existing — уже сохранённые поля (при редактировании не меняются)
+      nsiTypeModal(existing) {
+        const e = v => this.esc(v == null ? '' : String(v));
+        const locked = (existing && existing.fields ? existing.fields : [])
+          .map(f => `<div class="flex items-center gap-2 text-[12px] py-0.5">
+            <span class="pill">${e(f.type)}</span>
+            <span class="flex-1 truncate">🔒 ${e(f.label)} <span class="mono" style="color:var(--text-mute)">${e(f.key)}</span>${f.required ? ' <span style="color:var(--err)">*</span>' : ''}</span>
+          </div>`).join('');
+        const meta = existing ? {
+          title: existing.title, group: existing.group, icon: existing.icon,
+          prefix: existing.code_prefix,
+        } : { title: '', group: 'Мои справочники', icon: '📁', prefix: '' };
+        this.openModal(existing ? '✎ Изменить справочник' : '＋ Новый справочник', `
+          <label class="block mb-2"><div class="label mb-1">Название <span style="color:var(--err)">*</span></div>
+            <input id="nsiTypeTitle" class="input w-full text-[13px]" value="${e(meta.title)}" placeholder="напр. Виноградники" /></label>
+          <div class="flex gap-2 mb-2 flex-wrap">
+            <label class="block" style="flex:1 1 150px"><div class="label mb-1">Группа в дереве</div>
+              <input id="nsiTypeGroup" class="input w-full text-[13px]" value="${e(meta.group)}" /></label>
+            <label class="block" style="flex:0 0 80px"><div class="label mb-1">Иконка</div>
+              <input id="nsiTypeIcon" class="input w-full text-[13px]" value="${e(meta.icon)}" maxlength="4" /></label>
+            <label class="block" style="flex:0 0 110px"><div class="label mb-1">Префикс кода</div>
+              <input id="nsiTypePrefix" class="input w-full text-[13px] mono" value="${e(meta.prefix)}" placeholder="авто" maxlength="6" /></label>
+          </div>
+          <label class="flex items-center gap-2 mb-2 text-[13px] cursor-pointer">
+            <input type="checkbox" id="nsiTypeHier" ${existing ? (existing.hierarchical ? 'checked' : '') : 'checked'} />
+            <span>Подразделы внутри справочника (группы-папки, напр. «Виноградники» → хозяйства)</span></label>
+          <div class="label mb-1">Поля справочника</div>
+          <div id="nsiTypeFields">${locked ? `<div class="card-2 p-2 mb-2">${locked}<div class="text-[11px] mt-1" style="color:var(--text-mute)">Существующие поля неизменяемы (в записях уже есть данные) — можно только добавить новые.</div></div>` : ''}</div>
+          <button class="btn text-[11px] mb-3" data-nsi-tf-add>＋ Добавить поле</button>
+          <div class="text-[11px]" style="color:var(--text-mute)">Код (ПРЕФИКС-0001) и наименование у каждого справочника есть всегда. Типы полей: строка / целое / число / перечисление.</div>
+          <div id="nsiTypeErr" class="text-[12px] mt-1" style="color:var(--err)"></div>
+        `, async () => {
+          const v = id => (document.getElementById(id) || {}).value || '';
+          const errEl = document.getElementById('nsiTypeErr');
+          const showErr = m => { if (errEl) errEl.textContent = m; this.toast(m, 'err'); };
+          const title = v('nsiTypeTitle').trim();
+          if (!title) { showErr('Укажите название справочника'); return false; }
+          let fields;
+          try { fields = this.nsiTypeCollectFields(); }
+          catch (er) { showErr(er.message); return false; }
+          const payload = {
+            title,
+            group: v('nsiTypeGroup').trim() || 'Мои справочники',
+            icon: v('nsiTypeIcon').trim() || '📁',
+            hierarchical: !!(document.getElementById('nsiTypeHier') || {}).checked,
+            code_prefix: v('nsiTypePrefix').trim(),
+          };
+          try {
+            if (existing) {
+              payload.fields = (existing.fields || []).concat(fields);
+              const r = await window.AGL.catalogTypeUpdate(existing.type_id, payload);
+              this.toast('Справочник обновлён', 'ok');
+              this.nsiResetSpecs(existing.key);
+              return true;
+            }
+            payload.fields = fields;
+            const r = await window.AGL.catalogTypeCreate(payload);
+            this.toast('Справочник «' + ((r && r.title) || title) + '» создан', 'ok');
+            this.nsiResetSpecs(r && r.key);
+            return true;
+          } catch (er2) {
+            showErr((er2 && er2.message) || 'Ошибка сохранения');
+            return false;
+          }
+        }, { wide: true });
+
+        const box = document.getElementById('nsiTypeFields');
+        const addRow = f => box.insertAdjacentHTML('beforeend', this.nsiTypeFieldRow(f));
+        const addBtn = document.querySelector('[data-nsi-tf-add]');
+        if (addBtn) addBtn.onclick = () => addRow({});
+        document.querySelectorAll('.nsi-tf-row [data-tf-del]').forEach(b => {
+          b.onclick = () => b.closest('.nsi-tf-row').remove();
+        });
+        // живые обработчики для строк, добавляемых позже
+        box.addEventListener('click', ev => {
+          const del = ev.target.closest('[data-tf-del]');
+          if (del) del.closest('.nsi-tf-row').remove();
+        });
+        if (!existing) addRow({ label: '', key: '' });
+      },
+
+      nsiTypeEdit(id) {
+        const st = this.nsiState;
+        const spec = (st.specs || []).find(s => s.managed && String(s.type_id) === String(id));
+        if (!spec) return;
+        this.nsiTypeModal({
+          type_id: spec.type_id, key: spec.key, title: spec.title, group: spec.group,
+          icon: spec.icon, hierarchical: spec.hierarchical, code_prefix: spec.code_prefix,
+          fields: (spec.fields || []).filter(f => !['code', 'name'].includes(f.key)),
+        });
+      },
+
+      async nsiTypeHist(id) {
+        if (!window.AGL || !AGL.token) return;
+        const st = this.nsiState;
+        const spec = (st.specs || []).find(s => s.managed && String(s.type_id) === String(id));
+        try {
+          const h = await window.AGL.catalogTypeHistory(id);
+          const ACT = { create: '➕ создано', update: '✎ изменено', archive: '🗄 в архив', restore: '↩ из архива' };
+          const esc2 = v => String(v == null ? '' : v).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+          const rows = (h.items || []).map(x => {
+            const dl = Object.entries(x.diff || {}).map(([k, v]) =>
+              `<div class="text-[12px] mt-0.5">${esc2(k)}: <s style="color:var(--text-mute)">${esc2(v && v.old !== null && v.old !== undefined ? (Array.isArray(v.old) ? v.old.join(', ') : v.old) : '—')}</s> → <b>${esc2(v && v.new !== null && v.new !== undefined ? (Array.isArray(v.new) ? v.new.join(', ') : v.new) : '—')}</b></div>`).join('');
+            return `<div class="card-2 p-2 mb-1">
+              <div class="flex justify-between gap-2 text-[12px]"><b>${ACT[x.action] || esc2(x.action)}</b>
+                <span style="color:var(--text-dim)">${esc2(x.user_name || '—')} · ${String(x.created_at || '').slice(0, 16).replace('T', ' ')}</span></div>
+              ${dl}</div>`;
+          }).join('') || '<div class="text-[13px]" style="color:var(--text-mute)">Изменений ещё не было.</div>';
+          this.openModal('История справочника · ' + (spec ? spec.title : id), rows, null, { noFooter: true, wide: true });
+        } catch (er) {
+          this.toast('Ошибка истории: ' + (er && er.message || ''), 'err');
+        }
+      },
+
+      async nsiTypeArch(id) {
+        if (!window.AGL || !AGL.token) { this.toast('В демо-режиме недоступно', 'warn'); return; }
+        const st = this.nsiState;
+        const spec = (st.specs || []).find(s => s.managed && String(s.type_id) === String(id));
+        if (!spec) return;
+        if (!window.confirm(`Переместить справочник «${spec.title}» в архив?\nОн и его записи скроются из дерева (данные сохранятся) — вернуть можно будет из раздела «Архив справочников».`)) return;
+        try {
+          await window.AGL.catalogTypeArchive(id);
+          this.toast('Справочник в архиве', 'ok');
+          if (st.type === spec.key) st.type = null;
+          this.nsiResetSpecs();
+        } catch (er) { this.toast((er && er.message) || 'Ошибка', 'err'); }
+      },
+
+      async nsiTypeRestore(id) {
+        if (!window.AGL || !AGL.token) return;
+        try {
+          const r = await window.AGL.catalogTypeRestore(id);
+          this.toast('Справочник восстановлен', 'ok');
+          this.nsiResetSpecs(r && r.key);
+        } catch (er) { this.toast((er && er.message) || 'Ошибка', 'err'); }
+      },
+
       // ---- служебные ----
       nsiSetType(key) {
         const st = this.nsiState;
@@ -703,6 +934,23 @@
         });
         const mrg = el.querySelector('[data-nsi-merge]');
         if (mrg) mrg.onclick = () => this.nsiMergeModal();
+
+        // §45.10: управление типами справочников (admin)
+        el.querySelectorAll('[data-nsi-type-add]').forEach(n => {
+          n.onclick = (ev) => { ev.stopPropagation(); this.nsiTypeModal(null); };
+        });
+        el.querySelectorAll('[data-nsi-type-edit]').forEach(n => {
+          n.onclick = (ev) => { ev.stopPropagation(); this.nsiTypeEdit(n.getAttribute('data-nsi-type-edit')); };
+        });
+        el.querySelectorAll('[data-nsi-type-hist]').forEach(n => {
+          n.onclick = (ev) => { ev.stopPropagation(); this.nsiTypeHist(n.getAttribute('data-nsi-type-hist')); };
+        });
+        el.querySelectorAll('[data-nsi-type-arch]').forEach(n => {
+          n.onclick = (ev) => { ev.stopPropagation(); this.nsiTypeArch(n.getAttribute('data-nsi-type-arch')); };
+        });
+        el.querySelectorAll('[data-nsi-type-restore]').forEach(n => {
+          n.onclick = (ev) => { ev.stopPropagation(); this.nsiTypeRestore(n.getAttribute('data-nsi-type-restore')); };
+        });
 
         const search = el.querySelector('#nsiSearch');
         if (search) {

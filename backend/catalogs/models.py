@@ -100,10 +100,13 @@ class Tag(CatalogMixin, Base):
 
 
 class Contractor(CatalogMixin, Base):
-    """Контрагенты: юрлица/ИП/физлицы (§45, фаза 1b, миграция 042)."""
+    """Контрагенты: юрлица/ИП/физлица (§45, фаза 1b, миграция 042).
+    Фаза 1d (045): иерархия — группы-подразделы (виноградники/сады/…)."""
 
     __tablename__ = "nsi_contractors"
 
+    parent_id:     Mapped[Optional[int]] = mapped_column(IdType, nullable=True)  # FK self RESTRICT в 045
+    is_group:      Mapped[bool]          = mapped_column(Boolean, nullable=False, default=False)
     name_full:     Mapped[str]           = mapped_column(Text, nullable=False, default="")
     kind:          Mapped[str]           = mapped_column(Text, nullable=False, default="jur")
     bin_iin:       Mapped[str]           = mapped_column(Text, nullable=False, default="")
@@ -131,6 +134,52 @@ class NomenclatureItem(CatalogMixin, Base):
     vat_rate:    Mapped[Optional[Decimal]] = mapped_column(RateType, nullable=True)
     price_base:  Mapped[Optional[Decimal]] = mapped_column(PriceType, nullable=True)
     currency_id: Mapped[Optional[int]]    = mapped_column(IdType, nullable=True)  # FK currencies SET NULL
+
+
+class CatalogType(Base):
+    """Реестр пользовательских справочников (§45, фаза 1d, миграция 045).
+    Создаются администратором из UI; записи — в nsi_user_items."""
+
+    __tablename__ = "catalog_types"
+
+    id:            Mapped[int]              = mapped_column(IdType, primary_key=True, autoincrement=True)
+    key:           Mapped[str]              = mapped_column(Text, unique=True, nullable=False)
+    title:         Mapped[str]              = mapped_column(Text, nullable=False)
+    group_name:    Mapped[str]              = mapped_column(Text, nullable=False, default="Мои справочники")
+    icon:          Mapped[str]              = mapped_column(Text, nullable=False, default="📁")
+    hierarchical:  Mapped[bool]             = mapped_column(Boolean, nullable=False, default=True)
+    code_prefix:   Mapped[str]              = mapped_column(Text, nullable=False, default="NSI")
+    fields_schema: Mapped[list]             = mapped_column(JsonType, nullable=False, default=list)
+    status:        Mapped[str]              = mapped_column(String(16), nullable=False, default="active")
+    sort_order:    Mapped[int]              = mapped_column(Integer, nullable=False, default=0)
+    created_by:    Mapped[Optional[str]]    = mapped_column(Text, nullable=True)
+    created_at:    Mapped[datetime]         = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
+    updated_by:    Mapped[Optional[str]]    = mapped_column(Text, nullable=True)
+    updated_at:    Mapped[datetime]         = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
+
+
+class UserItem(Base):
+    """Записи пользовательских справочников (§45, фаза 1d, миграция 045).
+    Значения пользовательских полей — в attrs JSONB; code уникален в пределах
+    catalog_id (составной индекс в миграции), поэтому без CatalogMixin —
+    он объявляет глобальный UNIQUE(code), который здесь не нужен."""
+
+    __tablename__ = "nsi_user_items"
+
+    id:         Mapped[int]              = mapped_column(IdType, primary_key=True, autoincrement=True)
+    catalog_id: Mapped[int]              = mapped_column(IdType, nullable=False, index=True)
+    code:       Mapped[str]              = mapped_column(Text, nullable=False)
+    name:       Mapped[str]              = mapped_column(Text, nullable=False)
+    parent_id:  Mapped[Optional[int]]    = mapped_column(IdType, nullable=True)  # FK self RESTRICT в 045
+    is_group:   Mapped[bool]             = mapped_column(Boolean, nullable=False, default=False)
+    is_system:  Mapped[bool]             = mapped_column(Boolean, nullable=False, default=False)
+    status:     Mapped[str]              = mapped_column(String(16), nullable=False, default="active")
+    sort_order: Mapped[int]              = mapped_column(Integer, nullable=False, default=0)
+    attrs:      Mapped[dict]             = mapped_column(JsonType, nullable=False, default=dict)
+    created_by: Mapped[Optional[str]]    = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime]         = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
+    updated_by: Mapped[Optional[str]]    = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime]         = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
 
 
 class CatalogAuditEntry(Base):

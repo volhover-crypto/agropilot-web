@@ -16,6 +16,7 @@ from backend.team.models import TeamMember
 
 U_MGR = CurrentUser(id="u1", name="Менеджер")     # role_key=manager
 U_ENG = CurrentUser(id="u2", name="Инженер")      # role_key=engineer
+U_ADM = CurrentUser(id="u3", name="Админ")        # role_key=admin (фаза 1d)
 
 # team-модель несёт «чистый» JSONB, который sqlite не рендерит — в тестах
 # подменяем таблицу raw-DDL (engine читает из неё только id и role_key).
@@ -53,6 +54,9 @@ def _run(coro_fn):
             session.add(TeamMember(id="u2", name="Инженер", role="Инженер",
                                    competencies=[], permissions=[], status="active",
                                    role_key="engineer"))
+            session.add(TeamMember(id="u3", name="Админ", role="Руководитель продаж",
+                                   competencies=[], permissions=[], status="active",
+                                   role_key="admin"))
             await session.commit()
             return await coro_fn(session)
 
@@ -320,3 +324,118 @@ def test_merge_contractors_and_children():
     assert merged and arch_st == "archived" and tgt_st == "active"
     assert action == "merge" and moved == 1 and el_parent is not None
     assert err_cls == "ForbiddenError"
+
+
+# ===========================================================================
+# Фаза 1d (§45.10): пользовательские справочники + иерархия контрагентов
+# ===========================================================================
+
+_TYPE_FIELDS = [
+    {"key": "area", "type": "decimal", "label": "Площадь, га", "grid": True},
+    {"key": "sort", "type": "enum", "label": "Сорт", "grid": True,
+     "options": {"white": "Белый", "red": "Красный"}},
+]
+
+
+def test_type_create_requires_admin():
+    async def mk(s):
+        await engine.create_type(s, {"title": "Виноградники"}, U_MGR)
+    e = _expect(ForbiddenError, mk)
+    assert e is not None and "admin" in e.message
+
+
+def test_type_create_and_items_lifecycle():
+    """Создание типа админом → записи (группа + элемент) → схемы в /catalogs."""
+    async def scenario(s):
+        ct = await engine.create_type(s, {"title": "Виноградники", "fields": _TYPE_FIELDS}, U_ADM)
+        specs = await engine.specs_payload_db(s)
+        spec = next(x for x in specs if x["key"] == ct["key"])
+        grp = await engine.create_item(s, ct["key"], {"name": "Южные сады", "is_group": True}, U_MGR)
+        it = await engine.create_item(s, ct["key"],
+                                      {"name": "Фазанское", "area": "12,5", "sort": "white",
+                                       "parent_id": grp["id"]}, U_MGR)
+        back = await engine.get_item(s, ct["key"], it["id"])
+        upd = await engine.update_item(s, ct["key"], it["id"], {"area": "14"}, U_MGR)
+        lst = await engine.list_items(s, ct["key"], parent=str(grp["id"]))
+        return (ct["key"], ct["code_prefix"], spec["managed"], spec["status"],
+                it["code"], it["area"], back["area"], upd["area"], back["parent_id"],
+                lst["total"], spec["hierarchical"])
+    key, pref, managed, status, code, area, back_area, upd_area, parent, total, hier = _run(scenario)
+    assert key == "vinogradniki" and pref == "VIN"
+    assert managed is True and status == "active" and hier is True
+    assert code == "VIN-0002" and area == 12.5 and back_area == 12.5 and upd_area == 14.0  # VIN-0001 — группа
+    assert parent is not None and total == 1
+
+
+def test_type_key_conflicts_with_static():
+    async def mk(s):
+        await engine.create_type(s, {"title": "Единицы заново", "key": "units"}, U_ADM)
+    e = _expect(ConflictError, mk)
+    assert e is not None and "занят" in e.message
+
+
+def test_type_update_append_only_fields():
+    """Схему можно дополнять; удалять/менять тип поля при наличии записей нельзя."""
+    async def scenario(s):
+        ct = await engine.create_type(s, {"title": "Сады", "fields": _TYPE_FIELDS[:1]}, U_ADM)
+        ok = await engine.update_type(s, ct["id"],
+                                      {"title": "Сады и огороды",
+                                       "fields": _TYPE_FIELDS[:1] + [{"key": "note", "type": "string", "label": "Заметка"}]},
+                                      U_ADM)
+        await engine.create_item(s, ct["key"], {"name": "Сад №1", "area": "3"}, U_MGR)
+        return ct, ok
+    async def try_remove(s):
+        ct, _ = await scenario(s)
+        await engine.update_type(s, ct["id"], {"fields": []}, U_ADM)
+    e = _expect(ConflictError, try_remove)
+    assert e is not None and "удалить нельзя" in e.message
+
+
+def test_type_archive_blocks_mutations_and_hides():
+    async def scenario(s):
+        ct = await engine.create_type(s, {"title": "Питомники", "fields": []}, U_ADM)
+        it = await engine.create_item(s, ct["key"], {"name": "Питомник 1"}, U_MGR)
+        await engine.set_type_status(s, ct["id"], "archived", U_ADM, "archive")
+        specs = await engine.specs_payload_db(s)
+        spec = next(x for x in specs if x["key"] == ct["key"])
+        # чтение доступно, мутации — нет
+        lst = await engine.list_items(s, ct["key"])
+        upd_err = None
+        try:
+            await engine.update_item(s, ct["key"], it["id"], {"name": "Хх"}, U_MGR)
+        except Exception as ex:
+            upd_err = ex
+        await engine.set_type_status(s, ct["id"], "active", U_ADM, "restore")
+        it2 = await engine.update_item(s, ct["key"], it["id"], {"name": "Питомник 1б"}, U_MGR)
+        h = await engine.type_history(s, ct["id"])
+        return spec["status"], lst["total"], type(upd_err).__name__, it2["name"], \
+            [x["action"] for x in h["items"]]
+    st, total, err_cls, name, actions = _run(scenario)
+    assert st == "archived" and total == 1
+    assert err_cls == "ConflictError" and name == "Питомник 1б"
+    assert actions[0] == "restore" and "archive" in actions and "create" in actions
+
+
+def test_contractors_hierarchy():
+    """Контрагенты: группы-подразделы (виноградники/сады) + элементы внутри."""
+    async def scenario(s):
+        grp = await engine.create_item(s, "contractors", {"name": "Виноградники", "is_group": True}, U_MGR)
+        it = await engine.create_item(s, "contractors",
+                                      {"name": "АО Лоза", "kind": "jur", "parent_id": grp["id"]}, U_MGR)
+        back = await engine.get_item(s, "contractors", it["id"])
+        lst = await engine.list_items(s, "contractors", parent=str(grp["id"]))
+        return grp["is_group"], back["parent_id"], back["kind"], lst["total"]
+    grp_flag, parent, kind, total = _run(scenario)
+    assert grp_flag is True and parent is not None and kind == "jur" and total == 1
+
+
+def test_user_item_code_unique_per_catalog():
+    """Одинаковые коды в разных пользовательских справочниках допустимы."""
+    async def scenario(s):
+        a = await engine.create_type(s, {"title": "Первый", "code_prefix": "AAA"}, U_ADM)
+        b = await engine.create_type(s, {"title": "Второй", "code_prefix": "AAA"}, U_ADM)
+        i1 = await engine.create_item(s, a["key"], {"name": "Запись 1"}, U_MGR)
+        i2 = await engine.create_item(s, b["key"], {"name": "Запись 2"}, U_MGR)
+        return i1["code"], i2["code"]
+    c1, c2 = _run(scenario)
+    assert c1 == "AAA-0001" and c2 == "AAA-0001"

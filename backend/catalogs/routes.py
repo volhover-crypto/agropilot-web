@@ -9,9 +9,14 @@ from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.catalogs import engine
+from backend.catalogs.models import CatalogType
 from backend.common.deps import get_current_user, get_db
+from backend.common.errors import NotFoundError
 
 router = APIRouter(prefix="/catalogs", tags=["catalogs"])
+
+# Фаза 1d: управление самими справочниками (только admin) — §45.10
+types_router = APIRouter(prefix="/catalogs-types", tags=["catalogs"])
 
 
 def _ok(data):
@@ -19,9 +24,60 @@ def _ok(data):
 
 
 @router.get("")
-async def list_catalog_types(user=Depends(get_current_user)):
-    """Реестр типов справочников + схема полей — фронт строит UI из этого."""
-    return _ok(engine.specs_payload())
+async def list_catalog_types(db: AsyncSession = Depends(get_db),
+                             user=Depends(get_current_user)):
+    """Реестр типов справочников + схема полей — фронт строит UI из этого.
+    Статические (registry.py) + пользовательские (catalog_types, фаза 1d)."""
+    return _ok(await engine.specs_payload_db(db))
+
+
+# ---- управление типами справочников (фаза 1d, admin) ----
+
+@types_router.post("")
+async def create_catalog_type(payload: dict = Body(...),
+                              db: AsyncSession = Depends(get_db),
+                              user=Depends(get_current_user)):
+    """Создать пользовательский справочник — только admin."""
+    return _ok(await engine.create_type(db, payload, user))
+
+
+@types_router.get("/{type_id}")
+async def get_catalog_type(type_id: int,
+                           db: AsyncSession = Depends(get_db),
+                           user=Depends(get_current_user)):
+    ct = await db.get(CatalogType, type_id)
+    if ct is None:
+        raise NotFoundError(f"справочник {type_id} не найден")
+    return _ok(engine.type_payload(ct))
+
+
+@types_router.patch("/{type_id}")
+async def update_catalog_type(type_id: int, payload: dict = Body(...),
+                              db: AsyncSession = Depends(get_db),
+                              user=Depends(get_current_user)):
+    """Изменить метаданные справочника; схема полей — только добавление новых."""
+    return _ok(await engine.update_type(db, type_id, payload, user))
+
+
+@types_router.post("/{type_id}/archive")
+async def archive_catalog_type(type_id: int,
+                               db: AsyncSession = Depends(get_db),
+                               user=Depends(get_current_user)):
+    return _ok(await engine.set_type_status(db, type_id, "archived", user, "archive"))
+
+
+@types_router.post("/{type_id}/restore")
+async def restore_catalog_type(type_id: int,
+                               db: AsyncSession = Depends(get_db),
+                               user=Depends(get_current_user)):
+    return _ok(await engine.set_type_status(db, type_id, "active", user, "restore"))
+
+
+@types_router.get("/{type_id}/history")
+async def catalog_type_history(type_id: int,
+                               db: AsyncSession = Depends(get_db),
+                               user=Depends(get_current_user)):
+    return _ok(await engine.type_history(db, type_id))
 
 
 # ВАЖНО: /{key}/duplicates и /{key}/merge объявляются ДО /{key}/{item_id},
