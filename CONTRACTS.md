@@ -2304,3 +2304,75 @@ nsiIsAdmin() (role_key==='admin' из M.team), сервер — источник
 цикл типа с группой/элементом/attrs, конфликт ключа со статикой, append-only
 полей, архив блочит мутации, иерархия контрагентов, коды уникальны в пределах
 справочника); node --check OK.
+
+## §46. Кросспостинг публикаций — реестр каналов + движок n8n (фаза Ф1)
+
+Одна публикация → несколько платформ (Telegram, ВКонтакте; далее Дзен Ф5,
+Instagram Ф6 после перевода аккаунта в бизнес). Три слоя: UI (раздел
+«Публикации», Ф2–Ф3) → n8n (webhook pub-publish + sub-workflow publish-core)
+→ API платформ. Миграция 046.
+
+### 46.1. Реестр каналов
+pub_channels: {name, platform ∈ telegram|vk|instagram|dzen, target, secrets
+{bot_token|vk_token}, template JSONB, status active|frozen}. Заморозка =
+UPDATE status='frozen' — движок на каждом прогоне читает только active,
+история pub_post_channels остаётся. Добавление канала = INSERT (+secret),
+workflow не правится. Секреты читают только роли agropilot и n8n_pub.
+
+### 46.2. Движок (n8n, deploy/n8n/*.workflow.json)
+Внешняя точка: Webhook POST https://<host>/n8n/webhook/pub-publish с
+обязательным заголовком X-PUB-TOKEN (credential n8n «PUB webhook token»;
+то же значение — PUB_ENGINE_TOKEN в .env для вызова из backend, Ф3).
+Тело: {post_id}. Публикуются строки pub_post_channels со статусом pending
+(канал active); итог: все ok → done, часть ok → partial, иначе failed
+(last_error). Ответ: {ok, data:{post_id, post_status, results[]}} по
+конверту §0; 400/404/422 при ошибках входа.
+
+ВАЖНО (n8n 2.20): publish-core — тоже webhook-workflow
+(POST /webhook/pub-core на 127.0.0.1:5678, тот же X-PUB-TOKEN), а НЕ
+Execute Workflow Trigger: sub-workflow-вызовы через Execute Workflow в этой
+версии падают с WorkflowHasIssuesError. pub-publish вызывает core узлом
+HTTP Request (generic credential httpHeaderAuth). Схема core: Prepare →
+Mark publishing & load post (RETURNING) → Load channels (jsonb_agg —
+ОБЯЗАТЕЛЬНО агрегировать: postgres-узел при пустом результате отдаёт 0
+items и рвёт цепочку) → Build jobs → Switch(platform) → ветки
+formatTG/TG API/tgResult, formatVK/VK API/vkResult, skip (нет каналов →
+Respond skipped), default (skippedResult) → Merge → Quote for SQL
+(строки в SQL-литералы; JSON.stringify в {{}}-выражениях SQL ненадёжен) →
+Save channel results (UPSERT ... RETURNING) → Finalize post status →
+Final → Respond final. scheduler Ф4 будет вторым вызывающим pub-core.
+Таймзона n8n Europe/Moscow, БД UTC.
+
+### 46.3. Форматтеры (детерминированные, дубль в SPA для превью — §46.5)
+- formatTG: markdown-lite → HTML Telegram (b/i/a), body_override ||
+body_md, обрезка 4096, parse_mode=HTML; media[0].photo → sendPhoto,
+2–10 фото → sendMediaGroup (Ф1: текст+первое фото).
+- formatVK: markdown убирается (plain + переносы), хэштеги сохраняются,
+  лимит 4096; wall.post от имени сообщества (from_group=1, owner_id=-id).
+  Загрузка фото VK (multipart) — Ф3 вместе с медиа-редактором.
+- instagram/dzen: ветки Ф5/Ф6 (dzen — публикация в relay-TG-канал,
+  официальный бот Дзена зеркалит; instagram — Graph API, канал заморожен
+  до бизнес-аккаунта).
+
+### 46.4. Серверная конфигурация (в git не попадает) и деплой
+Роль n8n_pub (пароль в /root/n8n_pub.cred, chmod 600; GRANT — миграция 046).
+Credentials n8n: «AgroPILOT PUB DB» (postgres, localhost:5432/agropilot,
+n8n_pub) и «PUB webhook token» (Header Auth X-PUB-TOKEN; значение =
+PUB_ENGINE_TOKEN из .env). Первый ввод: import:credentials и
+import:workflow (в credential-файле обязателен «id»: uuid) + update:workflow
+--active=true + docker restart n8n (CLI-активация без рестарта не
+регистрирует webhook). Обновление workflow — tools/update_wf.py: поднимает
+новую версию в workflow_history И переключает ОБА поля workflow_entity
+versionId и activeVersionId (исполняется именно activeVersionId; менять
+только nodes/versionId недостаточно), затем docker restart n8n. HTTP-код
+Respond to Webhook передаётся через options.responseCode.
+
+### 46.5. DoD фазы Ф1 (проверено 28.09.2026, сервер mdked)
+Миграция 046 применена (owner agropilot, гранты n8n_pub); оба workflow
+активны. Проверено curl'ом: без токена → 403; кривое тело → 400 (контракт);
+несуществующий post_id → 404; пост без каналов → 200
+{ok:true,data:{skipped:true,reason:'no active pending channels'}} и статус
+failed; канал-неизвестная-платформа (instagram) → results[{status:skipped}],
+UPSERT в pub_post_channels, пост failed/no publishable channels. Тестовые
+данные удалены. НЕ проверено: живая публикация TG/VK (нужны токены
+заказчика, тестовый бот + тестовая группа VK) — DoD закрывается после.
