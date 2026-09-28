@@ -28,6 +28,7 @@
           sel: new Set(),                 // channel_id выбранных
           overrides: {},                  // channel_id -> текст
           previewTab: null,               // channel_id активного превью
+          scheduled: '',                  // Ф4: datetime-local запланированного
           err: null, busy: false,
         },
       },
@@ -393,9 +394,10 @@
           ed.overrides = {};
           (post.channels || []).forEach(c => { if (c.body_override) ed.overrides[c.channel_id] = c.body_override; });
           ed.previewTab = ((post.channels || [])[0] || {}).channel_id || null;
+          ed.scheduled = this._pubIsoToLocal(post.scheduled_at);
         } else {
           ed.id = null; ed.body_md = ''; ed.media = []; ed.sel = new Set(); ed.overrides = {};
-          ed.previewTab = null;
+          ed.previewTab = null; ed.scheduled = '';
         }
         this.render();
       },
@@ -436,6 +438,37 @@
         if (ed.sel.has(ch.id)) { ed.sel.delete(ch.id); if (ed.previewTab === ch.id) ed.previewTab = null; }
         else { ed.sel.add(ch.id); if (!ed.previewTab) ed.previewTab = ch.id; }
         this.render();
+      },
+      _pubIsoToLocal(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d)) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+             + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+      },
+      async pubEditorSchedule() {
+        const ed = this.pubState.editor;
+        if (!(ed.body_md || '').trim()) { ed.err = 'Текст публикации обязателен'; this.render(); return; }
+        if (!ed.sel.size) { ed.err = 'Выберите хотя бы один канал'; this.render(); return; }
+        if (!ed.scheduled) { ed.err = 'Укажите время публикации'; this.render(); return; }
+        const when = new Date(ed.scheduled);
+        if (!(when > new Date())) { ed.err = 'Время должно быть в будущем'; this.render(); return; }
+        ed.busy = true; this.render();
+        try {
+          const payload = this._pubEditorPayload();
+          payload.scheduled_at = when.toISOString();
+          if (ed.id) await AGL.pubPostUpdate(ed.id, payload);
+          else ed.id = ((await AGL.pubPostCreate(payload)).data || {}).id;
+          this.toast('Запланировано на ' + when.toLocaleString('ru-RU'));
+          await this.pubLoadPosts();
+        } catch (e) {
+          ed.err = (e && (e.error && e.error.message || e.message)) || 'Ошибка планирования';
+          this.toast(ed.err, 'err');
+        } finally {
+          ed.busy = false;
+          this.render();
+        }
       },
       _pubEditorPayload() {
         const ed = this.pubState.editor;
@@ -532,7 +565,11 @@
                   </span>`).join('')}
               </div>
               ${ed.err ? `<div class="mt-2 text-sm" style="color:var(--err)">${this.esc(ed.err)}</div>` : ''}
-              <div class="flex gap-2 mt-3 flex-wrap">
+              <div class="flex items-center gap-2 mt-3 flex-wrap">
+                <input type="datetime-local" ${inp} style="width:auto" data-pub-ed-when value="${this.esc(ed.scheduled)}">
+                <button class="btn" data-pub-ed-sched ${ed.busy || !canPub ? 'disabled' : ''} title="Опубликовать в заданное время (scheduler каждые 5 минут)">⏱ Запланировать</button>
+              </div>
+              <div class="flex gap-2 mt-2 flex-wrap">
                 <button class="btn" data-pub-ed-save ${ed.busy || !canPub ? 'disabled' : ''}>💾 Черновик</button>
                 <button class="btn btn-accent" data-pub-ed-pub ${ed.busy || !canPub ? 'disabled' : ''}>🚀 Опубликовать сейчас</button>
                 ${ed.id ? '<button class="btn" data-pub-ed-new>✨ Новый</button>' : ''}
@@ -608,19 +645,24 @@
           }).join(' ');
           const retry = canPub && ['failed', 'partial'].includes(p.status)
             ? `<button class="btn" data-pub-republish="${p.id}" title="Повторить публикацию упавших каналов">↻ Повторить</button>` : '';
+          const unsched = canPub && p.status === 'scheduled'
+            ? `<button class="btn" data-pub-unsched="${p.id}" title="Вернуть в черновики">⏱ Снять</button>` : '';
           const del = canPub && p.status === 'draft'
             ? `<button class="btn" data-pub-del="${p.id}" title="Удалить черновик">🗑</button>` : '';
           return `
           <div class="card p-3 mb-2 flex items-center gap-3 flex-wrap">
             <div class="flex-1 min-width-200" style="min-width:220px">
               <div class="text-sm" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:520px">${this.esc((p.body_md || '').replace(/\n/g, ' ').slice(0, 90))}</div>
-              <div class="text-[11px] mt-1" style="color:var(--text-mute)">${this.esc((p.created_at || '').replace('T', ' ').slice(0, 16))} · ${(p.media || []).length} 📷</div>
+              <div class="text-[11px] mt-1" style="color:var(--text-mute)">
+                ${this.esc((p.created_at || '').replace('T', ' ').slice(0, 16))} · ${(p.media || []).length} 📷
+                ${p.scheduled_at ? ' · ⏱ ' + this.esc(p.scheduled_at.replace('T', ' ').slice(0, 16)) : ''}
+              </div>
             </div>
             <div>${chans}</div>
             ${this._pubStatusPill(p.status)}
             <div class="flex gap-2">
               <button class="btn" data-pub-open="${p.id}">Открыть</button>
-              ${retry}${del}
+              ${retry}${unsched}${del}
             </div>
             ${p.last_error ? `<div class="text-[11px] w-full" style="color:var(--err)">${this.esc(p.last_error)}</div>` : ''}
           </div>`;
@@ -703,6 +745,21 @@
         root.querySelectorAll('[data-pub-ed-save]').forEach(b => { b.onclick = () => this.pubEditorSave(); });
         root.querySelectorAll('[data-pub-ed-pub]').forEach(b => { b.onclick = () => this.pubEditorPublish(); });
         root.querySelectorAll('[data-pub-ed-new]').forEach(b => { b.onclick = () => this.pubOpenEditor(null); });
+        const when = root.querySelector('[data-pub-ed-when]');
+        if (when) when.onchange = () => { ed.scheduled = when.value; };
+        root.querySelectorAll('[data-pub-ed-sched]').forEach(b => { b.onclick = () => this.pubEditorSchedule(); });
+        root.querySelectorAll('[data-pub-unsched]').forEach(b => {
+          b.onclick = async () => {
+            const id = Number(b.getAttribute('data-pub-unsched'));
+            try {
+              await AGL.pubPostUpdate(id, { scheduled_at: null });
+              this.toast('Расписание снято — пост в черновиках');
+              await this.pubLoadPosts();
+            } catch (e) {
+              this.toast((e && e.error && e.error.message) || 'Ошибка', 'err');
+            }
+          };
+        });
 
         // ---- список публикаций (Ф3) ----
         root.querySelectorAll('[data-pub-new]').forEach(b => { b.onclick = () => this.pubOpenEditor(null); });

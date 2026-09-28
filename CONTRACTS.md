@@ -2444,3 +2444,22 @@ photos.saveWallPhoto → wall.post c attachments (group_id = |target|).
 DoD Ф3: pytest, node --check; на проде — создание черновика, превью всех
 платформ, публикация с skipped-результатами (без токенов) и живой пост
 при их появлении; деплой — по подтверждению заказчика.
+
+### 46.8. Ф4 — отложенный постинг (scheduler)
+Backend: create/PATCH постов принимают scheduled_at (ISO 8601; naive = DEFAULT_TZ
+по конвенции таймзон; только будущее). scheduled_at → status=scheduled (строки
+каналов уже pending), null → снятие расписания (draft). Правка — draft|scheduled;
+удаление — draft|scheduled. Ручная публикация (46.7) снимает расписание и
+ставит publishing; гард «уже публикуется» — только для свежего publishing
+(<3 мин), зависшее можно репаблишить. timezone: БД UTC, n8n Europe/Moscow.
+n8n «AgroPILOT PUB — scheduler (§46)» (активен, pub-scheduler.workflow.json):
+каждые 5 минут SELECT статуса scheduled с scheduled_at <= now() (пропущенные
+из-за простоя тоже выйдут) → последовательные HTTP-вызовы pub-core (итоги
+пишет core). Ревизия 7 core: skip-ветка сама финализирует пост
+(failed/no active pending channels) — вызов core без обёртки pub-publish
+(scheduler) консистентен. Известное: окно гонки тика scheduler и Mark
+publishing секунды (вероятность мала); один VK-канал с фото за прогон.
+Фронт: редактор — datetime-local + «⏱ Запланировать»; список — ⏱-время,
+«Снять» (scheduled → draft). DoD Ф4: pytest; e2e на проде — запланированный
+пост уходит конвейером scheduler → core → статусы (без токенов — failed/no
+active pending channels); живая отложка с токенами — вместе с Ф1-DoD.

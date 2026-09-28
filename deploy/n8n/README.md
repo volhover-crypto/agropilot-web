@@ -70,3 +70,11 @@ curl -s -X POST https://mdked.hlab.kz/n8n/webhook/pub-publish \
 - HTTP Request + Header Auth credential: нужны `authentication:
   "genericCredentialType"` и `genericAuthType: "httpHeaderAuth"`.
 - Webhook-узел отдаёт тело запроса в `$json.body`.
+
+## Scheduler (§46.8, Ф4)
+
+`pub-scheduler.workflow.json` — активный workflow «AgroPILOT PUB — scheduler
+(§46)»: каждые 5 минут берёт `status='scheduled' AND scheduled_at <= now()`
+и последовательно вызывает pub-core. Развёртывание — как у остальных
+(генератор → update_wf.py/import → рестарт); ревизия core ≥7 обязательна
+(skip-финализация внутри core).

@@ -16,7 +16,7 @@ __CRED_TOK_ID__ заменяются на сервере после импорт
 """
 import json, os
 
-OUT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+OUT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # ---------- Code-узлы publish-core ----------
 
@@ -169,6 +169,12 @@ for (const item of $input.all()) {
 return out;
 """ % (fmt_node, ok_expr, pid_expr, err_expr)
 
+sql_mark_failed_core = (
+    "=UPDATE pub_posts SET status = 'failed', last_error = 'no active pending channels',\n"
+    "       updated_at = now()\n"
+    "WHERE id = {{ $json.post_id }} RETURNING id AS post_id"
+)
+
 js_skipped = r"""// Платформа без ветки в этой фазе (instagram/dzen — Ф5/Ф6)
 const it = $input.first().json;
 return [{ json: {
@@ -316,6 +322,10 @@ core_nodes = [
    "typeVersion": 2, "position": [1820, 0], "parameters": {"jsCode": result_code('formatVK')}},
   {"id": "n13", "name": "Skip: no channels", "type": "n8n-nodes-base.noOp",
    "typeVersion": 1, "position": [660, 180], "parameters": {}},
+  {"id": "n28", "name": "Mark failed (no channels)", "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5, "position": [770, 180],
+   "credentials": {"postgres": {"id": "__CRED_DB_ID__", "name": "AgroPILOT PUB DB"}},
+   "parameters": {"operation": "executeQuery", "query": sql_mark_failed_core, "options": {}}},
   {"id": "n19", "name": "Respond skipped", "type": "n8n-nodes-base.respondToWebhook",
    "typeVersion": 1.1, "position": [880, 180],
    "parameters": {"respondWith": "firstIncomingItem", "options": {"responseCode": 200}}},
@@ -367,7 +377,8 @@ core_connections = {
   "VK attach": {"main": [[{"node": "VK API", "type": "main", "index": 0}]]},
   "VK API": {"main": [[{"node": "vkResult", "type": "main", "index": 0}]]},
   "vkResult": {"main": [[{"node": "Merge results", "type": "main", "index": 1}]]},
-  "Skip: no channels": {"main": [[{"node": "Respond skipped", "type": "main", "index": 0}]]},
+  "Skip: no channels": {"main": [[{"node": "Mark failed (no channels)", "type": "main", "index": 0}]]},
+  "Mark failed (no channels)": {"main": [[{"node": "Respond skipped", "type": "main", "index": 0}]]},
   "skippedResult": {"main": [[{"node": "Merge results", "type": "main", "index": 2}]]},
   "Merge results": {"main": [[{"node": "Quote for SQL", "type": "main", "index": 0}]]},
   "Quote for SQL": {"main": [[{"node": "Save channel results", "type": "main", "index": 0}]]},
@@ -515,8 +526,52 @@ hook = {"name": "AgroPILOT PUB — publish webhook (§46)", "nodes": hook_nodes,
         "connections": hook_connections, "settings": {"executionOrder": "v1"}}
 
 os.makedirs(OUT, exist_ok=True)
+# ---------- scheduler workflow (§46.8, Ф4) ----------
+# Каждые 5 минут: запланированные к моменту посты -> pub-core (HTTP).
+# Пропущенные из-за простоя тоже выйдут (scheduled_at <= now()).
+
+js_sched_jobs = r"""// ids из jsonb_agg -> items для последовательной публикации
+const ids = ($input.first().json.ids || []).map(Number);
+return ids.map(id => ({ json: { post_id: id } }));
+"""
+
+sql_due_posts = (
+    "=SELECT COALESCE(jsonb_agg(id ORDER BY scheduled_at), '[]'::jsonb) AS ids\n"
+    "FROM pub_posts WHERE status = 'scheduled' AND scheduled_at <= now()"
+)
+
+sched_nodes = [
+  {"id": "s01", "name": "Каждые 5 минут", "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2, "position": [0, 0],
+   "parameters": {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}},
+  {"id": "s02", "name": "Due posts", "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.5, "position": [220, 0],
+   "credentials": {"postgres": {"id": "__CRED_DB_ID__", "name": "AgroPILOT PUB DB"}},
+   "parameters": {"operation": "executeQuery", "query": sql_due_posts, "options": {}}},
+  {"id": "s03", "name": "To jobs", "type": "n8n-nodes-base.code",
+   "typeVersion": 2, "position": [440, 0], "parameters": {"jsCode": js_sched_jobs}},
+  {"id": "s04", "name": "Call publish-core", "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2, "position": [660, 0], "onError": "continueRegularOutput",
+   "credentials": {"httpHeaderAuth": {"id": "__CRED_TOK_ID__", "name": "PUB webhook token"}},
+   "parameters": {"method": "POST", "url": "http://127.0.0.1:5678/webhook/pub-core",
+     "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth",
+     "sendBody": True, "specifyBody": "json",
+     "jsonBody": "={{ JSON.stringify({post_id: $json.post_id}) }}",
+     "options": {"timeout": 150000}}},
+]
+
+sched_connections = {
+  "Каждые 5 минут": {"main": [[{"node": "Due posts", "type": "main", "index": 0}]]},
+  "Due posts": {"main": [[{"node": "To jobs", "type": "main", "index": 0}]]},
+  "To jobs": {"main": [[{"node": "Call publish-core", "type": "main", "index": 0}]]},
+}
+
+sched = {"name": "AgroPILOT PUB — scheduler (§46)", "nodes": sched_nodes,
+         "connections": sched_connections, "settings": {"executionOrder": "v1"}}
+
 for fname, data in [("pub-publish-core.workflow.json", core),
-                    ("pub-publish-webhook.workflow.json", hook)]:
+                    ("pub-publish-webhook.workflow.json", hook),
+                    ("pub-scheduler.workflow.json", sched)]:
     path = os.path.join(OUT, fname)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

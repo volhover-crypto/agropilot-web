@@ -16,6 +16,7 @@ import re
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy import select
@@ -327,17 +328,38 @@ async def list_posts(limit: int = 50, db: AsyncSession = Depends(get_db),
     return _ok(out)
 
 
+def _parse_scheduled(value) -> Optional[datetime]:
+    """scheduled_at: ISO 8601 (naive = DEFAULT_TZ, конвенция §таймзон);
+    null/отсутствие = нет. Прошедшее время — ошибка (планируем только вперёд)."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValidationError("scheduled_at: ISO 8601 строка или null")
+    from backend.common.tz import parse_dt
+    try:
+        dt = parse_dt(value.strip())
+    except Exception:
+        raise ValidationError("scheduled_at: некорректное время (ISO 8601)")
+    if dt <= datetime.now(timezone.utc):
+        raise ValidationError("scheduled_at: только будущее время")
+    return dt
+
+
 @router.post("/posts")
 async def create_post(payload: dict = Body(...),
                       db: AsyncSession = Depends(get_db),
                       user=Depends(get_current_user)):
-    """Черновик публикации (admin|manager). Медиа — фото артефактов/URL."""
+    """Черновик публикации (admin|manager); с scheduled_at — сразу
+    запланированный (status=scheduled, публикует scheduler §46.8)."""
     await _require_role(db, user, PUBLISH_ROLES)
     body_md = payload.get("body_md")
     if not isinstance(body_md, str) or not 1 <= len(body_md.strip()) <= 20000:
         raise ValidationError("body_md: 1..20000 символов")
     media = _abs_media(payload.get("media"))
-    post = PubPost(body_md=body_md, media=media, status="draft",
+    scheduled_at = _parse_scheduled(payload.get("scheduled_at"))
+    post = PubPost(body_md=body_md, media=media,
+                   status="scheduled" if scheduled_at else "draft",
+                   scheduled_at=scheduled_at,
                    created_by=user.id,
                    created_at=datetime.now(timezone.utc),
                    updated_at=datetime.now(timezone.utc))
@@ -364,11 +386,12 @@ async def get_post(post_id: int, db: AsyncSession = Depends(get_db),
 async def update_post(post_id: int, payload: dict = Body(...),
                       db: AsyncSession = Depends(get_db),
                       user=Depends(get_current_user)):
-    """Правка черновика (только status=draft): текст/медиа/каналы/overrides."""
+    """Правка черновика/запланированного (draft|scheduled): текст/медиа/каналы/
+    overrides/scheduled_at (null → снять расписание, вернуть в draft)."""
     await _require_role(db, user, PUBLISH_ROLES)
     post = await _post_or_404(db, post_id)
-    if post.status != "draft":
-        raise ConflictError(f"правка доступна только черновику (статус {post.status})")
+    if post.status not in ("draft", "scheduled"):
+        raise ConflictError(f"правка доступна черновику и запланированному (статус {post.status})")
     if "body_md" in payload:
         body_md = payload.get("body_md")
         if not isinstance(body_md, str) or not 1 <= len(body_md.strip()) <= 20000:
@@ -379,6 +402,11 @@ async def update_post(post_id: int, payload: dict = Body(...),
     if "channel_ids" in payload:
         await _sync_post_channels(db, post, payload.get("channel_ids") or [],
                                   payload.get("overrides"))
+    if "scheduled_at" in payload:
+        scheduled_at = _parse_scheduled(payload.get("scheduled_at"))
+        post.scheduled_at = scheduled_at
+        post.status = "scheduled" if scheduled_at else "draft"
+        post.last_error = None
     elif "overrides" in payload:
         bound = (await db.execute(
             select(PubPostChannel).where(PubPostChannel.post_id == post.id))
@@ -395,11 +423,11 @@ async def update_post(post_id: int, payload: dict = Body(...),
 @router.delete("/posts/{post_id}")
 async def delete_post(post_id: int, db: AsyncSession = Depends(get_db),
                       user=Depends(get_current_user)):
-    """Удаление только черновика (строки каналов — каскадом)."""
+    """Удаление непубликованного (draft|scheduled; строки — каскадом)."""
     await _require_role(db, user, PUBLISH_ROLES)
     post = await _post_or_404(db, post_id)
-    if post.status != "draft":
-        raise ConflictError(f"удаление доступно только черновику (статус {post.status})")
+    if post.status not in ("draft", "scheduled"):
+        raise ConflictError(f"удаление доступно черновику и запланированному (статус {post.status})")
     await db.delete(post)
     await db.commit()
     return _ok({"deleted": post_id})
@@ -413,8 +441,14 @@ async def publish_post(post_id: int, payload: dict = Body(default={}),
     (§46.2) с проксированием его ответа. Повтор для failed/partial."""
     await _require_role(db, user, PUBLISH_ROLES)
     post = await _post_or_404(db, post_id)
-    if post.status == "publishing":
-        raise ConflictError("пост уже публикуется")
+    # защита от двойного клика: свежий publishing блокирует повтор; зависший
+    # дольше 3 минут (движок умер) — разрешаем повторную публикацию
+    if post.status == "publishing" and post.updated_at:
+        ua = post.updated_at
+        if ua.tzinfo is None:
+            ua = ua.replace(tzinfo=timezone.utc)  # sqlite-совместимость
+        if (datetime.now(timezone.utc) - ua).total_seconds() < 180:
+            raise ConflictError("пост уже публикуется")
     channel_ids = payload.get("channel_ids")
     if channel_ids is None:
         bound = (await db.execute(
@@ -425,6 +459,8 @@ async def publish_post(post_id: int, payload: dict = Body(default={}),
                                          payload.get("overrides"))
     if not channels:
         raise ValidationError("нет активных каналов: выберите каналы или разморозьте")
+    post.scheduled_at = None  # ручная публикация снимает расписание (§46.8)
+    post.status = "publishing"
     await db.commit()
 
     body = _json.dumps({"post_id": post.id}).encode()

@@ -1,0 +1,126 @@
+{
+  "name": "AgroPILOT PUB — scheduler (§46)",
+  "nodes": [
+    {
+      "id": "s01",
+      "name": "Каждые 5 минут",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "s02",
+      "name": "Due posts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "__CRED_DB_ID__",
+          "name": "AgroPILOT PUB DB"
+        }
+      },
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT COALESCE(jsonb_agg(id ORDER BY scheduled_at), '[]'::jsonb) AS ids\nFROM pub_posts WHERE status = 'scheduled' AND scheduled_at <= now()",
+        "options": {}
+      }
+    },
+    {
+      "id": "s03",
+      "name": "To jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ids из jsonb_agg -> items для последовательной публикации\nconst ids = ($input.first().json.ids || []).map(Number);\nreturn ids.map(id => ({ json: { post_id: id } }));\n"
+      }
+    },
+    {
+      "id": "s04",
+      "name": "Call publish-core",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "__CRED_TOK_ID__",
+          "name": "PUB webhook token"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5678/webhook/pub-core",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({post_id: $json.post_id}) }}",
+        "options": {
+          "timeout": 150000
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Каждые 5 минут": {
+      "main": [
+        [
+          {
+            "node": "Due posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due posts": {
+      "main": [
+        [
+          {
+            "node": "To jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To jobs": {
+      "main": [
+        [
+          {
+            "node": "Call publish-core",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

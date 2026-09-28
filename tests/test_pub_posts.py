@@ -174,6 +174,12 @@ def test_publish_flows():
             assert st[cb][1] == "VK-текст" and st[ca][1] is None
 
             # повторная публикация одного канала: он снова pending
+            # (первый прогон оставил publishing — сдвигаем updated_at назад,
+            # гард «уже публикуется» пропускает только зависшие >3 мин)
+            await db.execute(text(
+                "UPDATE pub_posts SET updated_at = datetime('now','-10 minutes') WHERE id = :p"),
+                {"p": p["id"]})
+            await db.commit()
             r2 = await pub_routes.publish_post(p["id"], {"channel_ids": [cb]},
                                                db=db, user=U_MGR)
             assert r2["ok"] is True and len(calls) == 2
@@ -214,4 +220,72 @@ def test_publish_engine_unreachable():
         row = (await db.execute(text("SELECT status, last_error FROM pub_posts WHERE id=:p"),
                                 {"p": p["id"]})).first()
         assert row[0] == "failed" and "connection refused" in row[1]
+    _run(body)
+
+
+def test_schedule_lifecycle():
+    async def body(db):
+        from datetime import datetime, timezone, timedelta
+        ca, _ = await _mk_channels(db)
+        fut = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        # создание сразу запланированным
+        p = (await pub_routes.create_post(
+            {"body_md": "план", "channel_ids": [ca], "scheduled_at": fut},
+            db=db, user=U_MGR))["data"]
+        assert p["status"] == "scheduled" and p["scheduled_at"]
+        # прошлое время нельзя
+        past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        try:
+            await pub_routes.update_post(p["id"], {"scheduled_at": past},
+                                         db=db, user=U_MGR)
+            assert False
+        except ValidationError:
+            pass
+        # naive-время трактуется как DEFAULT_TZ (Europe/Moscow) — не падает
+        r = await pub_routes.update_post(p["id"], {"scheduled_at": "2030-01-01 09:00"},
+                                         db=db, user=U_MGR)
+        assert r["data"]["status"] == "scheduled" and r["data"]["scheduled_at"]
+        # sqlite-тест не сохраняет tz-суффикс (на проде timestamptz отдаёт offset)
+        # снятие расписания → draft
+        r = await pub_routes.update_post(p["id"], {"scheduled_at": None},
+                                         db=db, user=U_MGR)
+        assert r["data"]["status"] == "draft" and not r["data"]["scheduled_at"]
+        # повторное планирование + удаление запланированного
+        await pub_routes.update_post(p["id"], {"scheduled_at": fut}, db=db, user=U_MGR)
+        d = await pub_routes.delete_post(p["id"], db=db, user=U_ADM)
+        assert d["data"]["deleted"] == p["id"]
+    _run(body)
+
+
+def test_publish_clears_schedule():
+    async def body(db):
+        from datetime import datetime, timezone, timedelta
+        ca, _ = await _mk_channels(db)
+        fut = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        p = (await pub_routes.create_post(
+            {"body_md": "x", "channel_ids": [ca], "scheduled_at": fut},
+            db=db, user=U_ADM))["data"]
+
+        def fake_urlopen(req, timeout=None):
+            return _FakeResp(json.dumps(
+                {"ok": True, "data": {"post_id": str(p["id"]), "post_status": "done",
+                                      "results": []}}).encode())
+
+        orig = pub_routes.urllib.request.urlopen
+        pub_routes.urllib.request.urlopen = fake_urlopen
+        try:
+            r = await pub_routes.publish_post(p["id"], {}, db=db, user=U_ADM)
+            assert r["ok"] is True
+        finally:
+            pub_routes.urllib.request.urlopen = orig
+        row = (await db.execute(text("SELECT status, scheduled_at FROM pub_posts WHERE id=:p"),
+                                {"p": p["id"]})).first()
+        assert row[0] == "publishing" and row[1] is None  # расписание снято
+        # правка опубликованного запрещена
+        from backend.common.errors import ConflictError as CE
+        try:
+            await pub_routes.update_post(p["id"], {"body_md": "y"}, db=db, user=U_ADM)
+            assert False
+        except CE:
+            pass
     _run(body)
