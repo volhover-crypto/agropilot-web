@@ -2151,3 +2151,77 @@ PATCH /v1/telegram/bindings/{id} {notify_mask} · POST /v1/telegram/webhook.
 Флаг §6: TELEGRAM_READY. Env: PETRUSHKA_TG_BOT_TOKEN (только .env сервера),
 PETRUSHKA_TG_BOT_NAME, PETRUSHKA_TG_WEBHOOK_SECRET. Ввод в строй (сервер):
 setWebhook с secret_token на https://<host>/agropilot/api/v1/telegram/webhook.
+
+## §45. Справочники НСИ — generic-движок, аудит, дедуп (фаза 1a)
+
+Источники: docs/ТЗ_СПРАВОЧНИКИ.md (проект 28.09.2026, решения владельца:
+сиды гео = РФ; создание/изменение/архив — все авторизованные, удаление —
+admin/manager; автокод префиксный `ПРЕФИКС-0001`).
+
+### 45.1. Концепция
+Раздел «Справочники» (`#/catalogs`, пункт меню Блока 3) — два режима:
+- **НСИ** — редактируемые справочники (этот параграф);
+- **Навигатор** (`#/catalog`) — прежний read-only архив §18, без изменений
+  контракта; исправлены: owner разрешается в имя (M.team), поиск с debounce
+  без потери фокуса (точечное обновление `#catResults`), сброс q при выходе.
+
+### 45.2. Архитектура (гибрид)
+Реальная таблица PG на справочник + generic-движок в коде:
+`backend/catalogs/{registry.py (SPEC), models.py (CatalogMixin), engine.py,
+audit.py, routes.py}`; миграция 041_nsi_core.sql. Служебные колонки всех
+справочников: id, code UNIQUE, name, is_system, status active|archived,
+sort_order, attrs JSONB, created_by/at, updated_by/at (+ parent_id, level у
+иерархических). EAV не используется; JSONB — только attrs и diff аудита.
+
+### 45.3. Состав фазы 1a
+`units` (ED-, symbol, kind enum, ОКЕИ; сиды 9 шт), `currencies` (ISO-код,
+minor_unit; сиды RUB/USD/EUR/KZT), `regions` (GEO-, иерархия country→region→
+city, self-FK RESTRICT; сиды РФ + 85 субъектов, города вручную), `tags`
+(TAG-, color, description). Фаза 1b: контрагенты + номенклатура (merge,
+drawer); 1c: адаптеры sources/channels/segments.
+
+### 45.4. Аудит
+`catalog_audit` (append-only): entity, entity_id, action ∈ create|update|
+archive|restore|delete|merge, diff JSONB `{поле:{old,new}}`, user_id (team.id),
+user_name, created_at; индекс (entity, entity_id, id DESC). Пишется в транзакции
+мутации. UI: модалка «История» (⟳). Откат = новая мутация со старыми значениями.
+
+### 45.5. API (префикс /agropilot/api/v1; конверт §0)
+- `GET /catalogs` — реестр типов + схема полей (фронт строит UI);
+- `GET /catalogs/{t}?q&status=active|archived|all&parent=all|none|id&sort=±code&limit≤200&offset` → `{items,total,limit,offset}`;
+- `POST /catalogs/{t}` (автокод при пустом code; unknown поля → 422);
+- `GET|PATCH /catalogs/{t}/{id}`; PATCH — diff в аудит;
+- `POST /catalogs/{t}/{id}/archive|restore`;
+- `DELETE /catalogs/{t}/{id}` — только admin/manager (team.role_key);
+- `GET /catalogs/{t}/{id}/history`;
+- `GET /catalogs/{t}/duplicates?q` — pg_trgm similarity ≥ 0.35 + ILIKE по
+  dup_fields (на sqlite-тестах — ILIKE-фолбэк).
+Ошибки: 404 неизвестный тип/запись; 409 уникальность/использование (FK RESTRICT,
+вложенные элементы); 403 удаление не по роли, мутация is_system-поля (кроме
+name/sort_order), архив is_system; 422 валидация.
+
+### 45.6. Права и ограничения
+Чтение и мутации — любой авторизованный; DELETE — delete_roles из SPEC
+(admin, manager). is_system-записи: менять только name/sort_order, не
+архивировать/не удалять. Физический DELETE записи с FK-ссылками запрещён
+(RESTRICT → 409 с читаемым сообщением); штатный способ вывода — архив.
+
+### 45.7. Фронтенд
+`js/app.catalogs.js` (APP_CATALOGS_MIXIN → appObjects): metadata-UI из
+`GET /catalogs` (таблица: sticky-заголовок, сортировка, поиск с debounce,
+фильтр статуса, пагинация «показано N–M из K», чекбоксы → bulk архив/восстанов;
+формы: модалки по схеме полей, дедуп-панель «похожие записи» при создании
+(debounce 350 мс, [Открыть]); история — модалка-таймлайн). Guard мутаций —
+по AGL.token (не apiMode). UI-состояние (тип/статус/сортировка) — localStorage
+`agropilot_nsi_ui`. apiFetch дополнен: ошибки теперь «HTTP <статус> <путь> —
+<сообщение сервера>» (подстрока статуса сохранена для safeLoad 401/403).
+
+### 45.8. DoD фазы 1a (проверено 28.09.2026)
+- pytest tests/test_catalogs_engine.py — 11 passed (CRUD, автокод ED-0001/2,
+  уникальность имени без учёта регистра, diff-аудит, архив/restore + счётчики,
+  RESTRICT родителя с вложенными, роли: engineer не удаляет, is_system защищена,
+  дубликаты ILIKE, required/enum/int валидация, фильтр/сортировка/пагинация);
+- node --check: app.catalogs.js / app.objects.js / api.js — OK;
+- import backend.main — OK (роутер подключён).
+Прод-развёртывание (миграция 041 от postgres-владельца, pg_trgm) — отдельный
+шаг деплоя, фиксируется в HANDOVER.

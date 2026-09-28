@@ -26,7 +26,16 @@ async function apiFetch(path, opts = {}) {
     headers: { ...apiHeaders(), ...(opts.headers || {}) },
     body: opts.data ? JSON.stringify(opts.data) : undefined,
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${path}`);
+  if (!r.ok) {
+    // «HTTP <статус> <путь> — <сообщение сервера>»: статус остаётся подстрокой —
+    // на него завязан safeLoad (401/403 пробрасываются, не глотаются)
+    let msg = `HTTP ${r.status} ${path}`;
+    try {
+      const d = await r.json();
+      if (d && d.error && d.error.message) msg += ` — ${d.error.message}`;
+    } catch (e) {}
+    throw new Error(msg);
+  }
   const d = await r.json();
   if (d.ok === false) throw new Error(d.error?.message || 'API error');
   return d.data;
@@ -233,6 +242,46 @@ const AGL = {
     if (type) qs.set('type', type);
     return safeLoad('/v1/catalog/search?' + qs.toString(),
                     { items: [], total: 0, limit: 50, offset: 0 });
+  },
+
+  // ─── Справочники НСИ (§45, фаза 1a) — generic CRUD + аудит + дедуп ───
+  async catalogSpecs() {
+    return safeLoad('/v1/catalogs', []);
+  },
+  async catalogList(type, params = {}) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    if (params.status) qs.set('status', params.status);
+    if (params.parent !== undefined && params.parent !== null) qs.set('parent', params.parent);
+    if (params.sort) qs.set('sort', params.sort);
+    qs.set('limit',  params.limit  ?? 50);
+    qs.set('offset', params.offset ?? 0);
+    return safeLoad('/v1/catalogs/' + encodeURIComponent(type) + '?' + qs.toString(),
+                    { items: [], total: 0, limit: 50, offset: 0 });
+  },
+  async catalogGet(type, id) {
+    return apiFetch('/v1/catalogs/' + encodeURIComponent(type) + '/' + id);
+  },
+  async catalogCreate(type, data) {
+    return apiFetch('/v1/catalogs/' + encodeURIComponent(type), { method: 'POST', data });
+  },
+  async catalogUpdate(type, id, data) {
+    return apiFetch('/v1/catalogs/' + encodeURIComponent(type) + '/' + id, { method: 'PATCH', data });
+  },
+  async catalogArchive(type, id) {
+    return apiFetch('/v1/catalogs/' + encodeURIComponent(type) + '/' + id + '/archive', { method: 'POST' });
+  },
+  async catalogRestore(type, id) {
+    return apiFetch('/v1/catalogs/' + encodeURIComponent(type) + '/' + id + '/restore', { method: 'POST' });
+  },
+  async catalogDelete(type, id) {
+    return apiFetch('/v1/catalogs/' + encodeURIComponent(type) + '/' + id, { method: 'DELETE' });
+  },
+  async catalogHistory(type, id) {
+    return safeLoad('/v1/catalogs/' + encodeURIComponent(type) + '/' + id + '/history', { items: [] });
+  },
+  async catalogDuplicates(type, q) {
+    return safeLoad('/v1/catalogs/' + encodeURIComponent(type) + '/duplicates?q=' + encodeURIComponent(q), { items: [] });
   },
 
   // ─── Monitoring (A-3, §17) — лента наблюдений, только чтение ───

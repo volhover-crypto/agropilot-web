@@ -2,7 +2,7 @@
 // Экраны дозаписываются в следующих чанках (1.4 Мой день, 1.5 карточка, 1.6 списки, 1.7 ПЕТРУШКА).
 console.log('[AgroPILOT] appObjects.js loaded, MOCKO:', typeof window.MOCKO);
 function appObjects() {
-  return {
+  const __app = {
     M: (window.DEV_MOCK ? window.MOCKO : window.EMPTY_MODEL),  // M2.6-a: при DEV_MOCK=false — пустой скелет (без демо-сида)
     apiMode: false,  // true = data from BFF API, false = mock
     apiData: {},     // cached API data
@@ -427,7 +427,8 @@ await this._loadAiLayer();
         monitoring: 'Мониторинг событий',
         medianews: 'Медиа-мониторинг',
         channels: 'Каналы публикации',
-        catalog: 'Справочник',
+        catalogs: 'Справочники',
+        catalog: 'Справочники · Навигатор',
         client: 'Карточка клиента',
         deal: 'Карточка сделки',
         settings: 'Настройки',
@@ -483,6 +484,11 @@ await this._loadAiLayer();
       this.$nextTick(() => {
         const el = document.getElementById('view');
         if (!el) return;
+        // §45: выход из «Справочников» сбрасывает незакрытый поиск Навигатора
+        if (this.route !== 'catalogs' && this.route !== 'catalog' &&
+            (this.catState.q || this.catState.results)) {
+          this.catState.q = ''; this.catState.results = null;
+        }
         let html = '';
         if (this.route === 'myday') html = this.vMyDay4();
         else if (this.route === 'dashboard') html = this.vDashboard();
@@ -501,7 +507,8 @@ await this._loadAiLayer();
         else if (this.route === 'artifacts') html = this.vArtifacts();
         else if (this.route === 'monitoring') html = this.vMonitoring();
         else if (this.route === 'medianews') html = this.vMedianews();
-        else if (this.route === 'catalog') html = this.vCatalog();
+        else if (this.route === 'catalogs') { this.nsiState.mode = 'nsi'; html = this.vCatalogs(); }
+        else if (this.route === 'catalog') { this.nsiState.mode = 'nav'; html = this.vCatalogs(); }
         else if (this.route === 'content') html = this.vContent();
         else if (this.route === 'channels') html = this.vChannels();
         else if (this.route === 'team') html = this.vTeam();
@@ -5072,13 +5079,49 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       this.render();
     },
 
+    // §18.2: owner приходит id из team — разрешение в имя задача фронта
+    catOwnerName(id) {
+      if (id == null || id === '') return '—';
+      const t = (this.M.team || []).find(x => String(x.id) === String(id));
+      return t ? (t.name || id) : id;
+    },
+
     async catSearch(q) {
       const st = this.catState;
       st.q = q;
-      if (!q || q.trim().length < 2) { st.results = null; this.render(); return; }
-      const d = await window.AGL.loadCatalogSearch(q.trim());
-      st.results = (d && d.items) || [];
-      this.render();
+      if (!q || q.trim().length < 2) { st.results = null; }
+      else {
+        const d = await window.AGL.loadCatalogSearch(q.trim());
+        st.results = (d && d.items) || [];
+      }
+      // точечное обновление результатов без полного render():
+      // инпут сохраняет фокус при наборе (§45-фикс: раньше onchange + re-render)
+      const box = document.getElementById('catResults');
+      if (box) {
+        box.innerHTML = this.catResultsHtml();
+        box.querySelectorAll('[data-cat-leaf]').forEach(n => {
+          n.onclick = () => this.catSelect(n.getAttribute('data-cat-node'), n.getAttribute('data-cat-leaf'));
+        });
+      } else if (st.results) {
+        this.render();
+      }
+    },
+
+    catResultsHtml() {
+      const st = this.catState;
+      if (!st.results) return '';
+      const e = (v) => this.esc(v == null ? '' : String(v));
+      const row = (i) => {
+        const active = st.sel && String(st.sel.id) === String(i.id) && st.sel.type === i.type;
+        return `<div class="card-2 p-2 flex items-center gap-2 cursor-pointer ${active ? 'btn-accent' : ''}"
+                     data-cat-leaf="${e(i.id)}" data-cat-node="__search__">
+          <span class="text-[12px]" style="color:var(--text-mute)">${e(i.type)}</span>
+          <span class="text-[13px] truncate flex-1">${e(i.title)}</span>
+          <span class="text-[11px]" style="color:var(--text-dim)">${(i.created_at || '').slice(0, 10)}</span>
+        </div>`;
+      };
+      return st.results.map(row).join('')
+        || '<div class="text-[12px] p-2" style="color:var(--text-mute)">Ничего не найдено</div>';
     },
 
     // §18.3: карточка есть не у всех типов — часть ссылок ведёт в раздел.
@@ -5125,10 +5168,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       };
 
       const tree = st.roots.map(n => nodeRow(n, 0)).join('') || this.empty();
-      const results = st.results
-        ? (st.results.map(i => leafRow('__search__', i)).join('')
-           || `<div class="text-[12px] p-2" style="color:var(--text-mute)">Ничего не найдено</div>`)
-        : '';
+      const results = this.catResultsHtml();
 
       const sel = st.sel;
       const isCard = sel && this.CAT_CARD_ROUTES.indexOf(sel.link && sel.link.route) >= 0;
@@ -5137,7 +5177,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <div class="text-[13px] mb-1">Тип: <b>${e(sel.type)}</b></div>
         <div class="text-[13px] mb-1">ID: ${e(sel.id)}</div>
         <div class="text-[13px] mb-1">Создано: ${(sel.created_at || '—').slice(0, 10)}</div>
-        <div class="text-[13px] mb-3">Ответственный: ${e(sel.owner || '—')}</div>
+        <div class="text-[13px] mb-3">Ответственный: ${e(this.catOwnerName(sel.owner))}</div>
         <button class="btn btn-accent text-[13px]" data-cat-open>Открыть</button>
         <div class="text-[12px] mt-2" style="color:var(--text-mute)">${isCard ? 'Откроется карточка объекта.' : 'У этого типа карточки нет — откроется раздел «' + e(sel.link.route) + '».'}</div>`
         : `<div class="text-[13px]" style="color:var(--text-mute)">Выберите элемент в дереве слева.</div>`;
@@ -5148,7 +5188,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
             <div class="label">Справочник</div>
             <input id="catSearch" class="input text-[13px]" style="max-width:260px" placeholder="Поиск от 2 символов…" value="${e(st.q)}" />
           </div>
-          ${st.results ? `<div class="flex flex-col gap-1 mb-2">${results}</div><div class="label mb-1">Дерево</div>` : ''}
+          ${st.results ? `<div class="flex flex-col gap-1 mb-2" id="catResults">${results}</div><div class="label mb-1">Дерево</div>` : ''}
           <div class="flex flex-col gap-1">${tree}</div>
         </div>
         <div class="card p-4" style="flex:1 1 280px; min-width:260px">${preview}</div>
@@ -5964,7 +6004,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         b.onclick = () => this.leadsTaskModal(b.getAttribute('data-lead-task'), b.getAttribute('data-lead-name'));
       });
       // §15.1a: ресайз колонок. stopPropagation, иначе клик уйдёт в сортировку.
-      // §18.6: дерево «Справочника»
+      // §18.6: дерево «Справочника» + §45: режимы раздела и НСИ
       el.querySelectorAll('[data-cat-node-toggle]').forEach(n => {
         n.onclick = () => this.catToggle(n.getAttribute('data-cat-node-toggle'));
       });
@@ -5974,7 +6014,14 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       const co = el.querySelector('[data-cat-open]');
       if (co) co.onclick = () => this.catOpen();
       const cs2 = el.querySelector('#catSearch');
-      if (cs2) cs2.onchange = (ev) => this.catSearch(ev.target.value);
+      if (cs2) {
+        // §45-фикс: живой поиск с debounce вместо onchange; Esc — сброс
+        let t = null;
+        cs2.oninput = () => { clearTimeout(t); t = setTimeout(() => this.catSearch(cs2.value), 300); };
+        cs2.onkeydown = (ev) => { if (ev.key === 'Escape') { cs2.value = ''; this.catSearch(''); } };
+      }
+      // §45: справочники НСИ (таблица, формы, bulk)
+      this.nsiBind(el);
       // §17.6: фильтр по уровню и пагинация ленты наблюдений
       el.querySelectorAll('[data-mon-level]').forEach(b => {
         b.onclick = () => this.monFilter(b.getAttribute('data-mon-level'));
@@ -6163,4 +6210,12 @@ el.querySelectorAll('[data-skill-reached]').forEach(n => n.onchange = () => { th
       const kbR = document.getElementById('kbReset'); if (kbR) kbR.onclick = () => this.kanbanFilterReset();
     },
   };
+
+  // §45: раздел «Справочники» (НСИ) — состояние/методы подмешиваются из
+  // js/app.catalogs.js, чтобы этот файл не разрастался. this у подмешанных
+  // методов — тот же Alpine-компонент appObjects.
+  if (typeof window.APP_CATALOGS_MIXIN === 'function') {
+    Object.assign(__app, window.APP_CATALOGS_MIXIN());
+  }
+  return __app;
 }

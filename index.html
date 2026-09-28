@@ -118,6 +118,16 @@
     #leadsTable .agl-grip{ position:absolute; top:0; right:0; width:5px; height:100%;
                            cursor:col-resize; user-select:none; }
     #leadsTable .agl-grip:hover{ background:var(--accent); opacity:.55; }
+
+    /* §45 — читаемость таблицы справочников НСИ (паттерн #leadsTable, свой скоуп) */
+    #nsiTable{ max-height:64vh; overflow:auto; }
+    #nsiTable table{ width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; }
+    #nsiTable thead th{ position:sticky; top:0; z-index:2; background:var(--surface);
+                        border-bottom:1px solid var(--border); font-size:11px;
+                        text-transform:uppercase; letter-spacing:.04em; color:var(--text-mute); }
+    #nsiTable tbody td{ border-bottom:1px solid var(--border); }
+    #nsiTable thead th:hover{ color:var(--text); }
+    #nsiTable tbody tr:hover td{ background:var(--surface-2); }
   </style>
 </head>
 <body x-data="appObjects()" x-init="init()">
@@ -162,7 +172,7 @@
       <div class="nav-item" :class="route==='packages'&&'active'" @click="go('packages')"><img class="nav-ico" src="assets/icons/packages.png" alt=""> <span>Упаковки</span></div>
       <div class="nav-item" :class="route==='artifacts'&&'active'"@click="go('artifacts')"><img class="nav-ico" src="assets/icons/artifacts.png" alt=""> <span>Артефакты</span></div>
       <div class="nav-item" :class="route==='team'&&'active'"     @click="go('team')"><img class="nav-ico" src="assets/icons/team.png" alt=""> <span>Команда</span></div>
-      <div class="nav-item" :class="route==='catalog'&&'active'"  @click="go('catalog')"><img class="nav-ico" src="assets/icons/catalog.png" alt=""> <span>Справочник</span></div>
+      <div class="nav-item" :class="(route==='catalogs'||route==='catalog')&&'active'" @click="go('catalogs')"><img class="nav-ico" src="assets/icons/catalog.png" alt=""> <span>Справочники</span></div>
 
       <!-- ── БЛОК 4: Сервис и пост-договор ── -->
       <div class="label px-2 mt-3 mb-1">Блок 4 · Сервис</div>
@@ -255,7 +265,8 @@
   <script src="js/ui-reka.js?v=20260924"></script>
   <script src="js/mock.objects.js?v=20260924"></script>
   <script src="js/api.js?v=20260926"></script>
-  <script src="js/app.objects.js?v=20260926"></script>
+  <script src="js/app.objects.js?v=20260928"></script>
+  <script src="js/app.catalogs.js?v=20260928"></script>
   <script src="js/alpine.min.js?v=1789616100" defer></script>
   <script>document.addEventListener('DOMContentLoaded', initAuthGuard);</script>
 </body>
