@@ -24,13 +24,21 @@ async def list_catalog_types(user=Depends(get_current_user)):
     return _ok(engine.specs_payload())
 
 
-# ВАЖНО: /{key}/duplicates объявляется ДО /{key}/{item_id}, иначе FastAPI
-# сматчит "duplicates" как item_id.
+# ВАЖНО: /{key}/duplicates и /{key}/merge объявляются ДО /{key}/{item_id},
+# иначе FastAPI сматчит "duplicates"/"merge" как item_id.
 @router.get("/{key}/duplicates")
 async def find_duplicates(key: str, q: str = Query(..., min_length=2),
                           db: AsyncSession = Depends(get_db),
                           user=Depends(get_current_user)):
     return _ok(await engine.duplicates(db, key, q))
+
+
+@router.post("/{key}/merge")
+async def merge_items(key: str, payload: dict = Body(...),
+                      db: AsyncSession = Depends(get_db),
+                      user=Depends(get_current_user)):
+    """Слияние дублей: {target_id, source_ids[]} — только admin/manager."""
+    return _ok(await engine.merge_items(db, key, payload, user))
 
 
 @router.get("/{key}")

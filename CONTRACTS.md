@@ -2225,3 +2225,37 @@ name/sort_order), архив is_system; 422 валидация.
 - import backend.main — OK (роутер подключён).
 Прод-развёртывание (миграция 041 от postgres-владельца, pg_trgm) — отдельный
 шаг деплоя, фиксируется в HANDOVER.
+
+### 45.9. Фаза 1b (реализована 28.09.2026): контрагенты + номенклатура + merge
+
+**Миграции**: 042_contractors.sql (`nsi_contractors` + trgm по name/bin_iin, region_id
+FK SET NULL, name/БИН НЕ unique — дубли ловит дедуп+merge); 043_nomenclature.sql
+(`nsi_nomenclature`: группы+элементы в одной таблице, is_group, parent self-FK RESTRICT,
+unit_id FK RESTRICT, currency_id FK SET NULL, NUMERIC vat_rate/price_base).
+
+**Типы полей SPEC**: добавлены `ref` ({"ref": "<catalog>"} — валидация существования,
+в ответах list/get/create/update поле `<key>_label` резолвится батчем одним запросом)
+и `decimal` (Decimal, запятая допустима, в JSON — float). `group_items: true` —
+1С-стиль: `is_group` только при создании (смена → 422), у групп пропускается
+обязательность `element_fields`, поля групп без единиц/цен.
+
+**Справочники**: `contractors` (KON-, drawer-форма, 14 полей: реквизиты, БИН/ИИН,
+банк/счёт, регион ref, контакты; dup: name+bin_iin) и `nomenclature` (NOM-, drawer,
+иерархия групп; dup: name+article).
+
+**Merge**: `POST /catalogs/{t}/merge` `{target_id, source_ids[]}` — только
+delete_roles. Target — golden record (значения не трогаются); дубли архивируются;
+дети иерархии и ссылки из `SPEC.refs` ({"module","model","column"}) переезжают к
+цели UPDATE'ами; аудит: на цели action=merge c merged_from/moved, на дублях —
+merged_into. В UI: чекбоксы ≥2 записей → «🔀 Слить…» (менеджер).
+
+**UI**: drawer для форм SPEC.form==='drawer' (js: nsiDrawerOpen/nsiDrawerClose,
+CSS .nsi-drawer, Esc/маска закрывают); панель групп слева у иерархических
+(parent=all|none|id, дерево с отступами, у номенклатуры — только is_group);
+ref-поля — select с опциями целевого справочника; цены — toLocaleString('ru-RU').
+
+**Валидация 1b**: pytest 82/82 (14 NSI: +ref/label, +decimal 123,50, +правила
+групп, +merge с переносом детей и ForbiddenError для engineer); HTTP-smoke
+TestClient 5/5; node --check OK. Два новах поведения важно знать: Decimal в
+diff аудита санитизируется (_jsonable — иначе json.dumps падает и на проде);
+NUMERIC на sqlite через TypeDecorator с float-конвертацией бинда.

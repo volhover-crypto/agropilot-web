@@ -220,3 +220,103 @@ def test_list_filter_sort_pagination():
     names, total, names_desc, found = _run(scenario)
     assert names == ["Альфа", "Бета"] and total == 3
     assert names_desc == ["Гамма", "Бета"] and found == ["Альфа"]
+
+
+# ------- фаза 1b: контрагенты + номенклатура -------
+
+def test_contractor_ref_and_autocode():
+    async def scenario(s):
+        ru = await engine.create_item(s, "regions", {"name": "Россия", "level": "country"}, U_MGR)
+        c = await engine.create_item(s, "contractors",
+                                     {"name": "ООО Ромашка", "kind": "jur",
+                                      "region_id": ru["id"], "bin_iin": "123456789012"}, U_MGR)
+        lst = await engine.list_items(s, "contractors")
+        it = lst["items"][0]
+        err = None
+        try:
+            await engine.create_item(s, "contractors",
+                                     {"name": "X", "kind": "jur", "region_id": 99999}, U_MGR)
+        except ValidationError as e:
+            err = e
+        return c["code"], it["region_id_label"], err is not None and "нет в" in err.message
+    code, label, bad_ref = _run(scenario)
+    assert code == "KON-0001"
+    assert label == "Россия"          # ref разрешён в метку одним запросом
+    assert bad_ref                    # ссылка на несуществующий регион → 422
+
+
+def test_nomenclature_group_element_rules():
+    async def scenario(s):
+        # группа: без kind/unit — создаётся (element_fields не обязательны)
+        g = await engine.create_item(s, "nomenclature", {"name": "Услуги", "is_group": True}, U_MGR)
+        # элемент без unit_id → обязательно
+        err = None
+        try:
+            await engine.create_item(s, "nomenclature", {"name": "Элемент", "kind": "service"}, U_MGR)
+        except ValidationError as e:
+            err = e
+        unit = await engine.create_item(s, "units", {"name": "Час", "symbol": "ч", "kind": "время"}, U_MGR)
+        cur = await engine.create_item(s, "currencies", {"name": "Рубль", "code": "RUB"}, U_MGR)
+        el = await engine.create_item(s, "nomenclature",
+                                      {"name": "Консультация", "kind": "service",
+                                       "unit_id": unit["id"], "currency_id": cur["id"],
+                                       "price_base": "123,50", "vat_rate": 12.5,
+                                       "parent_id": g["id"]}, U_MGR)
+        # is_group не меняется после создания
+        err2 = None
+        try:
+            await engine.update_item(s, "nomenclature", el["id"], {"is_group": True}, U_MGR)
+        except ValidationError:
+            err2 = True
+        # удаление группы с элементом → конфликт (вложенные)
+        err3 = None
+        try:
+            await engine.delete_item(s, "nomenclature", g["id"], U_MGR)
+        except ConflictError:
+            err3 = True
+        return (err is not None and "обязательно" in err.message,
+                g["is_group"], el["is_group"], el["price_base"], el["vat_rate"],
+                el["unit_id_label"], err2 is not None, err3 is not None)
+    req_unit, g_is_grp, el_is_grp, price, vat, unit_label, no_flip, no_del = _run(scenario)
+    assert req_unit and g_is_grp is True and el_is_grp is False
+    assert price == 123.5 and vat == 12.5       # decimal: запятая → точка, float в JSON
+    assert unit_label == "Час"
+    assert no_flip and no_del
+
+
+def test_merge_contractors_and_children():
+    async def scenario(s):
+        # контрагенты: дубль сливается в целевую запись
+        t = await engine.create_item(s, "contractors",
+                                     {"name": "ООО Ромашка", "kind": "jur", "bin_iin": "111"}, U_MGR)
+        d1 = await engine.create_item(s, "contractors",
+                                      {"name": "Ромашка ООО", "kind": "jur", "bin_iin": "111"}, U_MGR)
+        res = await engine.merge_items(s, "contractors",
+                                       {"target_id": t["id"], "source_ids": [d1["id"]]}, U_MGR)
+        archived = await engine.get_item(s, "contractors", d1["id"])
+        target = await engine.get_item(s, "contractors", t["id"])
+        h = await engine.history(s, "contractors", t["id"])
+        top = h["items"][0]
+
+        # номенклатура: дети дубля-группы переезжают к цели
+        g1 = await engine.create_item(s, "nomenclature", {"name": "Услуги", "is_group": True}, U_MGR)
+        g2 = await engine.create_item(s, "nomenclature", {"name": "Услуги (дубль)", "is_group": True}, U_MGR)
+        unit = await engine.create_item(s, "units", {"name": "Час", "symbol": "ч", "kind": "время"}, U_MGR)
+        el = await engine.create_item(s, "nomenclature",
+                                      {"name": "Аудит", "kind": "service",
+                                       "unit_id": unit["id"], "parent_id": g2["id"]}, U_MGR)
+        res2 = await engine.merge_items(s, "nomenclature",
+                                        {"target_id": g1["id"], "source_ids": [g2["id"]]}, U_MGR)
+        el2 = await engine.get_item(s, "nomenclature", el["id"])
+        # merge недоступен не-менеджеру
+        err = None
+        try:
+            await engine.merge_items(s, "contractors", {"target_id": t["id"], "source_ids": []}, U_ENG)
+        except Exception as e:
+            err = e
+        return (res["merged"], archived["status"], target["status"], top["action"],
+                res2["moved"].get("children"), el2["parent_id"], type(err).__name__)
+    merged, arch_st, tgt_st, action, moved, el_parent, err_cls = _run(scenario)
+    assert merged and arch_st == "archived" and tgt_st == "active"
+    assert action == "merge" and moved == 1 and el_parent is not None
+    assert err_cls == "ForbiddenError"

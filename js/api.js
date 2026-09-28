@@ -283,6 +283,9 @@ const AGL = {
   async catalogDuplicates(type, q) {
     return safeLoad('/v1/catalogs/' + encodeURIComponent(type) + '/duplicates?q=' + encodeURIComponent(q), { items: [] });
   },
+  async catalogMerge(type, data) {
+    return apiFetch('/v1/catalogs/' + encodeURIComponent(type) + '/merge', { method: 'POST', data });
+  },
 
   // ─── Monitoring (A-3, §17) — лента наблюдений, только чтение ───
   async loadMonitoring(params = {}) {

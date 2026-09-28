@@ -128,6 +128,15 @@
     #nsiTable tbody td{ border-bottom:1px solid var(--border); }
     #nsiTable thead th:hover{ color:var(--text); }
     #nsiTable tbody tr:hover td{ background:var(--surface-2); }
+
+    /* §45.7 — drawer: формы справочников 7+ полей (контрагенты, номенклатура).
+       Виден контекст таблицы; Esc/клик по затемнению закрывают. */
+    .nsi-drawer-mask{ position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:90; }
+    .nsi-drawer{ position:fixed; top:0; right:0; bottom:0; width:min(460px, 94vw);
+                 background:var(--surface); border-left:1px solid var(--border); z-index:91;
+                 display:flex; flex-direction:column;
+                 box-shadow:-12px 0 32px rgba(37,29,26,.18); animation:nsiDr .18s ease; }
+    @keyframes nsiDr{ from{transform:translateX(24px); opacity:.4} to{transform:none; opacity:1} }
   </style>
 </head>
 <body x-data="appObjects()" x-init="init()">

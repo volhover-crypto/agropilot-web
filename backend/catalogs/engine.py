@@ -5,17 +5,19 @@
 # авторизованные; физическое удаление — delete_roles (admin/manager).
 
 from datetime import datetime, timezone
+from decimal import Decimal
+import importlib
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from backend.catalogs.audit import read_history, write_audit
-from backend.catalogs.models import Currency, Region, Tag, Unit
+from backend.catalogs.models import Contractor, Currency, NomenclatureItem, Region, Tag, Unit
 from backend.catalogs.registry import CATALOGS, field_map
 from backend.common.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from backend.team.models import TeamMember
 
-_MODELS = {c.__name__: c for c in (Unit, Currency, Region, Tag)}
+_MODELS = {c.__name__: c for c in (Unit, Currency, Region, Tag, Contractor, NomenclatureItem)}
 
 _STATUS_ALLOWED = ("active", "archived", "all")
 _SORT_BASE = {"id", "code", "name", "status", "sort_order", "created_at", "updated_at"}
@@ -68,10 +70,49 @@ def serialize(spec: dict, obj) -> dict:
         "updated_by": obj.updated_by,
     }
     for f in spec["fields"]:
-        d[f["key"]] = getattr(obj, f["key"])
+        v = getattr(obj, f["key"])
+        if f["type"] == "decimal" and v is not None:
+            v = float(v)  # Decimal не серриализуется в JSON напрямую
+        d[f["key"]] = v
     if spec.get("hierarchical"):
         d["parent_id"] = obj.parent_id
+    if spec.get("group_items"):
+        d["is_group"] = bool(obj.is_group)
     return d
+
+
+async def _resolve_refs(db, spec: dict, items: list) -> None:
+    """Проставляет <key>_label для ref-полей (одним запросом на поле)."""
+    ref_fields = [f for f in spec["fields"] if f["type"] == "ref"]
+    for f in ref_fields:
+        ids = {it[f["key"]] for it in items if it.get(f["key"]) is not None}
+        if not ids:
+            continue
+        rspec = get_spec(f["ref"])
+        rmodel = _model(rspec)
+        rows = (await db.execute(
+            select(rmodel).where(rmodel.id.in_(ids)))).scalars().all()
+        m = {r.id: r.name for r in rows}
+        for it in items:
+            it[f["key"] + "_label"] = m.get(it[f["key"]])
+
+
+def _req_active(spec: dict, field: dict, is_group: bool) -> bool:
+    """Обязательность поля с учётом групп номенклатуры (element_fields)."""
+    if field.get("required") and is_group and field["key"] in spec.get("element_fields", []):
+        return False
+    return bool(field.get("required"))
+
+
+async def _check_refs(db, spec: dict, values: dict) -> None:
+    for f in spec["fields"]:
+        if f["type"] != "ref" or values.get(f["key"]) is None:
+            continue
+        rspec = get_spec(f["ref"])
+        rid = values[f["key"]]
+        if await db.get(_model(rspec), rid) is None:
+            raise ValidationError(
+                f"поле «{f.get('label', f['key'])}»: записи {rid} нет в «{rspec['title']}»")
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +138,20 @@ def _clean_value(field: dict, value):
         if value not in allowed:
             raise ValidationError(f"поле «{label}» — допустимо: {', '.join(map(str, allowed))}")
         return value
+    if t == "decimal":
+        if value is None or value == "":
+            return None
+        try:
+            return Decimal(str(value).replace(",", "."))
+        except Exception:
+            raise ValidationError(f"поле «{label}» — ожидается число")
+    if t == "ref":
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise ValidationError(f"поле «{label}» — ссылка (id записи)")
     # string
     if value is None:
         return ""
@@ -179,7 +234,9 @@ async def list_items(db, key: str, *, q: str = "", status: str = "active",
     total = (await db.execute(
         select(func.count()).select_from(stmt.subquery()))).scalar() or 0
     rows = (await db.execute(stmt.limit(limit).offset(offset))).scalars().all()
-    return {"items": [serialize(spec, r) for r in rows],
+    items = [serialize(spec, r) for r in rows]
+    await _resolve_refs(db, spec, items)
+    return {"items": items,
             "total": total, "limit": limit, "offset": offset}
 
 
@@ -188,7 +245,9 @@ async def get_item(db, key: str, item_id: int) -> dict:
     obj = await db.get(_model(spec), item_id)
     if obj is None:
         raise NotFoundError(f"запись {item_id} не найдена в «{spec['title']}»")
-    return serialize(spec, obj)
+    d = serialize(spec, obj)
+    await _resolve_refs(db, spec, [d])
+    return d
 
 
 async def create_item(db, key: str, payload: dict, user) -> dict:
@@ -198,19 +257,22 @@ async def create_item(db, key: str, payload: dict, user) -> dict:
         raise ValidationError("тело запроса — объект JSON")
     fmap = field_map(spec)
     allowed_keys = set(fmap) | ({"parent_id"} if spec.get("hierarchical") else set())
+    if spec.get("group_items"):
+        allowed_keys.add("is_group")
     unknown = set(payload) - allowed_keys
     if unknown:
         raise ValidationError(f"неизвестные поля: {', '.join(sorted(unknown))}")
 
     values: dict = {}
+    is_group = bool(payload.get("is_group")) if spec.get("group_items") else False
     for f in spec["fields"]:
         if f["key"] in payload:
             v = _clean_value(f, payload[f["key"]])
-            if f.get("required") and (v is None or v == ""):
+            if _req_active(spec, f, is_group) and (v is None or v == ""):
                 raise ValidationError(f"поле «{f.get('label', f['key'])}» обязательно")
             if v is not None:
                 values[f["key"]] = v
-        elif f.get("required"):
+        elif _req_active(spec, f, is_group):
             raise ValidationError(f"поле «{f.get('label', f['key'])}» обязательно")
 
     if spec.get("hierarchical") and payload.get("parent_id") not in (None, ""):
@@ -222,12 +284,14 @@ async def create_item(db, key: str, payload: dict, user) -> dict:
             raise ValidationError(f"родительский элемент {pid} не найден")
         values["parent_id"] = pid
 
+    await _check_refs(db, spec, values)
     await _assert_unique(db, spec, model, values)
     if not values.get("code"):
         values["code"] = await _next_code(db, spec, model)
 
     now = datetime.now(timezone.utc)
-    obj = model(**values, created_by=user.id, updated_by=user.id,
+    extra = {"is_group": is_group} if spec.get("group_items") else {}
+    obj = model(**values, **extra, created_by=user.id, updated_by=user.id,
                 created_at=now, updated_at=now)
     db.add(obj)
     try:
@@ -238,7 +302,9 @@ async def create_item(db, key: str, payload: dict, user) -> dict:
                       {k: {"old": None, "new": v} for k, v in values.items()}, user)
     await db.commit()
     await db.refresh(obj)
-    return serialize(spec, obj)
+    d = serialize(spec, obj)
+    await _resolve_refs(db, spec, [d])
+    return d
 
 
 async def update_item(db, key: str, item_id: int, payload: dict, user) -> dict:
@@ -252,16 +318,24 @@ async def update_item(db, key: str, item_id: int, payload: dict, user) -> dict:
 
     fmap = field_map(spec)
     allowed_keys = set(fmap) | ({"parent_id"} if spec.get("hierarchical") else set())
+    if spec.get("group_items"):
+        allowed_keys.add("is_group")
     unknown = set(payload) - allowed_keys
     if unknown:
         raise ValidationError(f"неизвестные поля: {', '.join(sorted(unknown))}")
 
+    # тип записи (группа/элемент) не меняется после создания
+    if spec.get("group_items") and "is_group" in payload \
+            and bool(payload["is_group"]) != bool(obj.is_group):
+        raise ValidationError("тип записи (группа/элемент) не меняется — создайте новую запись")
+
+    is_group = bool(getattr(obj, "is_group", False))
     diff: dict = {}
     for f in spec["fields"]:
         if f["key"] not in payload:
             continue
         v = _clean_value(f, payload[f["key"]])
-        if f.get("required") and (v is None or v == ""):
+        if _req_active(spec, f, is_group) and (v is None or v == ""):
             raise ValidationError(f"поле «{f.get('label', f['key'])}» обязательно")
         if v is None:
             continue
@@ -286,6 +360,7 @@ async def update_item(db, key: str, item_id: int, payload: dict, user) -> dict:
     if obj.is_system and set(diff) - {"name", "sort_order"}:
         raise ForbiddenError("системная запись: изменение только наименования/порядка")
 
+    await _check_refs(db, spec, {k: v["new"] for k, v in diff.items()})
     await _assert_unique(db, spec, model,
                          {k: v["new"] for k, v in diff.items()}, exclude_id=obj.id)
 
@@ -300,7 +375,9 @@ async def update_item(db, key: str, item_id: int, payload: dict, user) -> dict:
     await write_audit(db, key, obj.id, "update", diff, user)
     await db.commit()
     await db.refresh(obj)
-    return serialize(spec, obj)
+    d = serialize(spec, obj)
+    await _resolve_refs(db, spec, [d])
+    return d
 
 
 async def set_status(db, key: str, item_id: int, status: str, user,
@@ -385,6 +462,73 @@ async def duplicates(db, key: str, q: str) -> dict:
             .limit(5))).scalars().all()
         items = [{"id": r.id, "code": r.code, "name": r.name, "score": None} for r in rows]
     return {"items": items}
+
+
+async def merge_items(db, key: str, payload: dict, user) -> dict:
+    """Слияние дублей: target — golden record (значения не трогаем), дубли
+    архивируются; дети иерархии и ссылки из SPEC.refs переезжают на target."""
+    spec = get_spec(key)
+    model = _model(spec)
+    await _require_role(db, user, spec)  # слияние сродни удалению дублей
+    if not isinstance(payload, dict):
+        raise ValidationError("тело запроса — объект JSON")
+    target_id = payload.get("target_id")
+    source_ids = payload.get("source_ids")
+    if target_id in (None, ""):
+        raise ValidationError("target_id обязателен")
+    try:
+        target_id = int(target_id)
+    except (TypeError, ValueError):
+        raise ValidationError("target_id — целое число")
+    if not isinstance(source_ids, (list, tuple)) or not source_ids:
+        raise ValidationError("source_ids — список хотя бы из одной записи")
+    ids = []
+    for sid in source_ids:
+        try:
+            ids.append(int(sid))
+        except (TypeError, ValueError):
+            raise ValidationError("source_ids — целые числа")
+    if target_id in ids:
+        raise ValidationError("цель слияния не может быть среди дублей")
+
+    target = await db.get(model, target_id)
+    if target is None:
+        raise NotFoundError(f"запись {target_id} не найдена в «{spec['title']}»")
+    sources = []
+    for sid in ids:
+        s = await db.get(model, sid)
+        if s is None:
+            raise NotFoundError(f"запись {sid} не найдена в «{spec['title']}»")
+        if s.is_system:
+            raise ForbiddenError(f"«{s.name}» — системная запись, слияние недоступно")
+        sources.append(s)
+
+    moved: dict = {}
+    if spec.get("hierarchical"):
+        res = await db.execute(
+            update(model).where(model.parent_id.in_(ids)).values(parent_id=target_id))
+        moved["children"] = int(res.rowcount or 0)
+    for r in spec.get("refs", []):  # фаза 1c+: ссылки из других модулей
+        RModel = getattr(importlib.import_module(r["module"]), r["model"])
+        res = await db.execute(
+            update(RModel).where(getattr(RModel, r["column"]).in_(ids))
+            .values(**{r["column"]: target_id}))
+        moved[r["model"]] = int(res.rowcount or 0)
+
+    now = datetime.now(timezone.utc)
+    for s in sources:
+        s.status = "archived"
+        s.updated_by = user.id
+        s.updated_at = now
+        await write_audit(db, key, s.id, "merge",
+                          {"merged_into": {"old": None,
+                                           "new": {"id": target.id, "name": target.name}}}, user)
+    await write_audit(db, key, target.id, "merge",
+                      {"merged_from": {"old": None,
+                                       "new": [{"id": s.id, "name": s.name} for s in sources]},
+                       "moved": {"old": None, "new": moved}}, user)
+    await db.commit()
+    return {"target_id": target.id, "merged": [s.id for s in sources], "moved": moved}
 
 
 async def history(db, key: str, item_id: int) -> dict:

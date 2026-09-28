@@ -5,18 +5,44 @@
 # Служебные колонки всех справочников — в CatalogMixin (код/статус/аудит-поля).
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Float, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.types import JSON
+from sqlalchemy.types import JSON, TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 
 # JSONB на проде, JSON на sqlite (тесты гоняются на sqlite+aiosqlite)
 JsonType = JSONB().with_variant(JSON(), "sqlite")
 # BIGINT id на проде; на sqlite BIGINT-PK не автоинкрементится (нужен INTEGER)
 IdType = Integer().with_variant(BigInteger(), "postgresql")
+
+
+class _NumericCompat(TypeDecorator):
+    """NUMERIC(p,s) на проде (asyncpg ждёт Decimal); на sqlite — float
+    (sqlite3 не умеет биндить Decimal — конвертим в process_bind_param)."""
+    impl = Numeric()
+    cache_ok = True
+
+    def __init__(self, precision: int = 14, scale: int = 2):
+        super().__init__()
+        self._precision, self._scale = precision, scale
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "sqlite":
+            return dialect.type_descriptor(Float())
+        return dialect.type_descriptor(Numeric(self._precision, self._scale))
+
+    def process_bind_param(self, value, dialect):
+        if value is None or dialect.name != "sqlite":
+            return value
+        return float(value)
+
+
+PriceType = _NumericCompat(14, 2)
+RateType = _NumericCompat(5, 2)
 
 
 def _utcnow() -> datetime:
@@ -71,6 +97,40 @@ class Tag(CatalogMixin, Base):
 
     color:       Mapped[str] = mapped_column(Text, nullable=False, default="")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class Contractor(CatalogMixin, Base):
+    """Контрагенты: юрлица/ИП/физлицы (§45, фаза 1b, миграция 042)."""
+
+    __tablename__ = "nsi_contractors"
+
+    name_full:     Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    kind:          Mapped[str]           = mapped_column(Text, nullable=False, default="jur")
+    bin_iin:       Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    bank_name:     Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    bic_iban:      Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    account:       Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    legal_address: Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    region_id:     Mapped[Optional[int]] = mapped_column(IdType, nullable=True)  # FK в 042
+    phone:         Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    email:         Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    website:       Mapped[str]           = mapped_column(Text, nullable=False, default="")
+    comment:       Mapped[str]           = mapped_column(Text, nullable=False, default="")
+
+
+class NomenclatureItem(CatalogMixin, Base):
+    """Номенклатура: группы + элементы в одной таблице, 1С-стиль (§45, фаза 1b, 043)."""
+
+    __tablename__ = "nsi_nomenclature"
+
+    parent_id:   Mapped[Optional[int]]    = mapped_column(IdType, nullable=True)  # FK self RESTRICT в 043
+    is_group:    Mapped[bool]             = mapped_column(Boolean, nullable=False, default=False)
+    article:     Mapped[str]              = mapped_column(Text, nullable=False, default="")
+    kind:        Mapped[str]              = mapped_column(Text, nullable=False, default="goods")
+    unit_id:     Mapped[Optional[int]]    = mapped_column(IdType, nullable=True)  # FK units RESTRICT в 043
+    vat_rate:    Mapped[Optional[Decimal]] = mapped_column(RateType, nullable=True)
+    price_base:  Mapped[Optional[Decimal]] = mapped_column(PriceType, nullable=True)
+    currency_id: Mapped[Optional[int]]    = mapped_column(IdType, nullable=True)  # FK currencies SET NULL
 
 
 class CatalogAuditEntry(Base):

@@ -22,7 +22,9 @@
         type: null,             // ключ текущего справочника
         items: [], total: 0, limit: 50, offset: 0,
         q: '', status: 'active', sort: 'code',
-        sel: new Set(),         // выбранные строки (bulk)
+        parent: 'all',          // 'all' | 'none' | id группы (иерархические)
+        groups: [],             // группы/родители для панели иерархии
+        sel: new Set(),         // выбранные строки (bulk/merge)
       },
 
       nsiSpec() {
@@ -64,9 +66,11 @@
       async nsiLoad() {
         const st = this.nsiState;
         if (!st.type || !window.AGL || !AGL.token) return;
+        const spec = this.nsiSpec();
         try {
+          if (spec && spec.hierarchical) this.nsiLoadGroups();
           const d = await window.AGL.catalogList(st.type, {
-            q: st.q, status: st.status, sort: st.sort,
+            q: st.q, status: st.status, sort: st.sort, parent: st.parent,
             limit: st.limit, offset: st.offset,
           });
           st.items = (d && d.items) || [];
@@ -75,6 +79,21 @@
           console.warn('[NSI] list failed:', e && e.message);
           this.toast('Ошибка загрузки: ' + (e && e.message || ''), 'err');
         }
+        this.render();
+      },
+
+      // группы/родители для панели иерархии (номенклатура: только is_group)
+      async nsiLoadGroups() {
+        const st = this.nsiState;
+        const spec = this.nsiSpec();
+        if (!spec || !spec.hierarchical) { st.groups = []; return; }
+        try {
+          const d = await window.AGL.catalogList(spec.key,
+            { limit: 200, status: 'all', sort: 'code', parent: 'all' });
+          let items = (d && d.items) || [];
+          if (spec.group_items) items = items.filter(i => i.is_group);
+          st.groups = items;
+        } catch (e) { st.groups = []; }
         this.render();
       },
 
@@ -125,10 +144,15 @@
         </div>`;
       },
 
-      nsiVal(f, v) {
+      nsiVal(f, v, it) {
         const e = x => this.esc(x == null ? '' : String(x));
+        if (f.type === 'ref') {
+          const label = it ? it[f.key + '_label'] : null;
+          return label ? e(label) : '<span style="color:var(--text-mute)">—</span>';
+        }
         if (v == null || v === '') return '<span style="color:var(--text-mute)">—</span>';
         if (f.type === 'enum' && f.options && f.options[v] != null) return e(f.options[v]);
+        if (f.type === 'decimal') return e(Number(v).toLocaleString('ru-RU'));
         if (f.key === 'color' && /^#?[0-9a-fA-F]{6}$/.test(String(v))) {
           const hex = String(v)[0] === '#' ? v : '#' + v;
           return `<span class="inline-block w-3 h-3 rounded-sm align-middle mr-1" style="background:${hex};border:1px solid var(--border)"></span>${e(v)}`;
@@ -152,6 +176,7 @@
         const bulk = selCount ? `<span class="pill text-[11px]" style="background:var(--accent);color:#fff;border:0">Выбрано: ${selCount}</span>
           <button class="btn text-[11px]" data-nsi-bulk="archive">🗄 В архив</button>
           <button class="btn text-[11px]" data-nsi-bulk="restore">↩ Восстановить</button>
+          ${canDel && selCount >= 2 ? '<button class="btn text-[11px]" data-nsi-merge>🔀 Слить…</button>' : ''}
           <button class="btn text-[11px]" data-nsi-bulk="clear">✕ Снять</button>` : '';
 
         const head = cols.map(f => {
@@ -162,7 +187,11 @@
 
         const rows = (st.items || []).map(it => {
           const checked = st.sel.has(String(it.id)) ? 'checked' : '';
-          const cells = cols.map(f => `<td class="px-2 py-1 text-[13px] truncate" title="${e(it[f.key])}">${this.nsiVal(f, it[f.key])}</td>`).join('');
+          const cells = cols.map(f => {
+            let val = this.nsiVal(f, it[f.key], it);
+            if (f.key === 'name' && it.is_group) val = '📁 ' + val;
+            return `<td class="px-2 py-1 text-[13px] truncate" title="${e(it[f.key])}">${val}</td>`;
+          }).join('');
           const arch = it.status === 'active'
             ? `<button class="btn text-[11px] py-0.5" data-nsi-arch="${it.id}" title="В архив">🗄</button>`
             : `<button class="btn text-[11px] py-0.5" data-nsi-rest="${it.id}" title="Вернуть из архива">↩</button>`;
@@ -197,24 +226,54 @@
             ${bulk}
             <button class="btn btn-accent" data-nsi-add>＋ Добавить</button>
           </div>
-          <div id="nsiTable" class="mb-2">
-            <table class="w-full" style="border-collapse:separate; border-spacing:0">
-              <thead><tr>
-                <th style="width:28px"><input type="checkbox" data-nsi-check-all ${selCount && selCount === st.items.length ? 'checked' : ''} /></th>
-                ${head}
-                <th style="width:170px"></th>
-              </tr></thead>
-              <tbody>${rows || empty}</tbody>
-            </table>
+          <div class="flex items-stretch" style="min-width:0">
+            ${this.nsiGroupsHtml()}
+            <div id="nsiTable" class="mb-2" style="flex:1 1 auto; min-width:0">
+              <table class="w-full" style="border-collapse:separate; border-spacing:0">
+                <thead><tr>
+                  <th style="width:28px"><input type="checkbox" data-nsi-check-all ${selCount && selCount === st.items.length ? 'checked' : ''} /></th>
+                  ${head}
+                  <th style="width:170px"></th>
+                </tr></thead>
+                <tbody>${rows || empty}</tbody>
+              </table>
+            </div>
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-[11px]" style="color:var(--text-mute)">Код назначается автоматически (${e((spec.key === 'currencies') ? 'ISO или авто' : 'ПРЕФИКС-0001')})</span>
+            <span class="text-[11px]" style="color:var(--text-mute)">Код назначается автоматически (ПРЕФИКС-0001)</span>
             <div class="flex items-center gap-2">
               <button class="btn text-[12px]" data-nsi-page="prev" ${page <= 1 ? 'disabled' : ''}>◂</button>
               <span class="text-[12px]">стр. ${page} из ${pages}</span>
               <button class="btn text-[12px]" data-nsi-page="next" ${page >= pages ? 'disabled' : ''}>▸</button>
             </div>
           </div>`;
+      },
+
+      // панель групп/иерархии слева от таблицы (regions, nomenclature)
+      nsiGroupsHtml() {
+        const st = this.nsiState, e = v => this.esc(v == null ? '' : String(v));
+        const spec = this.nsiSpec();
+        if (!spec || !spec.hierarchical) return '';
+        const byParent = {};
+        st.groups.forEach(g => {
+          const p = g.parent_id == null ? 'root' : String(g.parent_id);
+          (byParent[p] = byParent[p] || []).push(g);
+        });
+        const row = (g, depth) => {
+          const active = String(st.parent) === String(g.id);
+          return `<div class="nav-item ${active ? 'active' : ''}" style="padding-left:${6 + depth * 12}px" data-nsi-group="${g.id}" title="${e(g.code || '')}">
+              <span style="color:var(--text-mute)">${active ? '●' : '▸'}</span>
+              <span class="flex-1 truncate">${e(g.name)}</span></div>`
+            + (byParent[String(g.id)] || []).map(c => row(c, depth + 1)).join('');
+        };
+        const tree = (byParent['root'] || []).map(g => row(g, 0)).join('')
+          || '<div class="text-[12px] p-2" style="color:var(--text-mute)">Пока нет — создайте первым</div>';
+        return `<div class="border-r pr-2 mr-3" style="flex:0 0 190px; border-color:var(--border)">
+          <div class="label mb-1">${spec.group_items ? 'Группы' : 'Иерархия'}</div>
+          <div class="nav-item ${st.parent === 'all' ? 'active' : ''}" data-nsi-group="all"><span>☰</span><span class="flex-1">Все элементы</span></div>
+          <div class="nav-item ${st.parent === 'none' ? 'active' : ''}" data-nsi-group="none"><span>⌂</span><span class="flex-1">Верхний уровень</span></div>
+          ${tree}
+        </div>`;
       },
 
       // ---- формы создания/редактирования (метадата-driven) ----
@@ -231,6 +290,16 @@
               ${Object.keys(opts).map(v => `<option value="${e(v)}" ${v === cur ? 'selected' : ''}>${e(opts[v])}</option>`).join('')}
             </select></label>`;
         }
+        if (f.type === 'ref') {
+          const opts = (this._nsiRefOpts && this._nsiRefOpts[f.key]) || [];
+          const cur = (val != null && val !== '') ? String(val) : '';
+          return `<label class="block mb-2">${lbl}
+            <select id="${id}" class="input w-full text-[13px]">
+              <option value="">— не выбрано —</option>
+              ${opts.map(o => `<option value="${o.id}" ${String(o.id) === cur ? 'selected' : ''}>${e(o.name)}${o.code ? ' (' + e(o.code) + ')' : ''}</option>`).join('')}
+            </select></label>`;
+        }
+        // int — number; decimal — text (чтобы принимал запятую «123,50»)
         const type = f.type === 'int' ? 'number' : 'text';
         const ph = f.key === 'code' ? 'авто, если пусто' : '';
         return `<label class="block mb-2">${lbl}
@@ -239,6 +308,11 @@
 
       nsiFormBody(spec, item, parents) {
         const e = v => this.esc(v == null ? '' : String(v));
+        const grp = (spec.group_items && !item)
+          ? `<label class="flex items-center gap-2 mb-3 text-[13px] cursor-pointer">
+              <input type="checkbox" id="nsi-f-is-group" /> <span>Это группа (папка без единиц и цен)</span></label>` : '';
+        const grpBadge = (item && spec.group_items && item.is_group)
+          ? '<div class="pill text-[11px] mb-2" style="background:var(--accent-soft)">📁 Группа — поля элементов скрыты</div>' : '';
         const fields = spec.fields.map(f => this.nsiFieldInput(f, item ? item[f.key] : null)).join('');
         const parent = spec.hierarchical ? `<label class="block mb-2"><div class="label mb-1">Родительский элемент</div>
           <select id="nsi-f-parent" class="input w-full text-[13px]">
@@ -247,7 +321,7 @@
               .map(p => `<option value="${p.id}" ${item && String(item.parent_id) === String(p.id) ? 'selected' : ''}>${e(p.name)} (${e(p.code)})</option>`).join('')}
           </select></label>` : '';
         return `<div id="nsiDup" class="mb-1"></div>
-          ${fields}${parent}
+          ${grp}${grpBadge}${fields}${parent}
           <div id="nsiFormErr" class="text-[12px] mt-1" style="color:var(--err)"></div>`;
       },
 
@@ -277,40 +351,80 @@
             parents = (d && d.items) || [];
           } catch (e) { console.warn('[NSI] parents load failed:', e && e.message); }
         }
-        this.openModal((item ? 'Изменить · ' : 'Новая запись · ') + spec.title,
-          this.nsiFormBody(spec, item, parents),
-          async () => {
-            const payload = {};
-            for (const f of spec.fields) {
-              const el = document.getElementById('nsi-f-' + f.key);
-              if (!el) continue;
-              payload[f.key] = (f.type === 'int')
-                ? (el.value === '' ? null : parseInt(el.value, 10))
-                : el.value.trim();
+        // опции ref-полей (единицы/валюты/регионы) — параллельно
+        this._nsiRefOpts = {};
+        await Promise.all(spec.fields.filter(f => f.type === 'ref').map(async f => {
+          try {
+            const d = await window.AGL.catalogList(f.ref, { limit: 200, status: 'active', sort: 'name' });
+            this._nsiRefOpts[f.key] = ((d && d.items) || []).map(o => ({ id: o.id, name: o.name, code: o.code }));
+          } catch (e) { this._nsiRefOpts[f.key] = []; }
+        }));
+
+        const title = (item ? 'Изменить · ' : 'Новая запись · ') + spec.title;
+        const onSave = async () => {
+          const payload = {};
+          for (const f of spec.fields) {
+            const el = document.getElementById('nsi-f-' + f.key);
+            if (!el) continue;
+            payload[f.key] = (f.type === 'int' || f.type === 'ref')
+              ? (el.value === '' ? null : parseInt(el.value, 10))
+              : el.value.trim();
+          }
+          if (spec.group_items) {
+            const gc = document.getElementById('nsi-f-is-group');
+            if (gc) payload.is_group = gc.checked;
+          }
+          if (spec.hierarchical) {
+            const pe = document.getElementById('nsi-f-parent');
+            if (pe) payload.parent_id = pe.value === '' ? null : parseInt(pe.value, 10);
+          }
+          const errEl = document.getElementById('nsiFormErr');
+          const showErr = (m) => { if (errEl) errEl.textContent = m; this.toast(m, 'err'); };
+          for (const f of spec.fields) {
+            if (f.required && (payload[f.key] == null || payload[f.key] === '')
+                && !(payload.is_group && (spec.element_fields || []).includes(f.key))) {
+              showErr('Заполните обязательное поле: ' + f.label); return false;
             }
-            if (spec.hierarchical) {
-              const pe = document.getElementById('nsi-f-parent');
-              if (pe) payload.parent_id = pe.value === '' ? null : parseInt(pe.value, 10);
-            }
-            const errEl = document.getElementById('nsiFormErr');
-            const showErr = (m) => { if (errEl) errEl.textContent = m; this.toast(m, 'err'); };
-            for (const f of spec.fields) {
-              if (f.required && (payload[f.key] == null || payload[f.key] === '')) {
-                showErr('Заполните обязательное поле: ' + f.label); return false;
-              }
-            }
-            try {
-              const saved = item
-                ? await window.AGL.catalogUpdate(spec.key, item.id, payload)
-                : await window.AGL.catalogCreate(spec.key, payload);
-              this.toast(item ? 'Сохранено' : 'Создано: ' + ((saved && saved.name) || ''), 'ok');
-              this.nsiLoad();
-              return true;
-            } catch (e2) {
-              showErr((e2 && e2.message) || 'Ошибка сохранения');
-              return false;
-            }
-          }, { wide: spec.fields.length > 4 });
+          }
+          try {
+            const saved = item
+              ? await window.AGL.catalogUpdate(spec.key, item.id, payload)
+              : await window.AGL.catalogCreate(spec.key, payload);
+            this.toast(item ? 'Сохранено' : 'Создано: ' + ((saved && saved.name) || ''), 'ok');
+            this.nsiLoad();
+            return true;
+          } catch (e2) {
+            showErr((e2 && e2.message) || 'Ошибка сохранения');
+            return false;
+          }
+        };
+
+        if (spec.form === 'drawer') {
+          this.nsiDrawerOpen(title, this.nsiFormBody(spec, item, parents), onSave);
+        } else {
+          this.openModal(title, this.nsiFormBody(spec, item, parents), onSave,
+            { wide: spec.fields.length > 4 });
+        }
+
+        // чекбокс «это группа» скрывает поля элементов (element_fields)
+        const grpCb = document.getElementById('nsi-f-is-group');
+        if (grpCb) {
+          const apply = () => {
+            (spec.element_fields || []).forEach(k => {
+              const el2 = document.getElementById('nsi-f-' + k);
+              if (el2 && el2.parentElement) el2.parentElement.style.display = grpCb.checked ? 'none' : '';
+            });
+          };
+          grpCb.onchange = apply;
+          apply();
+        }
+        // при редактировании группы поля элементов недоступны
+        if (item && spec.group_items && item.is_group) {
+          (spec.element_fields || []).forEach(k => {
+            const el2 = document.getElementById('nsi-f-' + k);
+            if (el2 && el2.parentElement) el2.parentElement.style.display = 'none';
+          });
+        }
 
         // дедуп-предупреждение при вводе наименования (только создание)
         if (!item) {
@@ -328,7 +442,7 @@
                   const d = await window.AGL.catalogDuplicates(spec.key, v);
                   box.innerHTML = this.nsiDupHtml((d && d.items) || []);
                   box.querySelectorAll('[data-nsi-dup-open]').forEach(b => {
-                    b.onclick = () => { this.closeModal(); this.nsiForm(null); this.nsiEdit(b.getAttribute('data-nsi-dup-open')); };
+                    b.onclick = () => { this.nsiCloseForm(); this.nsiEdit(b.getAttribute('data-nsi-dup-open')); };
                   });
                 } catch (e) { /* дедуп-чек не критичен */ }
               }, 350);
@@ -337,6 +451,48 @@
         }
         this.$nextTick(() => { const el = document.getElementById('nsi-f-name'); if (el) el.focus(); });
       },
+
+      // ---- drawer: боковая панель для форм 7+ полей (контрагенты, номенклатура) ----
+      nsiDrawerOpen(title, bodyHtml, onSave) {
+        this.nsiDrawerClose();
+        const wrap = document.createElement('div');
+        wrap.id = 'nsiDrawerWrap';
+        wrap.innerHTML = `
+          <div class="nsi-drawer-mask"></div>
+          <aside class="nsi-drawer">
+            <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:var(--border)">
+              <div class="font-semibold text-[15px]">${title}</div>
+              <button class="btn text-[12px]" data-nsi-drawer-close title="Закрыть (Esc)">✕</button>
+            </div>
+            <div class="p-4 overflow-y-auto" style="flex:1 1 auto; min-height:0">${bodyHtml}</div>
+            <div class="flex justify-end gap-2 px-4 py-3 border-t" style="border-color:var(--border)">
+              <button class="btn" data-nsi-drawer-close>Отмена</button>
+              <button class="btn btn-accent" id="nsiDrawerSave">Сохранить</button>
+            </div>
+          </aside>`;
+        document.body.appendChild(wrap);
+        wrap.querySelectorAll('[data-nsi-drawer-close]').forEach(b => {
+          b.onclick = () => this.nsiDrawerClose();
+        });
+        wrap.querySelector('.nsi-drawer-mask').onclick = () => this.nsiDrawerClose();
+        wrap.querySelector('#nsiDrawerSave').onclick = async () => {
+          const r = await onSave();
+          if (r !== false) this.nsiDrawerClose();
+        };
+        this._nsiDrawerEsc = (ev) => { if (ev.key === 'Escape') this.nsiDrawerClose(); };
+        document.addEventListener('keydown', this._nsiDrawerEsc);
+      },
+
+      nsiDrawerClose() {
+        const w = document.getElementById('nsiDrawerWrap');
+        if (w) w.remove();
+        if (this._nsiDrawerEsc) {
+          document.removeEventListener('keydown', this._nsiDrawerEsc);
+          this._nsiDrawerEsc = null;
+        }
+      },
+
+      nsiCloseForm() { this.closeModal(); this.nsiDrawerClose(); },
 
       nsiAdd() { this.nsiForm(null); },
 
@@ -416,10 +572,45 @@
         this.nsiLoad();
       },
 
+      // ---- слияние дублей (manager): target = golden record ----
+      nsiMergeModal() {
+        const st = this.nsiState, spec = this.nsiSpec();
+        const e = v => this.esc(v == null ? '' : String(v));
+        const ids = [...st.sel];
+        const items = (st.items || []).filter(i => ids.includes(String(i.id)));
+        if (!spec || items.length < 2) { this.toast('Отметьте две и более записи', 'warn'); return; }
+        const rows = items.map((i, n) => `
+          <label class="card-2 p-2 mb-1 flex items-center gap-2 cursor-pointer text-[13px]">
+            <input type="radio" name="nsiMergeTarget" value="${i.id}" ${n === 0 ? 'checked' : ''} />
+            <span class="flex-1 truncate">${i.is_group ? '📁 ' : ''}${e(i.name)} <span style="color:var(--text-mute)">${e(i.code || '')}</span></span>
+          </label>`).join('');
+        this.openModal('Слияние дублей · ' + spec.title, `
+          <div class="text-[12px] mb-2" style="color:var(--text-dim)">Целевая запись (отмечена точкой) остаётся без изменений;
+          остальные архивируются, их вложенные элементы и связи переезжают к цели.</div>
+          ${rows}`,
+          async () => {
+            const sel = document.querySelector('input[name="nsiMergeTarget"]:checked');
+            if (!sel) { this.toast('Выберите целевую запись', 'warn'); return false; }
+            const targetId = sel.value;
+            const targetItem = items.find(i => String(i.id) === String(targetId));
+            const sources = ids.filter(x => x !== targetId).map(x => parseInt(x, 10));
+            try {
+              const r = await window.AGL.catalogMerge(spec.key, { target_id: parseInt(targetId, 10), source_ids: sources });
+              st.sel.clear();
+              this.toast(`Слито записей: ${(r && r.merged && r.merged.length) || sources.length} → «${targetItem ? targetItem.name : targetId}»`, 'ok');
+              this.nsiLoad();
+              return true;
+            } catch (e2) {
+              this.toast((e2 && e2.message) || 'Ошибка слияния', 'err');
+              return false;
+            }
+          });
+      },
+
       // ---- служебные ----
       nsiSetType(key) {
         const st = this.nsiState;
-        st.type = key; st.offset = 0; st.q = ''; st.sel.clear();
+        st.type = key; st.offset = 0; st.q = ''; st.sel.clear(); st.parent = 'all'; st.groups = [];
         this.nsiSaveUi();
         this.nsiLoad();
       },
@@ -503,6 +694,15 @@
         el.querySelectorAll('[data-nsi-page]').forEach(n => {
           n.onclick = () => this.nsiPage(n.getAttribute('data-nsi-page'));
         });
+        el.querySelectorAll('[data-nsi-group]').forEach(n => {
+          n.onclick = () => {
+            st.parent = n.getAttribute('data-nsi-group');
+            st.offset = 0;
+            this.nsiLoad();
+          };
+        });
+        const mrg = el.querySelector('[data-nsi-merge]');
+        if (mrg) mrg.onclick = () => this.nsiMergeModal();
 
         const search = el.querySelector('#nsiSearch');
         if (search) {

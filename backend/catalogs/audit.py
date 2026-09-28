@@ -4,9 +4,25 @@
 # create/update/archive/restore/delete + diff {поле: {old, new}}.
 # Журнал append-only: откат = новая мутация со старыми значениями, строки не трогаем.
 
+from datetime import datetime
+from decimal import Decimal
+
 from sqlalchemy import select
 
 from backend.catalogs.models import CatalogAuditEntry
+
+
+def _jsonable(v):
+    """Decimal/datetime → JSON-типы (json.dumps их не серриализует)."""
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, dict):
+        return {k: _jsonable(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_jsonable(x) for x in v]
+    return v
 
 
 async def write_audit(db, entity: str, entity_id: int, action: str,
@@ -15,7 +31,7 @@ async def write_audit(db, entity: str, entity_id: int, action: str,
         entity=entity,
         entity_id=int(entity_id),
         action=action,
-        diff=diff or {},
+        diff=_jsonable(diff or {}),
         user_id=getattr(user, "id", None),
         user_name=getattr(user, "name", None),
     )
