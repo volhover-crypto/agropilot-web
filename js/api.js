@@ -248,6 +248,17 @@ const AGL = {
   async catalogSpecs() {
     return safeLoad('/v1/catalogs', []);
   },
+  // §46.6 (Ф2): каналы публикаций (кросспостинг)
+  async pubChannels() {
+    return safeLoad('/v1/pub/channels', []);
+  },
+  async pubChannelCreate(data) {
+    return apiFetch('/v1/pub/channels', { method: 'POST', data });
+  },
+  async pubChannelUpdate(id, data) {
+    return apiFetch('/v1/pub/channels/' + id, { method: 'PATCH', data });
+  },
+
   // §45.10: управление типами справочников (admin, фаза 1d)
   async catalogTypeCreate(data) {
     return apiFetch('/v1/catalogs-types', { method: 'POST', data });

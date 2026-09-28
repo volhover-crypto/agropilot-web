@@ -507,6 +507,7 @@ await this._loadAiLayer();
         else if (this.route === 'artifacts') html = this.vArtifacts();
         else if (this.route === 'monitoring') html = this.vMonitoring();
         else if (this.route === 'medianews') html = this.vMedianews();
+        else if (this.route === 'pub') html = this.vPub();
         else if (this.route === 'catalogs') { this.nsiState.mode = 'nsi'; html = this.vCatalogs(); }
         else if (this.route === 'catalog') { this.nsiState.mode = 'nav'; html = this.vCatalogs(); }
         else if (this.route === 'content') html = this.vContent();
@@ -6024,6 +6025,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       }
       // §45: справочники НСИ (таблица, формы, bulk)
       this.nsiBind(el);
+      this.pubBind(el);
       // §17.6: фильтр по уровню и пагинация ленты наблюдений
       el.querySelectorAll('[data-mon-level]').forEach(b => {
         b.onclick = () => this.monFilter(b.getAttribute('data-mon-level'));
@@ -6218,6 +6220,10 @@ el.querySelectorAll('[data-skill-reached]').forEach(n => n.onchange = () => { th
   // методов — тот же Alpine-компонент appObjects.
   if (typeof window.APP_CATALOGS_MIXIN === 'function') {
     Object.assign(__app, window.APP_CATALOGS_MIXIN());
+  }
+  // §46: раздел «Публикации» (кросспостинг, Ф2) — паттерн APP_CATALOGS_MIXIN
+  if (typeof window.APP_PUB_MIXIN === 'function') {
+    Object.assign(__app, window.APP_PUB_MIXIN());
   }
   return __app;
 }

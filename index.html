@@ -165,6 +165,7 @@
       <div class="nav-item flex items-center" :class="route==='medianews'&&'active'" @click="go('medianews')"><img class="nav-ico" src="assets/icons/medianews.png" alt=""> <span class="flex-1">Медиа-мониторинг</span></div>
       <div class="nav-item flex items-center" :class="route==='content'&&'active'" @click="go('content')"><img class="nav-ico" src="assets/icons/content.png" alt=""> <span class="flex-1">Контент и соцсети</span><span x-show="cntDrafts()>0" class="pill text-[11px]" style="background:var(--warn);color:#fff;border:0" x-text="cntDrafts()"></span></div>
       <div class="nav-item flex items-center" :class="route==='channels'&&'active'" @click="go('channels')"><img class="nav-ico" src="assets/icons/channels.svg" alt=""> <span class="flex-1">Каналы</span></div>
+      <div class="nav-item flex items-center" :class="route==='pub'&&'active'" @click="go('pub')" title="Кросспостинг: одна публикация → все каналы"><img class="nav-ico" src="assets/icons/content.png" alt=""> <span class="flex-1">Публикации</span></div>
       <div class="nav-item flex items-center" :class="route==='inbox'&&'active'" @click="go('inbox')"><img class="nav-ico" src="assets/icons/inbox.png" alt=""> <span class="flex-1">Входящие</span><span x-show="cntInbox()>0" class="pill text-[11px]" style="background:var(--err);color:#fff;border:0" x-text="cntInbox()"></span></div>
 
       <!-- ── БЛОК 2: Работа с клиентом ── -->
@@ -276,6 +277,7 @@
   <script src="js/api.js?v=20260928b"></script>
   <script src="js/app.objects.js?v=20260928c"></script>
   <script src="js/app.catalogs.js?v=20260928c"></script>
+  <script src="js/app.pub.js?v=20260928a"></script>
   <script src="js/alpine.min.js?v=1789616100" defer></script>
   <script>document.addEventListener('DOMContentLoaded', initAuthGuard);</script>
 </body>

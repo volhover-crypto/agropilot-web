@@ -27,6 +27,7 @@ from backend.monitoring.routes import monitoring_router
 from backend.catalog.routes import catalog_router
 # §45 — справочники НСИ (фаза 1a)
 from backend.catalogs.routes import router as nsi_catalogs_router
+from backend.pub.routes import router as pub_router  # §46: каналы публикаций (Ф2)
 from backend.catalogs.routes import types_router as nsi_catalog_types_router
 from backend.news.routes import news_router
 # §34 — MIA weather advisor
@@ -94,6 +95,9 @@ app.include_router(content_router, prefix="/agropilot/api/v1")
 app.include_router(packages_router, prefix="/agropilot/api/v1")
 app.include_router(artifacts_router, prefix="/agropilot/api/v1")
 app.include_router(strategy_tasks_router, prefix="/agropilot/api/v1")
+
+# §46 — Кросспостинг: реестр каналов публикаций (Ф2)
+app.include_router(pub_router, prefix="/agropilot/api/v1")
 
 # A-6 -- Clients (Incoming clients)
 app.include_router(clients_router, prefix="/agropilot/api/v1")

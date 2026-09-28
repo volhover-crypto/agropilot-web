@@ -2376,3 +2376,32 @@ failed; канал-неизвестная-платформа (instagram) → res
 UPSERT в pub_post_channels, пост failed/no publishable channels. Тестовые
 данные удалены. НЕ проверено: живая публикация TG/VK (нужны токены
 заказчика, тестовый бот + тестовая группа VK) — DoD закрывается после.
+
+### 46.6. Ф2 — реестр каналов в UI (API + раздел «Публикации»)
+Backend `backend/pub/` (mount в main.py): чтение — любое авторизованное,
+мутации — только admin (role_key, по образцу §45.10). Секреты никогда не
+возвращаются: в ответе только `has_token` (bool). Эндпоинты (префикс
+/agropilot/api/v1, конверт §0):
+- GET /v1/pub/channels → [{id, name, platform, target, status, frozen_at,
+  sort_order, has_token, template, created_at}], сортировка sort_order,id.
+- POST /v1/pub/channels {name, platform ∈ telegram|vk|dzen, target, token,
+  template?} → канал; instagram — 409 «Ф6» (аккаунт ещё не бизнес); токен
+  сервер кладёт в secrets по платформе (bot_token | vk_token); target:
+  telegram/dzen — chat_id (число или @username), vk — owner_id сообщества
+  со знаком «−».
+- PATCH /v1/pub/channels/{id} {name?, target?, token?, template?,
+  sort_order?, status?: active|frozen} — заморозка/разморозка (frozen_at),
+  ротация токена (передан непустой token — перезапись; не передан — не
+  трогаем; пустая строка — тоже не трогаем).
+template — JSONB-объект; известные ключи {max_len:int(100..4096),
+hashtags: keep|append|strip, llm_prompt:str≤2000}, прочие ключи проходят
+как есть (движок §46.3 читает по ключам). Удаления канала нет — только
+заморозка (история pub_post_channels остаётся, FK).
+Фронт: раздел «Публикации» (route #/pub, js/app.pub.js — миксин
+APP_PUB_MIXIN по паттерну §45): вкладка «Каналы» — карточки с тумблером
+active/frozen, значок наличия токена, кнопки правки; drawer-форма (паттерн
+§45.7) добавления/правки с полями по платформе и блоком шаблона
+(max_len/hashtags/JSON-дополнения). esc() обязателен. Админ-кнопки
+скрываются по role_key==='admin' (паттерн nsiIsAdmin), сервер дублирует.
+DoD Ф2: pytest зелёный, node --check по новым js, ручная проверка списка
+на проде после деплоя (деплой — по подтверждению заказчика).
