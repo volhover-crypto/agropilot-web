@@ -213,18 +213,21 @@
             if (f.key === 'name' && it.is_group) val = '📁 ' + val;
             return `<td class="px-2 py-1 text-[13px] truncate" title="${e(it[f.key])}">${val}</td>`;
           }).join('');
+          // круглые кнопки в стиле артефактов (artActionBtn, 22px)
           const arch = it.status === 'active'
-            ? `<button class="btn text-[11px] py-0.5" data-nsi-arch="${it.id}" title="В архив">🗄</button>`
-            : `<button class="btn text-[11px] py-0.5" data-nsi-rest="${it.id}" title="Вернуть из архива">↩</button>`;
+            ? this.artActionBtn(`data-nsi-arch="${it.id}"`, 'В архив', '🗄', true, 22)
+            : this.artActionBtn(`data-nsi-rest="${it.id}"`, 'Вернуть из архива', '↩', false, 22);
           return `<tr class="${it.status === 'archived' ? 'opacity-55' : ''} ${st.sel.has(String(it.id)) ? 'font-semibold' : ''}">
             <td class="px-2 py-1"><input type="checkbox" data-nsi-check="${it.id}" ${checked} /></td>
             ${cells}
             <td class="px-2 py-1 text-right whitespace-nowrap">
-              ${it.is_system ? '<span title="Системная запись">🔒</span> ' : ''}
-              <button class="btn text-[11px] py-0.5" data-nsi-edit="${it.id}" title="Изменить">✎</button>
-              <button class="btn text-[11px] py-0.5" data-nsi-hist="${it.id}" title="История изменений">⟳</button>
-              ${arch}
-              ${canDel && !it.is_system ? `<button class="btn text-[11px] py-0.5" data-nsi-del="${it.id}" title="Удалить безвозвратно">🗑</button>` : ''}
+              <span class="inline-flex items-center gap-1">
+                ${it.is_system ? '<span class="pill text-[11px]" title="Системная запись">🔒</span>' : ''}
+                ${this.artActionBtn(`data-nsi-edit="${it.id}"`, 'Изменить', '✎', false, 22)}
+                ${this.artActionBtn(`data-nsi-hist="${it.id}"`, 'История изменений', '⟳', false, 22)}
+                ${arch}
+                ${canDel && !it.is_system ? this.artActionBtn(`data-nsi-del="${it.id}"`, 'Удалить безвозвратно', '🗑', true, 22) : ''}
+              </span>
             </td>
           </tr>`;
         }).join('');

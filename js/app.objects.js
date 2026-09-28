@@ -4270,11 +4270,13 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <span style="font-size:8px;color:${col};opacity:.7;margin-top:2px">ФАЙЛ</span>
       </div>`;
     },
-    artActionBtn(attr, title, glyph, danger) {
-      // круглые контрастные кнопки действий на правом краю карточки
+    artActionBtn(attr, title, glyph, danger, px) {
+      // круглые контрастные кнопки действий на правом краю карточки;
+      // px — диаметр (дефолт 34, в строках таблиц НСИ — 22)
+      const s = px || 34;
       const bg = danger ? 'var(--err, #C0392B)' : 'var(--accent)';
       return `<button class="btn" title="${title}" ${attr}
-        style="width:34px;height:34px;border-radius:999px;background:${bg};color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;flex-shrink:0">${glyph}</button>`;
+        style="width:${s}px;height:${s}px;border-radius:999px;background:${bg};color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;flex-shrink:0">${glyph}</button>`;
     },
     // эмодзи-иконка остаётся для карточки сделки (вкладка «Артефакты»)
     artFileIcon(ext) {
