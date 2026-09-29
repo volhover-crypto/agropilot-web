@@ -2374,8 +2374,10 @@ Respond to Webhook передаётся через options.responseCode.
 {ok:true,data:{skipped:true,reason:'no active pending channels'}} и статус
 failed; канал-неизвестная-платформа (instagram) → results[{status:skipped}],
 UPSERT в pub_post_channels, пост failed/no publishable channels. Тестовые
-данные удалены. НЕ проверено: живая публикация TG/VK (нужны токены
-заказчика, тестовый бот + тестовая группа VK) — DoD закрывается после.
+данные удалены. Живая публикация TG закрыта 29.09.2026: канал «ТЕСТ»
+(-1004350274052, бот @apilot92bot), пост 17 → done, message_id=2
+(«сейчас» через webhook); пост 18 → done, message_id=3 — живая отложка
+scheduler'ом (§46.8). VK — при появлении группы (прогон аналогичен).
 
 ### 46.6. Ф2 — реестр каналов в UI (API + раздел «Публикации»)
 Backend `backend/pub/` (mount в main.py): чтение — любое авторизованное,
