@@ -248,9 +248,11 @@ const AGL = {
   async catalogSpecs() {
     return safeLoad('/v1/catalogs', []);
   },
-  // §46.6 (Ф2): каналы публикаций (кросспостинг)
+  // §46.6 (Ф2): каналы публикаций (кросспостинг).
+  // Строгий apiFetch (не safeLoad): 401/ошибка не должны выглядеть
+  // как «каналов нет» — раздел покажет явную ошибку.
   async pubChannels() {
-    return safeLoad('/v1/pub/channels', []);
+    return apiFetch('/v1/pub/channels');
   },
   async pubChannelCreate(data) {
     return apiFetch('/v1/pub/channels', { method: 'POST', data });

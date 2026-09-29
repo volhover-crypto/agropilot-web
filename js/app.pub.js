@@ -153,7 +153,6 @@
             <button class="btn ${st.tab === 'channels' ? 'btn-accent' : ''}" data-pub-tab="channels">Каналы</button>
             <button class="btn ${st.tab === 'editor' ? 'btn-accent' : ''}" data-pub-tab="editor">✍️ Редактор</button>
             <button class="btn ${st.tab === 'list' ? 'btn-accent' : ''}" data-pub-tab="list">📚 Список публикаций</button>
-            <span class="btn" style="opacity:.45;cursor:default" title="Ф4">🕓 Отложка (Ф4)</span>
           </div>`;
         let body = '';
         if (st.tab === 'channels') body = this.vPubChannels();
@@ -165,7 +164,10 @@
             <div class="text-2xl font-semibold">Публикации</div>
             <div class="text-sm" style="color:var(--text-mute)">Кросспостинг: одна публикация → все каналы, формат под каждую платформу (§46)</div>
           </div>
-          ${this.pubCanEdit() && st.tab === 'channels' ? '<button class="btn btn-accent" data-pub-add>+ Добавить канал</button>' : ''}
+          <div class="flex gap-2">
+            <button class="btn" data-pub-retry title="Обновить список">⟳</button>
+            ${this.pubCanEdit() && st.tab === 'channels' ? '<button class="btn btn-accent" data-pub-add>+ Добавить канал</button>' : ''}
+          </div>
         </div>
         ${tabs}
         ${body}
