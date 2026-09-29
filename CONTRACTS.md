@@ -2460,6 +2460,8 @@ n8n «AgroPILOT PUB — scheduler (§46)» (активен, pub-scheduler.workfl
 (scheduler) консистентен. Известное: окно гонки тика scheduler и Mark
 publishing секунды (вероятность мала); один VK-канал с фото за прогон.
 Фронт: редактор — datetime-local + «⏱ Запланировать»; список — ⏱-время,
-«Снять» (scheduled → draft). DoD Ф4: pytest; e2e на проде — запланированный
-пост уходит конвейером scheduler → core → статусы (без токенов — failed/no
-active pending channels); живая отложка с токенами — вместе с Ф1-DoD.
+«Снять» (scheduled → draft). DoD Ф4 (деплой 29.09.2026 подтверждён, 9ab5dc1 на проде
+через git bundle + push с сервера при зависшем Windows-git): pytest 103/103;
+e2e на проде — запланированный пост прошёл scheduler → core → failed/no
+active pending channels; жизненный цикл draft→scheduled→draft→delete
+проверен через API (U7). Живая отложка с токенами — вместе с Ф1-DoD.
