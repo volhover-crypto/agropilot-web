@@ -4784,7 +4784,8 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     newsState: {
       help: false, srcOpen: false,
       items: [], total: 0, limit: 30, offset: 0,
-      status: '', loading: false, loaded: false, scanning: false,
+      status: 'new', loadedStatus: null, sel: null,
+      loading: false, loaded: false, scanning: false,
     },
 
     NEWS_STATUS_UI: {
@@ -4794,22 +4795,28 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       used:     { label: 'Использовано', col: 'var(--warn)' },
     },
 
-    async newsLoad() {
+    // §20.7: statusOverride — явный фильтр (дашборд передаёт '' = все статусы),
+    // сами вкладки раздела работают через st.status. loadedStatus отличает,
+    // что реально загружено в items, чтобы дашборд и вкладки не подменяли друг друга.
+    async newsLoad(statusOverride) {
       const st = this.newsState;
-      st.loading = true; st.loaded = true;
+      const status = (statusOverride !== undefined) ? statusOverride : st.status;
+      st.loading = true; st.loaded = true; st.loadedStatus = status;
       const d = await window.AGL.loadNews({
         limit: st.limit, offset: st.offset,
-        status: st.status,
+        status,
       });
       st.items = (d && d.items) || []; st.total = (d && d.total) || 0;
+      // §20.7: выбор пункта живёт, пока пункт в списке; иначе берём первый
+      if (!st.items.some(n => n.id === st.sel)) st.sel = (st.items[0] || {}).id || null;
       st.loading = false;
       this.render();
     },
 
     newsFilter(status) {
       const st = this.newsState;
-      st.status = (st.status === status) ? (status || '') : '';
-      st.offset = 0; this.newsLoad();
+      st.status = status; st.offset = 0; st.sel = null;
+      this.newsLoad();
     },
 
     // ======== §39: КАНАЛЫ ПУБЛИКАЦИИ — стена фреймов текущих каналов ========
@@ -5012,6 +5019,8 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       try {
         const c = await window.AGL.newsToPost(id);
         this.toast('Черновик поста создан — очередь контента', 'ok');
+        // §20.7: бэкенд помечает новость used — при возврате во вкладки список перечитается
+        this.newsState.loaded = false; this.newsState.sel = null;
         await this.loadFromAPI();
         this.go('content');
         this.render();
@@ -5023,12 +5032,16 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
     async newsSetStatus(id, status) {
       try {
         await window.AGL.patchNews(id, status);
-        const it = this.newsState.items.find(x => x.id === id);
-        if (it) it.status = status;
         // П.5: отклонённый материал НЕ архивируется — остаётся во вкладке
         // «Отклонённые» (архивы публикаций отдельные, у постов в «Контенте»)
-        this.toast(status === 'rejected' ? 'Материал отклонён (вкладка «Отклонённые»)' : 'Статус обновлён', 'ok');
-        this.render();
+        this.toast(status === 'rejected' ? 'Материал отклонён — вкладка «Отклонённые»' : 'Материал в работе — вкладка «В работе»', 'ok');
+        // §20.7: пункт уходит во вкладку своего нового статуса — текущую вкладку
+        // перечитываем без него (локально, чтобы не ждать сети)
+        const st = this.newsState;
+        st.items = st.items.filter(x => x.id !== id);
+        st.total = Math.max(0, st.total - 1);
+        if (st.sel === id) st.sel = (st.items[0] || {}).id || null;
+        this.newsLoad();
       } catch (e) {
         this.toast(e.message || 'нет прав на смену статуса', 'err');
       }
@@ -5303,7 +5316,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       // П.1/П.3 доработки 24.09: события «Прогноз погоды» (MIA) и «Упоминание
       // в интернете» (A1) выводятся в общую ленту «Результаты мониторинга»
       // вместе с наблюдениями поставщиков. У события — тональность и ссылка.
-      if (!this.newsState.loaded) { this.newsLoad(); }
+      if (!this.newsState.loaded || this.newsState.loadedStatus !== '') this.newsLoad('');
       const evExtra = []
         .concat((mws.items || []).filter(it => it.last_run).slice(0, 3).map(it => ({
           kind: '🌤 Прогноз погоды', level: it.last_run.critical ? 'critical' : ((it.last_run.risks || []).length ? 'warning' : 'info'),
@@ -5379,57 +5392,84 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Результаты мониторинга: события прогнозов погоды (агент MIA) и упоминания в интернете (агент A1) + наблюдения внешних поставщиков. У каждого события — тональность и ссылка на первоисточник, если поставщик их отдаёт. Управление источниками перенесено в раздел «Медиа-мониторинг».</div>
       </div>`;
     },
-    // §20.6 — экран «Медиа-мониторинг»: лента NewsItem + ручной скан
+    // §20.6/§20.7 — экран «Медиа-мониторинг»: блок источников, скан,
+    // браузерные вкладки статусов и мастер-детейл (список слева, превью справа)
     vMedianews() {
       const st = this.newsState;
-      if (!st.loaded) { this.newsLoad(); }
+      if (!st.loaded || st.loadedStatus !== st.status) { this.newsLoad(); }
       const SU = this.NEWS_STATUS_UI;
       const srcById = (id) => (this.M.sources || []).find(s => s.id === id);
+      const srcNameOf = (n) => {
+        const src = srcById(n.source_id);
+        return src ? (src.handle || src.url || ('#' + src.id)) : ('источник ' + (n.source_id || '—'));
+      };
+      // §20.7: выбранная новость для правой панели; по умолчанию — первая списка
+      const sel = st.items.find(n => n.id === st.sel) || st.items[0] || null;
+
+      // ── вкладка-статус (активная «приклеена» к панели контента)
+      const tab = (val, label) =>
+        `<button class="btab ${st.status === val ? 'active' : ''}" data-news-filter="${val}">${label}</button>`;
+
+      // ── компактная строка материала (левая колонка)
       const rows = st.items.map(n => {
         const ui = SU[n.status] || { label: n.status, col: 'var(--text-mute)' };
-        const src = srcById(n.source_id);
-        const srcName = src ? (src.handle || src.url || ('#' + src.id)) : ('источник ' + (n.source_id || '—'));
-        const rel = (n.relevance === null || n.relevance === undefined)
-          ? '' : `релевантность ${Math.round(n.relevance * 100)}%`;
-        // §36: анонс + всплывающий фрейм с кратким содержанием (hover)
-        const summary = (n.summary || '').trim();
-        const anons = summary ? (summary.slice(0, 140) + (summary.length > 140 ? '…' : '')) : '— без аннотации —';
-        const previewText = (summary || n.title || '').slice(0, 400);
-        return `<div class="card-2 p-3" style="position:relative">
-          <div class="flex items-center gap-2 flex-wrap">
+        return `<div class="mrow ${sel && sel.id === n.id ? 'sel' : ''}" data-news-sel="${n.id}">
+          <div class="flex items-center gap-2">
             <span style="color:${ui.col}">●</span>
-            <span class="pill text-[11px]" title="источник">${this.esc(srcName)}</span>
+            <span class="pill text-[10px]" title="источник">${this.esc(srcNameOf(n))}</span>
             <span class="flex-1"></span>
-            ${rel ? `<span class="text-[11px]" style="color:var(--text-dim)">${rel}</span>` : ''}
-            <span class="pill whitespace-nowrap text-[11px]" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span>
+            <span class="text-[11px] whitespace-nowrap" style="color:var(--text-mute)">${(n.fetched_at || '').slice(0, 10)}</span>
           </div>
-          <div class="text-sm font-medium mt-1 leading-snug">${n.url ? `<a href="${this.esc(n.url)}" target="_blank" rel="noopener" class="underline">${this.esc(n.title)}</a>` : this.esc(n.title)}</div>
-          <div class="text-[12px] mt-0.5" style="color:var(--text-dim)">${(n.fetched_at || '').slice(0, 16).replace('T', ' ')}</div>
-          <div class="news-anons text-[12px] mt-1 cursor-help" style="color:var(--text-mute)" data-news-prev="${n.id}">📄 ${this.esc(anons)}<span class="text-[10px]" style="color:var(--text-dim)"> (наведите — краткое содержание)</span></div>
-          <div class="news-preview" id="nprev-${n.id}" style="display:none;position:absolute;z-index:30;max-width:420px;left:12px;right:12px;bottom:44px">
-            <div class="card p-3 text-[12px]" style="background:var(--bg,#fff);box-shadow:0 8px 24px rgba(0,0,0,.18)">${this.esc(previewText)}</div>
-          </div>
-          <div class="flex items-center gap-2 mt-2 pt-2 flex-wrap" style="border-top:1px solid var(--border)">
+          <div class="mrow-title">${this.esc(n.title)}</div>
+          <div class="flex items-center gap-1 mt-2 flex-wrap">
+            <button class="btn text-[10px]" data-news-sum="${n.id}">Суммари</button>
             ${n.status === 'new' ? `
-            <button class="btn text-[11px]" data-news-status="selected" data-news-id="${n.id}">В работу</button>
-            <button class="btn text-[11px]" data-news-status="rejected" data-news-id="${n.id}">Отклонить</button>` : ''}
+            <button class="btn btn-accent text-[10px]" data-news-status="selected" data-news-id="${n.id}">В работу</button>` : ''}
             ${n.status === 'selected' ? `
-            <button class="btn btn-accent text-[11px]" data-news-topost="${n.id}">В пост</button>` : ''}
-            ${n.status !== 'new' && n.status !== 'selected' ? `<span class="text-[11px]" style="color:var(--text-mute)">операции недоступны (статус: ${this.esc(ui.label)})</span>` : ''}
+            <button class="btn btn-accent text-[10px]" data-news-topost="${n.id}">В пост</button>` : ''}
           </div>
         </div>`;
-      }).join('') || this.empty();
-      // §36: тулбар управления источниками — выше фильтров
+      }).join('');
+
+      // ── превью выбранного материала (правая колонка)
+      let preview = this.empty();
+      if (sel) {
+        const ui = SU[sel.status] || { label: sel.status, col: 'var(--text-mute)' };
+        const rel = (sel.relevance === null || sel.relevance === undefined)
+          ? '' : `релевантность ${Math.round(sel.relevance * 100)}%`;
+        preview = `
+          <div class="flex items-center gap-2 flex-wrap">
+            <span style="color:${ui.col}">●</span>
+            <span class="pill text-[11px]" title="источник">${this.esc(srcNameOf(sel))}</span>
+            <span class="pill text-[11px]" style="color:${ui.col};border-color:${ui.col}">${ui.label}</span>
+            ${rel ? `<span class="text-[11px]" style="color:var(--text-dim)">${rel}</span>` : ''}
+          </div>
+          <div class="text-base font-semibold mt-2 leading-snug">${sel.url ? `<a href="${this.esc(sel.url)}" target="_blank" rel="noopener" class="underline">${this.esc(sel.title)}</a>` : this.esc(sel.title)}</div>
+          <div class="text-[12px] mt-0.5" style="color:var(--text-dim)">${(sel.fetched_at || '').slice(0, 16).replace('T', ' ')}</div>
+          <div class="label mt-3 mb-1">Краткое содержание</div>
+          <div class="text-[13px] leading-relaxed" style="white-space:pre-line">${this.esc((sel.summary || '').trim() || '— без аннотации —')}</div>
+          <div class="mt-auto pt-3" style="border-top:1px solid var(--border)">
+            <div class="flex items-center gap-2 flex-wrap">
+              ${sel.status === 'new' ? `
+              <button class="btn btn-accent text-[12px]" data-news-status="selected" data-news-id="${sel.id}">В работу</button>
+              <button class="btn text-[12px]" data-news-status="rejected" data-news-id="${sel.id}">Отклонить</button>` : ''}
+              ${sel.status === 'selected' ? `
+              <button class="btn btn-accent text-[12px]" data-news-topost="${sel.id}">В пост</button>` : ''}
+              ${sel.status !== 'new' && sel.status !== 'selected' ? `<span class="text-[11px]" style="color:var(--text-mute)">операции недоступны (статус: ${this.esc(ui.label)})</span>` : ''}
+            </div>
+          </div>`;
+      }
+
+      const emptyHint = {
+        new: 'Новых материалов нет — нажмите «Сканировать сейчас» или дождитесь ежечасного скана A1.',
+        selected: 'Пусто: «в работе» материалы попадают кнопкой «В работу» из вкладки «Новые».',
+        used: 'Пусто: использованные материалы появляются после «В пост».',
+        rejected: 'Отклонённых материалов нет.',
+      }[st.status] || 'Пусто';
+
+      // ── блок источников (эскиз §20.7: сворачивается целиком за «Список источников»)
       const srcOpts = (this.M.sources || []).map(s =>
         `<option value="${s.id}">${this.esc(s.handle || s.url || ('#' + s.id))} (${this.esc(s.type)})${s.status === 'active' ? '' : ' — ' + this.esc(s.status)}</option>`).join('');
-      const srcToolbar = `<div class="flex items-center gap-2 flex-wrap pb-2 mb-2" style="border-bottom:1px solid var(--border)">
-        <span class="label">Управление источниками</span>
-        <button class="btn text-[12px]" data-src-add>+ Источник</button>
-        <select id="newsSrcSelect" class="inp text-[12px]" style="width:auto;min-width:200px">${srcOpts || '<option value="">нет источников</option>'}</select>
-        <button class="btn text-[12px]" data-src-del style="color:var(--err)">✕ Удалить источник (с новостями)</button>
-        <button class="btn text-[12px]" data-news-src-list>${st.srcOpen ? '▾' : '▸'} Источники · ${(this.M.sources || []).length}</button>
-      </div>`;
-      // П.4 доработки 24.09: список источников перенесён из «Мониторинга», сворачивается
       const srcRows = (this.M.sources || []).map(s => `<div class="card-2 p-3 flex items-center gap-3">
         <span style="color:${s.active ? 'var(--ok)' : 'var(--text-mute)'}">●</span>
         <span class="pill">${this.esc(s.type)}</span>
@@ -5437,31 +5477,50 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         <button class="btn text-[12px]" data-src-scan="${s.id}">Проверить</button>
         <button class="btn text-[12px]" data-src-toggle="${s.id}">${s.active ? 'Пауза' : 'Вкл'}</button>
       </div>`).join('') || '<div class="text-[12px]" style="color:var(--text-mute)">Источников нет</div>';
-      const srcList = st.srcOpen
-        ? `<div class="card-2 p-3 mb-2"><div class="label mb-2">Подключённые источники</div><div class="flex flex-col gap-2">${srcRows}</div></div>`
-        : '';
-      const tab = (val, label) =>
-        `<button class="btn text-[12px] ${st.status === val ? 'btn-accent' : ''}" data-news-filter="${val}">${label}</button>`;
+      const srcBlock = st.srcOpen ? `
+        <div class="label mt-3 mb-2">Управление источниками</div>
+        <div class="flex items-center gap-2 flex-wrap mb-2">
+          <button class="btn text-[12px]" data-src-add>+ Источник</button>
+          <button class="btn text-[12px]" data-src-del style="color:var(--err)">✕ Удалить источник (с новостями)</button>
+        </div>
+        <div class="card-2 p-3">
+          <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+            <div class="label">Подключённые источники</div>
+            <select id="newsSrcSelect" class="input text-[12px]" style="width:auto;min-width:220px" title="Источник, который удалит кнопка «✕ Удалить источник»">${srcOpts || '<option value="">нет источников</option>'}</select>
+          </div>
+          <div class="flex flex-col gap-2">${srcRows}</div>
+        </div>` : '';
+
       const from = st.total ? st.offset + 1 : 0;
       const to = Math.min(st.offset + st.limit, st.total);
       return `<div class="flex flex-col gap-4">
         <div class="card p-4">
-          <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <div class="label">Материалы · ${st.total}</div>
-            <div class="flex flex-wrap gap-1">
-              ${tab('new', 'Новые')}${tab('selected', 'В работе')}${tab('used', 'Использованные')}${tab('rejected', 'Отклонённые')}
-              <button class="btn text-[12px]" data-news-help>📖 Справка</button>
-              <button class="btn text-[12px]" data-news-archives>🗂 Архивы публикаций</button>
-              <button class="btn btn-accent text-[12px]" data-news-scan ${st.scanning ? 'disabled' : ''}>${st.scanning ? 'Сканирую…' : 'Сканировать сейчас'}</button>
-            </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button class="btn text-[12px]" data-news-src-list>${st.srcOpen ? '▾' : '▸'} Список источников · ${(this.M.sources || []).length}</button>
           </div>
-          ${srcToolbar}
-          ${srcList}
-          <div class="flex flex-col gap-2 mt-2">${rows}</div>
-          <div class="flex items-center gap-2 mt-2 text-[12px]">
-            <span>${from}-${to} из ${st.total}</span>
-            <button class="btn text-[12px]" data-news-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
-            <button class="btn text-[12px]" data-news-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
+          ${srcBlock}
+          <div class="mnews-divider"></div>
+          <div class="flex items-center gap-3 flex-wrap mb-3">
+            <button class="btn btn-accent" style="font-size:14px;padding:10px 22px" data-news-scan ${st.scanning ? 'disabled' : ''}>${st.scanning ? 'Сканирую…' : 'Сканировать сейчас'}</button>
+            <span class="pill text-[12px]" style="padding:6px 14px">Материалы · ${st.total}</span>
+            <span class="flex-1"></span>
+            <span class="text-[12px]" style="color:var(--text-mute)">${from}–${to} из ${st.total}</span>
+          </div>
+          <div class="btab-bar">
+            ${tab('new', 'Новые')}${tab('selected', 'В работе')}${tab('used', 'Использованные')}${tab('rejected', 'Отклонённые')}
+            <span class="flex-1"></span>
+            <button class="btab" data-news-help>📖 Справка</button>
+            <button class="btab" data-news-archives>🗂 Архивы публикаций</button>
+          </div>
+          <div class="btab-body mnews-grid">
+            <div class="mnews-list">
+              ${rows || `<div class="p-3 text-[12px]" style="color:var(--text-mute)">${emptyHint}</div>`}
+              <div class="mnews-pager flex items-center gap-2 p-3 text-[12px]">
+                <button class="btn text-[11px]" data-news-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
+                <button class="btn text-[11px]" data-news-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
+              </div>
+            </div>
+            <div class="mnews-preview p-4">${preview}</div>
           </div>
         </div>
         <div class="card p-3 text-[12px]" style="color:var(--text-mute)">Материалы собирает агент A1 из подключённых источников (телеграм-каналы, RSS, сайты) раз в час и оценивает релевантность по ключевым словам источника. «В работу» — материал попадает в очередь конвейера контента (A2). Удаление источника удаляет и все его материалы (решение владельца).</div>
@@ -5504,7 +5563,7 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
           <div class="flex flex-col gap-3">
             ${step(1, 'Подключите источник', 'Тулбар «Управление источниками» → «+ Источник»: тип (новости/RSS, конкурент, рынок…), URL (для Telegram — адрес канала вида t.me/имя), ключевые слова через запятую, сегмент аудитории. Источник сразу участвует в ближайшем скане.')}
             ${step(2, 'Дождитесь скана или запустите сами', 'A1 сканирует каждый час автоматически. Кнопка «Сканировать сейчас» — принудительно. Новые материалы появляются во вкладке «Новые» с оценкой релевантности.')}
-            ${step(3, 'Читайте карточку', 'Сверху — источник и релевантность; далее тема (ссылка на первоисточник); ниже — анонс. Наведите курсор на строку анонса — всплывёт фрейм с кратким содержанием. Кнопки действий — в подвале карточки.')}
+            ${step(3, 'Читайте карточку', 'Выберите материал в списке слева — справа откроется карточка: источник, релевантность, тема (ссылка на первоисточник) и краткое содержание. Кнопка «Суммари» открывает то же. Кнопки действий — в карточке и прямо в строке списка.')}
             ${step(4, 'Разбирайте материалы', '«В работу» — важное, попадает во вкладку «В работе»; «Отклонить» — шум. Фильтры-вкладки сверху переключают статус, стрелки внизу листают страницы.')}
             ${step(5, 'Создайте пост', 'У материала «в работе» нажмите «В пост» — агент A2 напишет черновик языком сегмента этой новости. Дальше работайте в разделе «Контент» (правка, согласование в TG, публикация).')}
             ${step(6, 'Удаляйте ненужное', '«✕ Удалить источник (с новостями)» убирает источник и все его материалы — с подтверждением, необратимо. Посты, созданные из этих новостей, остаются.')}
@@ -6060,9 +6119,20 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
         const h = (el.querySelector('[data-meteo-shor]') || {}).value || '24';
         this.meteoAddSub(p.trim(), c.trim(), h);
       };
-      // §20.6: медиа-мониторинг — фильтры, пагинация, статусы, скан
+      // §20.6: медиа-мониторинг — вкладки-статусы, пагинация, статусы, скан
       el.querySelectorAll('[data-news-filter]').forEach(b => {
         b.onclick = () => this.newsFilter(b.getAttribute('data-news-filter'));
+      });
+      // §20.7: мастер-детейл — выбор материала строкой или кнопкой «Суммари»
+      el.querySelectorAll('[data-news-sel]').forEach(r => {
+        r.onclick = (e) => {
+          if (e.target.closest('button')) return;  // кнопки в строке не меняют выбор
+          this.newsState.sel = parseInt(r.getAttribute('data-news-sel'), 10);
+          this.render();
+        };
+      });
+      el.querySelectorAll('[data-news-sum]').forEach(b => {
+        b.onclick = () => { this.newsState.sel = parseInt(b.getAttribute('data-news-sum'), 10); this.render(); };
       });
       // §38: справка медиа-мониторинга — модальным окном, лента не блокируется
       const nhelp = el.querySelector('[data-news-help]');

@@ -137,6 +137,38 @@
                  display:flex; flex-direction:column;
                  box-shadow:-12px 0 32px rgba(37,29,26,.18); animation:nsiDr .18s ease; }
     @keyframes nsiDr{ from{transform:translateX(24px); opacity:.4} to{transform:none; opacity:1} }
+
+    /* §20.7 — «Медиа-мониторинг»: браузерные вкладки статусов + мастер-детейл.
+       Вкладки — рамочные «полки»: неактивные залиты surface-2, активная тем же
+       фоном, что панель контента (var(--bg)), и налегает на границу бара
+       (margin-bottom:-1px + border-bottom цвета фона) — сливается с панелью. */
+    .btab-bar{ display:flex; align-items:flex-end; gap:4px; border-bottom:1px solid var(--border);
+               overflow-x:auto; padding:0 4px; }
+    .btab{ font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.03em;
+           color:var(--text-dim); background:var(--surface-2);
+           border:1px solid var(--border); border-bottom:none; border-radius:7px 7px 0 0;
+           padding:8px 14px 9px; cursor:pointer; white-space:nowrap; }
+    .btab:hover{ color:var(--text); }
+    .btab:active{ transform:translateY(1px); }
+    .btab.active{ color:var(--text); font-weight:700; background:var(--bg);
+                  margin-bottom:-1px; border-bottom:1px solid var(--bg); }
+    .btab-body{ border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px;
+                background:var(--bg); }
+    .mnews-divider{ height:2px; background:var(--text-mute); border-radius:1px; margin:14px 0; }
+    .mnews-grid{ display:grid; grid-template-columns:minmax(300px,5fr) minmax(0,7fr); }
+    .mnews-list{ max-height:72vh; overflow:auto; }
+    .mnews-pager{ border-top:1px solid var(--border); position:sticky; bottom:0; background:var(--bg); }
+    .mnews-preview{ min-height:340px; border-left:1px solid var(--border);
+                    display:flex; flex-direction:column; }
+    .mrow{ padding:10px 12px; border-bottom:1px solid var(--border); cursor:pointer; }
+    .mrow:hover{ background:var(--surface); }
+    .mrow.sel{ background:var(--accent-soft); }
+    .mrow-title{ font-size:13px; font-weight:600; margin-top:4px; line-height:1.35;
+                 display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    @media (max-width:920px){
+      .mnews-grid{ grid-template-columns:1fr; }
+      .mnews-preview{ border-left:none; border-top:1px solid var(--border); min-height:0; }
+    }
   </style>
 </head>
 <body x-data="appObjects()" x-init="init()">
@@ -275,7 +307,7 @@
   <script src="js/ui-reka.js?v=20260924"></script>
   <script src="js/mock.objects.js?v=20260924"></script>
   <script src="js/api.js?v=20260928b"></script>
-  <script src="js/app.objects.js?v=20260928c"></script>
+  <script src="js/app.objects.js?v=20260930a"></script>
   <script src="js/app.catalogs.js?v=20260928c"></script>
   <script src="js/app.pub.js?v=20260929b"></script>
   <script src="js/alpine.min.js?v=1789616100" defer></script>
