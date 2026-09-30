@@ -113,6 +113,14 @@
                           border-right:1px solid var(--border); }
     #leadsTable thead th:last-child, #leadsTable tbody td:last-child{ border-right:0; }
     #leadsTable tbody tr:hover td{ background:var(--surface-2); }
+    /* колонка «Действия» залипает у правого края — круглые кнопки всегда
+       видны при горизонтальном скролле (стиль «Артефактов»: край строки) */
+    #leadsTable tbody td:last-child{ position:sticky; right:0; z-index:1;
+                                     background:var(--surface);
+                                     box-shadow:-4px 0 8px -4px rgba(0,0,0,.18); }
+    #leadsTable thead th:last-child{ position:sticky; right:0; z-index:3;
+                                     box-shadow:-4px 0 8px -4px rgba(0,0,0,.18); }
+    #leadsTable tbody tr:hover td:last-child{ background:var(--surface-2); }
     /* зона захвата для ресайза — 5px у правого края заголовка */
     #leadsTable th{ position:relative; }
     #leadsTable .agl-grip{ position:absolute; top:0; right:0; width:5px; height:100%;

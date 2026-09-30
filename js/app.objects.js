@@ -1505,20 +1505,20 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     items: [], total: 0, limit: 50, offset: 0,
     status: '', q: '', sort: 'name', order: 'asc',
     stats: { total: 0, new: 0, active: 0, inactive: 0, converted: 0 },
-    loading: false, loaded: false,
+    loading: false, loaded: false, err: null,
   },
 
   // §15.1a — колонки таблицы «Лиды»: ключ + ширина по умолчанию (px).
   // Порядок совпадает с порядком <col> и <th>.
   LEADS_COLS: [
-    { key: 'name',           w: 260 },
-    { key: 'contact',        w: 180 },
-    { key: 'phone',          w: 150 },
-    { key: 'status',         w: 110 },
-    { key: 'owner',          w: 160 },
-    { key: 'comment',        w: 220 },
-    { key: 'next_action_at', w: 120 },
-    { key: 'actions',        w: 200 },
+    { key: 'name',           w: 220 },
+    { key: 'contact',        w: 150 },
+    { key: 'phone',          w: 140 },
+    { key: 'status',         w: 100 },
+    { key: 'owner',          w: 140 },
+    { key: 'comment',        w: 180 },
+    { key: 'next_action_at', w: 110 },
+    { key: 'actions',        w: 150 },
   ],
   LEADS_COLW_KEY: 'agl_leads_colw',
 
@@ -1578,15 +1578,23 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
   async leadsLoad() {
     const st = this.leadsState;
     st.loading = true; st.loaded = true;
-    const [d, stats] = await Promise.all([
-      window.AGL.loadLeads({ limit: st.limit, offset: st.offset, status: st.status,
-                             q: st.q, sort: st.sort, order: st.order }),
-      window.AGL.loadLeadsStats(),
-    ]);
-    st.items = d.items || []; st.total = d.total || 0;
-    st.stats = stats || st.stats;
-    st.loading = false;
-    this.render();
+    try {
+      const [d, stats] = await Promise.all([
+        window.AGL.loadLeads({ limit: st.limit, offset: st.offset, status: st.status,
+                               q: st.q, sort: st.sort, order: st.order }),
+        window.AGL.loadLeadsStats(),
+      ]);
+      st.items = d.items || []; st.total = d.total || 0;
+      st.stats = stats || st.stats;
+      st.err = null;
+    } catch (e) {
+      // 401/403 отдаём разделу явно: «таблица исчезла» из-за тихо проглоченной
+      // ошибки сессии выглядела как пустой справочник
+      st.err = (e && e.message) || 'Не удалось загрузить лидов';
+    } finally {
+      st.loading = false;
+      this.render();
+    }
   },
 
   leadsPage(delta) {
@@ -1750,6 +1758,26 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     if (!st.loaded) { this.leadsLoad(); }
     const e = (v) => this.esc(v == null ? '' : String(v));
     const S = this.LEAD_STATUS_UI;
+
+    // Ошибка загрузки (типичный случай — 401: истекла сессия) отдаётся явно
+    // карточкой, а не тихо пустой таблицей (паттерн §46 из vPubChannels)
+    if (st.err) {
+      const auth = /HTTP 40[13]/.test(st.err);
+      return `<div class="card p-4">
+        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <div class="label">Лиды</div>
+          <button class="btn text-[13px]" data-lead-retry>⟳ Повторить</button>
+        </div>
+        <div class="card-2 p-6 text-center">
+          <div class="text-lg mb-2" style="color:var(--err)">${auth ? 'Сессия истекла' : 'Не удалось загрузить лидов'}</div>
+          <div class="text-sm mb-2" style="color:var(--text-dim)">${auth
+            ? 'Выйдите из системы и войдите заново, затем откройте раздел «Лиды».'
+            : e(st.err)}</div>
+          ${auth ? `<div class="text-[12px]" style="color:var(--text-mute)">${e(st.err)}</div>` : ''}
+        </div>
+      </div>`;
+    }
+
     const from = st.total ? st.offset + 1 : 0;
     const to = Math.min(st.offset + st.limit, st.total);
     const today = new Date().toISOString().slice(0, 10);
@@ -1765,6 +1793,11 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
     const colgroup = '<colgroup>' + this.LEADS_COLS.map(c =>
       `<col data-col="${c.key}" style="width:${stored[c.key] || c.w}px" />`).join('') + '</colgroup>';
 
+    // Действия в строках — круглые кнопки, стиль раздела «Артефакты» (как НСИ)
+    const ab = (attr, title, glyph, danger) => this.artActionBtn(attr, title, glyph, danger, 22);
+    const call = (phone) => `<a href="tel:${e(phone)}" title="Позвонить" class="btn"
+      style="width:22px;height:22px;border-radius:999px;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;flex-shrink:0;text-decoration:none">☎</a>`;
+
     const rows = st.items.map(l => {
       const ui = S[l.status] || { label: l.status, col: 'var(--text-mute)' };
       const extra = (l.phone_extra || []).length;
@@ -1774,11 +1807,13 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
         : '';
       const canConvert = l.status === 'new' || l.status === 'active';
       const acts =
-        (l.phone ? `<a class="btn text-[11px]" href="tel:${e(l.phone)}">Позвонить</a> ` : '') +
-        (canConvert ? `<button class="btn text-[11px]" data-lead-convert="${e(l.id)}" data-lead-name="${e(l.name)}">В клиенты</button> ` : '') +
-        (canConvert ? `<button class="btn text-[11px]" data-lead-reject="${e(l.id)}" data-lead-name="${e(l.name)}">Некачественный</button> ` : '') +
-        (canConvert ? `<button class="btn text-[11px]" data-lead-task="${e(l.id)}" data-lead-name="${e(l.name)}">Дело</button> ` : '') +
-        `<button class="btn text-[11px]" data-lead-open="${e(l.id)}">Открыть</button>`;
+        `<div class="flex gap-1.5 items-center justify-end flex-shrink-0">` +
+        (l.phone ? call(l.phone) : '') +
+        (canConvert ? ab(`data-lead-convert="${e(l.id)}" data-lead-name="${e(l.name)}"`, 'Конвертировать в клиента', '→') : '') +
+        (canConvert ? ab(`data-lead-task="${e(l.id)}" data-lead-name="${e(l.name)}"`, 'Создать дело по лиду', '✓') : '') +
+        (canConvert ? ab(`data-lead-reject="${e(l.id)}" data-lead-name="${e(l.name)}"`, 'Отметить некачественным', '✕', true) : '') +
+        ab(`data-lead-open="${e(l.id)}"`, 'Карточка лида', '↗') +
+        `</div>`;
       const cell = (v) => `<td class="truncate" title="${e(v)}">${e(v)}</td>`;
       // §15.6 п.4: срок ближайшего дела; просроченное подсвечивается.
       const overdue = !!l.next_action_at && l.next_action_at < today
@@ -1800,28 +1835,56 @@ window.AGL.createTask({ title: o.taskTitle || 'Задача', deal_id: d.id, sta
 
     const S2 = st.stats;
     return `
-      <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <div class="label">Лиды</div>
-        <button class="btn btn-accent text-[13px]" data-lead-add>+ Создать лид</button>
-      </div>
-      <div class="flex flex-wrap gap-1 items-center mb-2">
-        ${tab('', 'Все', S2.total)}${tab('new', 'Новые', S2.new)}${tab('active', 'В работе', S2.active)}${tab('inactive', 'Отклонённые', S2.inactive)}${tab('converted', 'Клиенты', S2.converted)}
-        <input id="leadSearch" class="input flex-1 min-w-[180px] text-[13px]" placeholder="Поиск: название, контакт, телефон…" value="${e(st.q)}" />
-      </div>
-      <div id="leadsTable" class="card p-0">
-        <table class="table w-full text-[13px]">${colgroup}<thead><tr>
-          ${th('name', 'Название')}${thp('contact', 'Контакт')}${thp('phone', 'Телефон')}${th('status', 'Статус')}${th('owner', 'Ответственный')}${thp('comment', 'Комментарий')}${th('next_action_at', 'Дело до')}${thp('actions', 'Действия')}
-        </tr></thead><tbody>${rows || '<tr><td colspan="8" class="p-4 text-center">Нет данных</td></tr>'}</tbody></table>
-      </div>
-      <div class="flex items-center gap-2 mt-2 text-[12px]">
-        <span>${from}-${to} из ${st.total}</span>
-        <button class="btn text-[12px]" data-lead-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
-        <button class="btn text-[12px]" data-lead-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
-        <select id="leadLimit" class="input text-[12px] w-auto">
-          <option value="50" ${st.limit === 50 ? 'selected' : ''}>50</option>
-          <option value="100" ${st.limit === 100 ? 'selected' : ''}>100</option>
-        </select>
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <div class="label">Лиды · ${st.total}</div>
+          <button class="btn btn-accent text-[13px]" data-lead-add>+ Создать лид</button>
+        </div>
+        <div class="flex flex-wrap gap-1 items-center mb-3">
+          ${tab('', 'Все', S2.total)}${tab('new', 'Новые', S2.new)}${tab('active', 'В работе', S2.active)}${tab('inactive', 'Отклонённые', S2.inactive)}${tab('converted', 'Клиенты', S2.converted)}
+          <input id="leadSearch" class="input flex-1 min-w-[180px] text-[13px]" placeholder="Поиск: название, контакт, телефон…" value="${e(st.q)}" />
+        </div>
+        <div id="leadsTable">
+          <table class="table w-full text-[13px]">${colgroup}<thead><tr>
+            ${th('name', 'Название')}${thp('contact', 'Контакт')}${thp('phone', 'Телефон')}${th('status', 'Статус')}${th('owner', 'Ответственный')}${thp('comment', 'Комментарий')}${th('next_action_at', 'Дело до')}${thp('actions', 'Действия')}
+          </tr></thead><tbody>${rows || `<tr><td colspan="8" class="p-6 text-center" style="color:var(--text-mute)">Лидов пока нет</td></tr>`}</tbody></table>
+        </div>
+        <div class="flex items-center gap-2 mt-3 text-[12px]">
+          <span>${from}-${to} из ${st.total}</span>
+          <button class="btn text-[12px]" data-lead-page="-1" ${st.offset === 0 ? 'disabled' : ''}>← Назад</button>
+          <button class="btn text-[12px]" data-lead-page="1" ${st.offset + st.limit >= st.total ? 'disabled' : ''}>Вперёд →</button>
+          <select id="leadLimit" class="input text-[12px] w-auto">
+            <option value="50" ${st.limit === 50 ? 'selected' : ''}>50</option>
+            <option value="100" ${st.limit === 100 ? 'selected' : ''}>100</option>
+          </select>
+        </div>
       </div>`;
+  },
+
+  // Карточка лида (кнопка «↗» в строке): все поля уже есть в загруженной
+  // странице списка, отдельный поход в API не нужен
+  leadsOpenModal(id) {
+    const l = this.leadsState.items.find(x => String(x.id) === String(id));
+    if (!l) { this.toast('Лид не найден на текущей странице', 'err'); return; }
+    const e = (v) => this.esc(v == null ? '' : String(v));
+    const ui = this.LEAD_STATUS_UI[l.status] || { label: l.status, col: 'var(--text-mute)' };
+    const row = (k, v) => v ? `<div class="flex gap-2 text-[13px] py-1.5 border-b" style="border-color:var(--border)"><div class="w-40 flex-shrink-0" style="color:var(--text-mute)">${k}</div><div class="min-w-0" style="word-break:break-word">${v}</div></div>` : '';
+    const phones = [l.phone, ...(l.phone_extra || [])].filter(Boolean)
+      .map(p => `<a href="tel:${e(p)}">${e(p)}</a>`).join(', ');
+    this.openModal('Лид · ' + (l.name || l.id), `
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <span class="pill text-[11px] whitespace-nowrap" style="color:${ui.col};border-color:${ui.col}">${e(ui.label)}</span>
+        <span class="text-[11px]" style="color:var(--text-mute)">${e(l.id)}${l.source ? ' · источник: ' + e(l.source) : ''}</span>
+      </div>
+      ${row('Контакт', e(l.contact_person))}
+      ${row('Телефоны', phones)}
+      ${row('E-mail', l.email ? `<a href="mailto:${e(l.email)}">${e(l.email)}</a>` : '')}
+      ${row('Регион', e(l.region))}
+      ${row('Отрасль', e(l.industry))}
+      ${row('Ответственный', e(l.owner))}
+      ${row('Комментарий', e(l.comment))}
+      ${row('Ближайшее дело', l.next_action ? `${e(l.next_action)}${l.next_action_at ? ' — до ' + e(l.next_action_at) : ''}` : '')}
+    `, null, { noFooter: true });
   },
 
   vClients() {
@@ -6066,6 +6129,11 @@ if (this.apiMode && window.AGL && window.AGL.token) { const REV = { 'Зацеп�
       el.querySelectorAll('[data-lead-task]').forEach(b => {
         b.onclick = () => this.leadsTaskModal(b.getAttribute('data-lead-task'), b.getAttribute('data-lead-name'));
       });
+      el.querySelectorAll('[data-lead-open]').forEach(b => {
+        b.onclick = () => this.leadsOpenModal(b.getAttribute('data-lead-open'));
+      });
+      const lr = el.querySelector('[data-lead-retry]');
+      if (lr) lr.onclick = () => { this.leadsState.err = null; this.leadsLoad(); };
       // §15.1a: ресайз колонок. stopPropagation, иначе клик уйдёт в сортировку.
       // §18.6: дерево «Справочника» + §45: режимы раздела и НСИ
       el.querySelectorAll('[data-cat-node-toggle]').forEach(n => {
