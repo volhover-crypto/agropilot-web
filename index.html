@@ -191,8 +191,8 @@
       <div class="nav-item" :class="route==='strategy'&&'active'" @click="go('strategy')"><img class="nav-ico" src="assets/icons/strategy.png" alt=""> <span>Стратегия</span></div>
       <div class="nav-item" :class="route==='goals'&&'active'"    @click="go('goals')"><img class="nav-ico" src="assets/icons/goal.png" alt=""> <span>Цели</span></div>
 
-      <!-- ── БЛОК 1: Маркетинг и мониторинг ── -->
-      <div class="label px-2 mt-3 mb-1">Блок 1 · Маркетинг</div>
+      <!-- ── БЛОК 1: Контент и соцсети ── -->
+      <div class="label px-2 mt-3 mb-1">Блок 1 · Контент и соцсети</div>
       <div class="nav-item flex items-center" :class="route==='monitoring'&&'active'" @click="go('monitoring')"><img class="nav-ico" src="assets/icons/monitoring.png" alt=""> <span class="flex-1">Мониторинг</span><span x-show="cntSignals()>0" class="pill text-[11px]" style="background:var(--info);color:#fff;border:0" x-text="cntSignals()"></span></div>
       <div class="nav-item flex items-center" :class="route==='medianews'&&'active'" @click="go('medianews')"><img class="nav-ico" src="assets/icons/medianews.png" alt=""> <span class="flex-1">Медиа-мониторинг</span></div>
       <div class="nav-item flex items-center" :class="route==='content'&&'active'" @click="go('content')"><img class="nav-ico" src="assets/icons/content.png" alt=""> <span class="flex-1">Редактор постов</span><span x-show="cntDrafts()>0" class="pill text-[11px]" style="background:var(--warn);color:#fff;border:0" x-text="cntDrafts()"></span></div>
